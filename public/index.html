@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>JANKEN — rock · paper · scissors chess</title>
+  <meta name="description" content="A minimal territory game: rock-paper-scissors chess on a 9×9 board. Paint the board, capture pieces, hold the most ground." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#17171b" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="JANKEN — rock · paper · scissors chess" />
+  <meta property="og:description" content="A minimal territory game. Rock moves like a king, paper like a rook, scissors like a bishop. Paint the most squares." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="Janken home">
+      <svg class="mark" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true">
+        <g fill="none" stroke-width="3.4" stroke-linecap="round">
+          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
+          <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
+          <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
+        </g>
+      </svg>
+      <span class="word">JANKEN<em>rps · chess</em></span>
+    </a>
+    <nav class="tools">
+      <button id="settings-btn" class="btn ghost icon" title="Rules & board settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19" stroke-linecap="round"/></svg>
+      </button>
+      <button id="flip-btn" class="btn ghost icon" title="Flip board" aria-label="Flip board">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h13a5 5 0 0 1 5 5"/><path d="M17 20l4-4-4-4"/><path d="M21 16H8a5 5 0 0 1-5-5"/></svg>
+      </button>
+      <button id="help-btn" class="btn ghost icon" title="How to play" aria-label="How to play">?</button>
+      <button id="theme-btn" class="btn ghost icon" title="Toggle theme" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" fill="currentColor"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main class="app">
+    <section class="board-wrap">
+      <div class="board" id="board" role="grid" aria-label="Game board"></div>
+      <div class="banner" id="banner" hidden></div>
+    </section>
+
+    <aside class="panel" id="panel">
+      <div class="turn" id="turn">
+        <span class="dot" id="turn-dot"></span>
+        <span id="turn-label">Blue to move</span>
+      </div>
+
+      <div class="score" id="score">
+        <div class="bar"><span class="seg blue" id="seg-b"></span><span class="seg red" id="seg-r"></span><span class="seg neutral" id="seg-n"></span></div>
+        <div class="counts">
+          <span class="c blue"><b id="ct-b">6</b> blue</span>
+          <span class="c neutral"><b id="ct-n">69</b> open</span>
+          <span class="c red"><b id="ct-r">6</b> red</span>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="lg"><span class="glyph" data-p="rock"></span><span class="lt">Rock</span><span class="lm">steps 1 — any way</span></div>
+        <div class="lg"><span class="glyph" data-p="paper"></span><span class="lt">Paper</span><span class="lm">slides — straight</span></div>
+        <div class="lg"><span class="glyph" data-p="scissors"></span><span class="lt">Scissors</span><span class="lm">slides — diagonal</span></div>
+      </div>
+
+      <div class="nav" id="nav">
+        <button class="navb" id="nav-start" title="First position" aria-label="First">⏮</button>
+        <button class="navb" id="nav-prev" title="Back" aria-label="Back">‹</button>
+        <span class="ply" id="ply">start</span>
+        <button class="navb" id="nav-next" title="Forward" aria-label="Forward">›</button>
+        <button class="navb" id="nav-end" title="Latest" aria-label="Latest">⏭</button>
+        <button class="navb wide" id="takeback" title="Take back last move">⟲</button>
+      </div>
+
+      <div class="controls">
+        <button id="new-btn" class="btn">New game</button>
+        <button id="copy-btn" class="btn ghost" title="Copy moves">Copy</button>
+      </div>
+
+      <ol class="log" id="log" aria-label="Move history"></ol>
+    </aside>
+
+    <aside class="panel editpanel" id="editpanel" hidden>
+      <h3 class="eh">Set up a position</h3>
+      <div class="palette" id="palette"></div>
+      <div class="ed-actions">
+        <button class="btn ghost sm" id="ed-mirror" title="Copy Blue's pieces to Red (rotational)">Mirror ⤾</button>
+        <button class="btn ghost sm" id="ed-blocks" title="Reset to standard blocks">Standard</button>
+        <button class="btn ghost sm" id="ed-clear" title="Remove all pieces">Clear</button>
+      </div>
+      <p class="hint">Pick a piece, then click squares to place or remove it. First move follows your settings.</p>
+      <div class="controls">
+        <button id="ed-start" class="btn">Start game</button>
+        <button id="ed-cancel" class="btn ghost">Cancel</button>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="rules" class="modal">
+    <form method="dialog">
+      <h2>How to play</h2>
+      <p>Two players — <b class="tb">Blue</b> and <b class="tr">Red</b> — take turns moving pieces. Each starts with two rocks, two papers, two scissors.</p>
+      <h3>Movement</h3>
+      <ul>
+        <li><b>Rock</b> steps one square in any direction — like a king.</li>
+        <li><b>Paper</b> slides any distance straight — like a rook.</li>
+        <li><b>Scissors</b> slides any distance diagonally — like a bishop.</li>
+      </ul>
+      <h3>Territory</h3>
+      <p>Every square a piece lands on is <b>painted your colour forever</b>. Move onto an enemy piece to <b>capture</b> it — you take the square <em>and</em> remove one of their painters.</p>
+      <h3>Winning</h3>
+      <p>The game ends when the whole board is painted (or neither side can move). Whoever holds the <b>most squares</b> wins.</p>
+      <button class="btn" value="close">Got it</button>
+    </form>
+  </dialog>
+
+  <dialog id="settings" class="modal">
+    <form method="dialog" id="settings-form">
+      <h2>Rules &amp; board</h2>
+
+      <label class="row"><span>Board size</span>
+        <span class="rangewrap"><input type="range" id="s-size" min="6" max="13" step="1" value="9"><b id="s-size-v">9×9</b></span>
+      </label>
+      <label class="row"><span>Pieces per type</span>
+        <span class="rangewrap"><input type="range" id="s-per" min="1" max="4" step="1" value="2"><b id="s-per-v">2</b></span>
+      </label>
+
+      <label class="row"><span>Opponent</span>
+        <select id="s-opp">
+          <option value="human">Human (hot-seat)</option>
+          <option value="bot">Bot</option>
+        </select>
+      </label>
+      <label class="row" id="s-botside-row"><span>Bot plays</span>
+        <select id="s-botside"><option value="R">Red</option><option value="B">Blue</option></select>
+      </label>
+      <label class="row"><span>First move</span>
+        <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
+      </label>
+      <label class="row"><span>Capturing</span>
+        <select id="s-cap">
+          <option value="chess">Chess — always capture</option>
+          <option value="rps">RPS — only if you beat it</option>
+        </select>
+      </label>
+
+      <div class="row checks">
+        <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
+        <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
+      </div>
+
+      <div class="controls">
+        <button class="btn" id="s-apply" value="apply">Apply &amp; new game</button>
+        <button class="btn ghost" id="s-setup" value="setup" type="button">Set up position…</button>
+      </div>
+      <button class="linkbtn" value="close" type="submit">Cancel</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="/game.js"></script>
+</body>
+</html>

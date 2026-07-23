@@ -1,0 +1,16 @@
+{
+  "name": "rps-chess",
+  "version": "1.0.0",
+  "description": "JANKEN — a territory game of rock-paper-scissors chess. Deployed at rps.subsurfaces.net.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail rps-chess",
+    "preview": "wrangler dev --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.100.0"
+  }
+}

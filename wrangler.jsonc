@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rps-chess",
+  "compatibility_date": "2026-07-23",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public"
+  },
+  "routes": [
+    {
+      "pattern": "rps.subsurfaces.net",
+      "custom_domain": true
+    }
+  ]
+}
