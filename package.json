@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "version:stamp": "node scripts/version.mjs",
+    "deploy": "node scripts/version.mjs && wrangler deploy",
     "tail": "wrangler tail rps-chess",
     "preview": "wrangler dev --remote"
   },

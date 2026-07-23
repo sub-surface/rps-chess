@@ -2,3 +2,8 @@ node_modules/
 .wrangler/
 .dev.vars
 *.log
+public/version.json
+
+# test artifacts
+.playwright-mcp/
+*.png
