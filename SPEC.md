@@ -101,6 +101,234 @@ Overriding any rules field produces **Custom**. Adding a variant is a one-file c
 `PRESETS` entry plus its `PRESET_INFO` label and tagline, after which the picker, previews,
 JPGN `Ruleset` tag, and rules text all pick it up.
 
+## 1b. Planned extensions: hex boards and setup play
+
+This section is a design target, not a description of the current build. Neither extension may
+be accepted in a live room, emitted in JPGN 1.1, or advertised as a playable preset until its
+engine, server, client, bot, replay, and termination tests land together. The two ideas are
+deliberately independent: the first release should support fixed-start games on hex boards and
+Setup chess on square boards. Alternating setup on a hex board is a later cross-product, after
+both systems have independent balance data.
+
+### Hexagonal lattice (`topology`, `radius`)
+
+The config gains `topology=square|hex`, defaulting to `square`. Square games keep `size=6..13`
+unchanged. A hex game uses `radius=4..8`, where radius counts the centre cell and the cells on a
+straight line from the centre to an outer corner. A radius-`r` board therefore contains
+`1 + 3r(r - 1)` cells: radius 4 has 37, radius 6 has 91 (the closest analogue to Standard's
+81), and radius 8 has 169. Using a radius rather than a misleading `n×n` label keeps area and
+edge distance explicit.
+
+Sanitization retains only the active dimension: square configs canonicalize `size` and discard
+`radius`, while hex configs canonicalize `radius` and discard `size`. Preset recognition compares
+`topology` plus that active dimension, preventing two textually different configs from describing
+the same board. The UI labels the control as `Board 9×9` or `Radius 6 · 91 cells`.
+
+Rules code must not scatter `if (hex)` branches through the existing engine. A topology adapter
+owns the finite cell set, adjacency, directional rays, distance, opposite-cell transform,
+canonical iteration order, and coordinate notation. Board state is keyed by logical coordinates;
+movement, enclosure, repetition, bots, replay, and server validation consume the adapter. Square
+games remain byte-for-byte compatible through a square adapter over their current row/column
+coordinates.
+
+Hex cells use axial coordinates `(q,r)`, with the implied cube coordinate `s=-q-r`. A cell is on
+the radius-`R` board when `max(|q|, |r|, |s|) < R`. Negating all three cube coordinates gives
+the exact 180° opponent transform. Canonical serialization orders cells by increasing `r`, then
+increasing `q`; it must never depend on object or map insertion order.
+
+The square movement names remain useful, but their hex meanings must be exact:
+
+| Archetype | Hex-lattice movement |
+| --- | --- |
+| **cross** | One step to any of the six edge-adjacent cells. |
+| **rook** | Slides along the six edge-adjacent rays (the three lattice axes). |
+| **bishop** | Slides along six vertex-diagonal rays. Their primitive cube vectors are the permutations of `(1,1,-2)` and their opposites. |
+| **queen** | The union of rook and bishop rays: twelve rays in the interior. |
+| **king** | One non-sliding rook or bishop step: up to twelve destinations. |
+| **knight** | One of the twelve jumps formed by permutations of `(1,2,-3)` and their opposites. |
+| **long king** | A king step, plus an exact two-cell move along a rook ray. |
+
+A bishop ray has no intervening lattice cell between successive bishop destinations; later
+destinations on that ray are still blocked by the first occupied bishop destination. Knights and
+ordinary Long-king two-cell moves ignore intervening cells. Under checkers capture, the Long
+king's two-cell rook-ray move instead requires an adjacent enemy and an empty landing cell, and
+removes that adjacent piece. A sliding ink trail paints each actual rook- or bishop-ray
+destination crossed, never a geometric point where no board cell exists.
+
+Territory connectivity and enclosure use the six **edge neighbours**, not the twelve king
+destinations. A region reaches the exterior when it contains a cell with cube distance
+`radius - 1`; a closed ring of owned cells seals it. This makes capture by enclosure topologically
+unambiguous—touching at a vertex never closes a boundary. Majority remains strictly more than
+half of the actual cell count.
+
+The three generated layouts also become topology operations:
+
+- **rows** places facing bands inside opposite sectors, leaving a neutral central band;
+- **corners** anchors armies at opposite vertices;
+- **scattered** samples one near-side sector and creates the opponent by cube negation.
+
+Every generated position must remain collision-free, exactly symmetric, and large enough for
+`3 × perType` pieces per side. Radius sanitization must reject any piece budget that cannot fit
+its legal deployment sectors rather than silently dropping pieces.
+
+The DOM's square CSS grid is not the geometry model for this board. Hex rendering should use one
+SVG view box for polygons, pieces, hit targets, annotations, coordinates, and resize/flip
+transforms. Logical coordinates stay in the engine; pixel centres stay in the renderer. Keyboard
+navigation follows the six edge directions, and screen-reader labels expose axial coordinates
+plus a friendlier displayed cell name.
+
+Hex records require **JPGN 2.0** rather than overloading 1.1. They add `Topology "hex"` and
+`Radius`, prefix compact position layers with `H<radius>:`, and write coordinates as parenthesized
+axial pairs, for example `R(-2,+1)-(-1,+1)`. Position and ownership layers use the canonical
+axial order above. A 2.0 reader still accepts every square 1.0/1.1 record; a 1.1 writer never
+emits a hex game.
+
+#### Expected hex dynamics
+
+- Radius 6 is slightly larger than Standard but has a shorter-looking, six-directional front.
+  Interior kings have twelve destinations instead of eight and queens have twelve rays instead
+  of eight, so contact and tactical branching increase even without increasing actions per turn.
+- There are six equivalent flanks and no square-grid corner bunker. Encirclement and lateral
+  attack should matter more, while retreating to an extreme vertex offers less directional
+  shelter than a ninety-degree square corner.
+- Bishops remain bound to one of three colour complexes. Knights, rooks, and kings bridge those
+  complexes, making the R/P/S-to-movement assignment strategically sharper than on the square
+  board: losing the wrong bridge piece can strand a nominal material advantage.
+- An enclosure around one cell needs a six-cell ring rather than the square game's four-cell
+  orthogonal ring. Loops cost more locally, but vertex contact no longer creates visually
+  confusing leaks. Territory play should therefore favour broad arcs and converging fronts over
+  tiny tactical boxes.
+- More attack rays amplify RPS blocking. A piece the attacker cannot take can screen several
+  intersecting lanes, while a counter-piece that removes the screen may open multiple rays at
+  once. This should produce more cascading position changes and fewer isolated one-lane duels.
+
+These are hypotheses, not balance claims. Before enabling rated hex play, seeded bot and random
+simulations must compare radius 4–8 against square boards of similar area: branching factor,
+first-player win rate, capture rate, enclosure frequency, draw/threefold/stall rate, median game
+length, and the survival value of each movement archetype. The first named hex preset should use
+radius 6, one action, fixed rows, and otherwise Standard rules so topology is the only large
+experimental variable.
+
+### Setup chess (`setup`)
+
+`setup=fixed|alternating` becomes a phase rule rather than another board layout. `fixed` is the
+current generated-position behaviour. `alternating` begins from an empty board and requires each
+player to place one piece per setup turn from a fixed inventory before normal movement begins.
+`actionsPerTurn` does not apply during setup.
+
+The planned **Setup chess** preset is intentionally based on King's field rather than all-kings
+Standard: square 9×9, two of each type, Rock rook / Paper knight / Scissors bishop, RPS capture,
+elimination, one action, and threefold enabled. Different movement roles make deployment a real
+strategic phase; choosing six starting squares for identical kings would add ceremony without
+enough structure.
+
+For the first milestone, `alternating` is preset-owned rather than a universal Custom checkbox.
+The server accepts it only with Setup chess's square, elimination, one-action play rules; it
+rejects territory, checkers capture, multi-action, and hex combinations. Generalized setup can
+follow the preset's balance and lifecycle work instead of multiplying every rules interaction
+before the phase itself is proven.
+
+Blue's legal setup zone is the leftmost three files and Red's is the rightmost three, matching
+the game's existing facing orientation and leaving a three-file neutral gap. On a setup turn the
+player chooses one remaining Rock, Paper, or Scissors and one empty cell in their own zone.
+Placement sets the piece and its matching ownership layer even though ownership is ignored by
+this elimination preset. A player cannot place in the opponent's zone, move an already placed
+piece, pass, capture, paint/enclose territory, or begin a game move early.
+
+Setup order is strict alternation, Blue then Red, for twelve setup plies. With equal inventories,
+Red receives the informational advantage of placing last and Blue receives the tempo advantage
+of making the first normal move. This is simpler to understand than a snake draft and gives the
+two asymmetries to opposite players. It must still be measured; if one advantage dominates, the
+preset may swap setup-first independently of `first` rather than changing the visible sequence.
+
+The authoritative game state gains:
+
+```text
+phase setup|play
+setupTurn B|R
+setupPly integer
+remaining { B:{rock,paper,scissors}, R:{rock,paper,scissors} }
+placements [{ c, piece, to }]
+```
+
+Only `GameRoom` may advance this phase online. A placement message is distinct from a move:
+
+```text
+{ type: "place", piece: "rock"|"paper"|"scissors", to: [r,c] }
+```
+
+After the twelfth valid placement, the server verifies both sides have legal movement, freezes
+the completed `startPos`/`startOwners`, changes `phase` to `play`, sets `turn=first`, seeds
+threefold occurrence one, and accepts ordinary moves. Setup is monotonic, so placements do not
+participate in threefold repetition or the no-progress counter. If the final placement would
+produce an invalid playable position, it is rejected before the phase changes.
+
+Setup is part of the match, not a disposable lobby. Once the first placement is committed, the
+room cannot be reset to escape an unfavourable deployment. If both players authenticated before
+that placement, ratedness locks there rather than at the first movement action; reconnect grace,
+resignation, and abandonment then apply during both phases. Rematches return to an empty setup
+board. Spectators receive and may scrub placement plies, but remain read-only.
+
+Analysis challenges are deliberately different. Starting from an exact position created on the
+analysis board enters `phase=play` with that position already frozen; it does not masquerade as a
+completed Setup chess draft. This preserves the existing custom-position workflow and prevents a
+client from submitting an arbitrary board as though an opponent had agreed to its deployment.
+
+JPGN 2.0 records setup before movetext with explicit placement tokens, for example:
+
+```text
+S1.B Rb6 S1.R Ph4 S2.B Pc5 S2.R Rh5
+1.B1 Rb6-c6 1.R1 Ph4-g4
+```
+
+The final setup position remains in the normal position layers for fast validation, but strict
+replay also applies every placement from the empty board and requires it to reproduce those
+layers exactly. GIFs and the homepage theatre may show setup at a faster cadence than game moves,
+but cannot omit it from a full replay.
+
+Bots need a deployment policy, not a hard-coded formation. The first implementation should score
+legal placements by mobility, open slider lanes, distance from friendly blockers, central access,
+RPS cover, and vulnerability to the opponent's remaining counters; a shallow opponent-response
+term is enough before attempting a full setup search. A fixed fallback ordering remains necessary
+for deterministic tests and very small devices.
+
+#### Expected setup dynamics
+
+- Deployment becomes a visible sequential game of commitment and response. Placing a rook early
+  claims a lane but reveals where Paper can be counter-screened; holding a mobile type back keeps
+  more replies ambiguous but surrenders the best squares.
+- RPS blocking turns formation into a counter-chain. A front Rock may screen a Bishop-like
+  Scissors from Paper, while a Paper behind it can punish the Rock counter. Material is symmetric,
+  but access to that material is not.
+- Rooks prefer clear files, bishops need colour-complex access, and knights tolerate congestion.
+  The same inventory can therefore produce open batteries, layered fortresses, dispersed raiders,
+  or deliberately sacrificial screens before move one.
+- Visible alternation permits mirror and counter-deployment strategies. The three-file zones and
+  neutral gap prevent an immediate placement capture, but do not prohibit copycat structures;
+  initiative after the final placement is the main pressure against perfect mirroring.
+- Twelve placement plies lengthen the perceived opening substantially. The UI must state
+  “placing 4 of 6” and the remaining inventory more prominently than ordinary turn history, and
+  bot delays should be shorter during setup.
+
+Before rated release, self-play must compare at least fixed formations, random legal deployment,
+mobility-greedy deployment, and one-ply counter-deployment. Acceptance data includes colour win
+rate, setup-square and placement-order diversity, time to first capture, immediate tactical
+losses, immobilized/dead starts, threefold/stall rate, and total length with setup plies reported
+separately. A dominant repeated formation is a balance finding, not a reason to hide deployment;
+the response should be to adjust zone depth, setup-first/play-first balance, or the preset's
+movement mapping.
+
+### Delivery order and compatibility gates
+
+1. Extract and test the square topology adapter without changing any square-game serialization,
+   legal moves, SVG output, replay, or server behaviour.
+2. Add hex engine geometry, property tests for symmetry/rays/enclosure, SVG interaction, bots,
+   fixed layouts, and JPGN 2.0; ship one unrated fixed-start hex preset for balance data.
+3. Add the phase-aware placement reducer, Setup chess UI, bot deployment, reconnect/spectator
+   behaviour, replay, and server tests on square boards; ship it unrated first.
+4. Enable ratings only after first-player and termination gates pass. Enable Custom hex setup
+   only after the independent modes are stable; it is not part of either initial milestone.
+
 ## 2. Config schema
 
 `territory` is **opt-in**: an absent flag sanitizes to `false`, so a room created with no config
