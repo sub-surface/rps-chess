@@ -110,6 +110,7 @@ export class GameRoom extends DurableObject {
       if (!saved) return;
       this.game = saved.game;
       this.game.cfg = E.sanitizeCfg(this.game.cfg);
+      E.seedRepetitions(this.game);
       this.game.startPos = this.game.startPos || this.game.pos
         || (this.game.moves?.length ? null : E.encodePos(this.game.board));
       this.game.startOwners = this.game.startOwners || this.game.own
@@ -503,7 +504,7 @@ export class GameRoom extends DurableObject {
     const players = game.players || {};
     if (!players.B || !players.R) return;
     let winner = forcedWinner;
-    if (!winner) {
+    if (!winner && game.endReason !== 'repetition') {
       const res = E.result(game);
       winner = res.B > res.R ? E.BLUE : res.R > res.B ? E.RED : null;
     }
@@ -553,7 +554,9 @@ export class GameRoom extends DurableObject {
     const game = this.game;
     if (!game?.gameOver || !game.moves?.length || !game.startPos || !game.startOwners) return;
     const score = E.result(game);
-    const winner = game.winner || (score.B > score.R ? E.BLUE : score.R > score.B ? E.RED : null);
+    const winner = game.endReason === 'repetition'
+      ? null
+      : game.winner || (score.B > score.R ? E.BLUE : score.R > score.B ? E.RED : null);
     const payload = JSON.stringify({
       id: game.publicId || game.matchId || crypto.randomUUID(),
       cfg: E.sanitizeCfg(game.cfg),

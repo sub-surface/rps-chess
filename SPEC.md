@@ -36,12 +36,15 @@ per-piece movement fields at the trust boundary.
 
 ### Goal (`territory`)
 
-- **territory** (default): every landing square is painted permanently. A piece may stop on an
+- **territory**: every landing square is painted permanently. A piece may stop on an
   empty square permitted by `retread`, or a capturable enemy. Most squares wins.
-  - `retread` permits stopping on painted empty squares and is enabled by Standard. The
-    no-progress guard still guarantees termination.
+  - `retread` permits stopping on painted empty squares and defaults on whenever territory is
+    enabled. The no-progress guard still guarantees termination.
   - `trail` makes sliding moves paint the **unclaimed** squares they pass over (never repainting
     claimed ground).
+  - `enclosure` claims any orthogonally connected region sealed from the board edge by a closed
+    loop of the moving side's territory. Every square inside flips to that side and enemy pieces
+    inside are removed. The first side to own more than half the board wins immediately.
 - **elimination** (the default, and what Standard plays): there is no painting. Capture all
   opposing pieces, or hold the most when the game ends. It ends as soon as **no capture is
   possible any more** — judged on surviving piece *types*, not geometry: under RPS rules a side
@@ -61,14 +64,16 @@ g4–h6. Narrow boards wrap wider piece sets across additional centred rows with
 ### Turns (`actionsPerTurn`)
 
 A turn contains 1–3 consecutive moves by the same player. The game ends immediately when either
-player has no legal move, either player has no pieces, no neutral territory remains, or the
-bounded no-progress guard fires. There is no pass/double-pass phase: a mobile player cannot pad
-their score against an immobilized opponent.
+player has no legal move, either player has no pieces, no neutral territory remains, an enclosure
+game reaches a strict board majority, the same playable state occurs for the third time, or the
+bounded no-progress guard fires. Repetition identity includes the piece layer, painted territory
+when active, side to move, and the action already used in a multi-action turn. There is no
+pass/double-pass phase: a mobile player cannot pad their score against an immobilized opponent.
 
 ### Presets
 
 `engine.PRESETS` is the named variant library; `engine.PRESET_INFO` carries each one's label
-and tagline, and `PRESET_KEYS` fixes the picker's order. Every preset spells out all twelve
+and tagline, and `PRESET_KEYS` fixes the picker's order. Every preset spells out all fourteen
 compared rules fields, so `presetOf()` recognises one exactly — and a test asserts each preset
 round-trips to its own key, since a duplicate ruleset would silently report the earlier name.
 
@@ -83,7 +88,7 @@ round-trips to its own key, since a duplicate ruleset would silently report the 
 | **Siege** | Corner stand-off, territory without re-tread |
 | **Expanse** | 13×13, four per type, territory with re-tread |
 | **King's field** | Rock rook / Paper knight / Scissors bishop, elimination |
-| **Melee** | Chess capture (no RPS cycle), elimination |
+| **Melee** | All kings, RPS capture, territory with re-tread and enclosure; first past half wins |
 
 Overriding any rules field produces **Custom**. Adding a variant is a one-file change: a
 `PRESETS` entry plus its `PRESET_INFO` label and tagline, after which the picker, previews,
@@ -92,15 +97,20 @@ JPGN `Ruleset` tag, and rules text all pick it up.
 ## 2. Config schema
 
 `territory` is **opt-in**: an absent flag sanitizes to `false`, so a room created with no config
-is Standard. `retread` and `trail` are forced off whenever `territory` is off.
+is Standard. `retread`, `trail`, and `enclosure` are forced off whenever `territory` is off.
 
 ```text
 size 6..13 · perType 1..4
 rockMove|paperMove|scissorsMove king|rook|bishop|knight|queen|cross|longking
 capture rps|chess
-territory bool · retread bool · trail bool · layout rows|corners|scattered
-actionsPerTurn 1..3 · first B|R
+territory bool · retread bool · trail bool · enclosure bool · layout rows|corners|scattered
+threefold bool (default true) · actionsPerTurn 1..3 · first B|R
 ```
+
+Every named variant sets `threefold=true`. The parameters UI exposes it as a top-level checkbox;
+turning it off makes the ruleset Custom. New games count their initial state as occurrence one.
+Persisted rooms created before tracking existed seed their current state as occurrence one rather
+than inventing history that was never stored.
 
 Client-only preferences are `pieceStyle` (`line|solid|pixel|kanji`), `coords`, `hints`, theme,
 board flip, and guest name. `engine.sanitizeCfg()` clamps every rules field at browser restore and
@@ -140,8 +150,15 @@ game never rewrites your saved preset.
   stage, so the board remains an exact square regardless of the tab.
 - The game board and editor palette are built only when play begins. Piece SVGs, move logs, and
   classes are updated only when their values change.
+- The analysis panel can swap named rules without leaving the board. Its custom-rules action
+  reuses the Home rules editor and preserves the draft when returning; only a board-size change
+  resets the position. Mirror rebuilds Red from Blue (pieces and territory), Rotate turns the
+  entire position 180°, and Reset uses the selected rules' starting layout.
 - Board interaction supports click-to-move and pointer drag-and-drop through one commit path.
   The annotation SVG maps exactly to the board's inner content box.
+- Online spectators reconstruct the position history from the room's authoritative start layers
+  and move list. They can scrub with the move log, buttons, or keyboard; incoming moves append to
+  the history without pulling a spectator away from the historical ply they are reviewing.
 - The lobby polls immediately, then every 12 seconds; it pauses while hidden, prevents overlapping
   requests, times out stalled requests, and exponentially backs off after errors.
 - Online sockets reconnect with jittered exponential backoff. Network loss, reconnecting,

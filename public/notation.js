@@ -40,6 +40,8 @@ const rulesText = (cfg) => {
     `territory=${safe.territory ? 1 : 0}`,
     `retread=${safe.retread ? 1 : 0}`,
     `trail=${safe.trail ? 1 : 0}`,
+    `enclosure=${safe.enclosure ? 1 : 0}`,
+    `threefold=${safe.threefold ? 1 : 0}`,
     `layout=${safe.layout}`,
     `actionsPerTurn=${safe.actionsPerTurn}`,
     `first=${safe.first}`,
@@ -54,14 +56,18 @@ const parseRules = (value) => {
     const key = field.slice(0, at);
     const item = field.slice(at + 1);
     if (['size', 'perType', 'actionsPerTurn'].includes(key)) raw[key] = Number(item);
-    else if (['territory', 'retread', 'trail'].includes(key)) raw[key] = item === '1';
+    else if (['territory', 'retread', 'trail', 'enclosure', 'threefold'].includes(key)) raw[key] = item === '1';
     else raw[key] = item;
   }
+  // Records written before the field existed must retain their historical rules;
+  // new records always spell it out.
+  if (!('threefold' in raw)) raw.threefold = false;
   return E.sanitizeCfg(raw);
 };
 
 const resultToken = (game) => {
   if (!game?.gameOver) return '*';
+  if (game.endReason === 'repetition') return '1/2-1/2';
   const result = E.result(game);
   const winner = game.winner || (result.B > result.R ? E.BLUE : result.R > result.B ? E.RED : null);
   return winner === E.BLUE ? '1-0' : winner === E.RED ? '0-1' : '1/2-1/2';
@@ -81,11 +87,16 @@ const ownershipCode = (game, cfg) => {
   return null;
 };
 
-const moveText = (move, size) => {
+const validSquare = (square, size) => Array.isArray(square)
+  && square.length === 2
+  && square.every(Number.isInteger)
+  && square.every((coordinate) => coordinate >= 0 && coordinate < size);
+
+export const moveNotation = (move, size) => {
   if (move
       && PIECE_LETTER[move.piece]
-      && Array.isArray(move.from)
-      && Array.isArray(move.to)) {
+      && validSquare(move.from, size)
+      && validSquare(move.to, size)) {
     return `${PIECE_LETTER[move.piece]}${E.sqName(move.from[0], move.from[1], size)}${move.capture ? 'x' : '-'}${E.sqName(move.to[0], move.to[1], size)}`;
   }
   const legacy = String(move?.t || '').trim()
@@ -94,6 +105,30 @@ const moveText = (move, size) => {
     .replace(/[–—]/g, '-');
   return /^[RPS][a-m]\d{1,2}[-x][a-m]\d{1,2}$/.test(legacy) ? legacy : null;
 };
+
+// The history panel and JPGN writer share this numbering and piece formatter.
+// That keeps every action in a multi-action turn visible and prevents either
+// surface from reconstructing a piece letter from the post-move board.
+export function annotateMoves(moves, size) {
+  let round = 1;
+  let previous = null;
+  let action = 0;
+  return (Array.isArray(moves) ? moves : []).map((move, index) => {
+    const color = move?.c;
+    if (color !== previous) {
+      if (color === E.BLUE && previous === E.RED) round++;
+      action = 1;
+    } else {
+      action++;
+    }
+    const notation = moveNotation(move, size);
+    const display = notation
+      ? `${notation[0]} ${notation.slice(1).replace('x', '×').replace('-', '–')}`
+      : null;
+    previous = color;
+    return { move, ply: index + 1, color, round, action, notation, display };
+  });
+}
 
 const wrapMovetext = (parts, width = 88) => {
   const lines = [];
@@ -113,8 +148,10 @@ export function exportJpgn(game, context = {}) {
   const position = positionCode(game, cfg);
   const ownership = ownershipCode(game, cfg);
   const moves = Array.isArray(game.moves) ? game.moves : [];
-  const encodedMoves = moves.map((move) => moveText(move, cfg.size));
-  const replayable = !!position && !!ownership && encodedMoves.every(Boolean);
+  const annotated = annotateMoves(moves, cfg.size);
+  const replayable = !!position
+    && !!ownership
+    && annotated.every((entry) => [E.BLUE, E.RED].includes(entry.color) && entry.notation);
   const score = E.result(game);
   const result = resultToken(game);
   const termination = game.gameOver
@@ -150,19 +187,8 @@ export function exportJpgn(game, context = {}) {
 
   const tagText = tags.map(([key, value]) => `[${key} "${escapeTag(value)}"]`).join('\n');
   const body = [];
-  let round = 1;
-  let previous = null;
-  let action = 0;
-  for (let index = 0; index < moves.length; index++) {
-    const color = moves[index].c;
-    if (color !== previous) {
-      if (color === E.BLUE && previous === E.RED) round++;
-      action = 1;
-    } else {
-      action++;
-    }
-    body.push(`${round}.${color}${action}`, encodedMoves[index] || '??');
-    previous = color;
+  for (const entry of annotated) {
+    body.push(`${entry.round}.${entry.color}${entry.action}`, entry.notation || '??');
   }
   body.push(result);
   return `${tagText}\n\n${wrapMovetext(body)}\n`;

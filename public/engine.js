@@ -9,6 +9,8 @@
 //   territory                true = paint squares & race for area; false = elimination
 //   retread                  (territory only) may stop on already-claimed squares
 //   trail                    (territory only) sliders ink unclaimed squares they pass over
+//   enclosure                (territory only) closed regions flip; enemy pieces inside are removed
+//   threefold                third occurrence of the same playable state is an automatic draw
 //   layout                   'rows' (centred facing blocks) | 'corners' | 'scattered' (random, symmetric)
 //   first                    'B' | 'R'
 
@@ -92,6 +94,40 @@ export const sqName = (r, c, size) => fileL(c) + (size - r);
 
 export const emptyBoard = (S) => Array.from({ length: S }, () => Array.from({ length: S }, () => ({ owner: null, piece: null })));
 export const cloneBoard = (b) => b.map(row => row.map(c => ({ owner: c.owner, piece: c.piece ? { ...c.piece } : null })));
+
+// Analysis-board transforms return fresh boards so their source never changes underneath
+// the operation. Mirror rebuilds the opposing army and painted territory as an exact
+// 180-degree, colour-swapped copy of the chosen side; Rotate moves the whole position.
+export function mirrorArmy(board, source = BLUE) {
+  const target = other(source);
+  const original = cloneBoard(board);
+  const out = cloneBoard(board);
+  const size = out.length;
+
+  for (const row of out) for (const cell of row) {
+    if (cell.piece?.color === target) cell.piece = null;
+    if (cell.owner === target) cell.owner = null;
+  }
+  for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) {
+    const sourceCell = original[row][col];
+    const sourcePiece = sourceCell.piece?.color === source ? sourceCell.piece : null;
+    if (sourceCell.owner !== source && !sourcePiece) continue;
+    const targetCell = out[size - 1 - row][size - 1 - col];
+    // A self-overlap on an odd board cannot hold both colours; keep the source intact.
+    if (targetCell.owner === source || targetCell.piece?.color === source) continue;
+    targetCell.owner = target;
+    targetCell.piece = sourcePiece ? { type: sourcePiece.type, color: target } : null;
+  }
+  return out;
+}
+
+export function rotateBoard(board) {
+  const size = board.length;
+  return Array.from({ length: size }, (_, row) => Array.from({ length: size }, (_, col) => {
+    const cell = board[size - 1 - row][size - 1 - col];
+    return { owner: cell.owner, piece: cell.piece ? { ...cell.piece } : null };
+  }));
+}
 
 // Starting position with 180° rotational symmetry. The default 'rows' layout places
 // vertically ordered R/P/S blocks on the left and right sides of the board. 'scattered'
@@ -180,6 +216,34 @@ export function decodeOwners(str, board) {
   return out;
 }
 
+// A repeated state must offer exactly the same choices. Painted ownership matters only
+// in territory games; side-to-move and the action already used matter in multi-action turns.
+export function repetitionKey(game) {
+  const territory = game.cfg?.territory ? encodeOwners(game.board) : '-';
+  return `${game.turn}:${game.acts || 0}:${encodePos(game.board)}:${territory}`;
+}
+
+// New games seed the opening as occurrence one. This also upgrades a persisted or
+// hand-built game that predates repetition tracking without guessing at unseen history.
+export function seedRepetitions(game) {
+  if (!game.repetitions || typeof game.repetitions !== 'object' || Array.isArray(game.repetitions)) {
+    game.repetitions = {};
+  }
+  if (game.cfg?.threefold && Object.keys(game.repetitions).length === 0) {
+    game.repetitions[repetitionKey(game)] = 1;
+  }
+  return game.repetitions;
+}
+
+function recordRepetition(game) {
+  if (!game.cfg.threefold) return 0;
+  const repetitions = seedRepetitions(game);
+  const key = repetitionKey(game);
+  const count = (Number.isInteger(repetitions[key]) ? repetitions[key] : 0) + 1;
+  repetitions[key] = count;
+  return count;
+}
+
 export function scoreOf(board) {
   let B = 0, R = 0, open = 0;
   for (const row of board) for (const c of row) { if (c.owner === BLUE) B++; else if (c.owner === RED) R++; else open++; }
@@ -190,6 +254,51 @@ export function pieceCounts(board) {
   for (const row of board) for (const c of row) if (c.piece) { if (c.piece.color === BLUE) B++; else R++; }
   return { B, R };
 }
+
+// Claim every orthogonally connected region sealed off from the board edge by `color`.
+// A region may contain neutral and enemy-owned squares; enemy pieces inside are removed.
+// Requiring a closed loop avoids treating the vast outside of a single painted island as
+// surrounded. Returns a compact event summary for sound, tests, and presentation.
+export function captureEnclosures(board, color) {
+  const size = board.length;
+  const seen = Array.from({ length: size }, () => Array(size).fill(false));
+  const inBounds = (r, c) => r >= 0 && r < size && c >= 0 && c < size;
+  let regions = 0, squares = 0, pieces = 0;
+
+  for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) {
+    if (seen[row][col] || board[row][col].owner === color) continue;
+    const region = [];
+    const queue = [[row, col]];
+    seen[row][col] = true;
+    let reachesEdge = false;
+
+    for (let index = 0; index < queue.length; index++) {
+      const [r, c] = queue[index];
+      region.push([r, c]);
+      if (r === 0 || c === 0 || r === size - 1 || c === size - 1) reachesEdge = true;
+      for (const [dr, dc] of ORTHO) {
+        const nr = r + dr, nc = c + dc;
+        if (!inBounds(nr, nc) || seen[nr][nc] || board[nr][nc].owner === color) continue;
+        seen[nr][nc] = true;
+        queue.push([nr, nc]);
+      }
+    }
+
+    if (reachesEdge) continue;
+    regions++;
+    for (const [r, c] of region) {
+      const cell = board[r][c];
+      cell.owner = color;
+      squares++;
+      if (cell.piece && cell.piece.color !== color) {
+        cell.piece = null;
+        pieces++;
+      }
+    }
+  }
+  return { regions, squares, pieces };
+}
+
 // The scoreboard metric for the active variant.
 export function result(game) {
   if (game.cfg.territory) { const s = scoreOf(game.board); return { B: s.B, R: s.R, open: s.open, metric: 'squares' }; }
@@ -275,6 +384,10 @@ export function isLegal(board, m, turn, cfg) {
 export function terminalReason(game) {
   const cfg = game.cfg;
   const pieces = pieceCounts(game.board);
+  if (cfg.territory && cfg.enclosure) {
+    const score = scoreOf(game.board);
+    if (score.B > cfg.size * cfg.size / 2 || score.R > cfg.size * cfg.size / 2) return 'majority';
+  }
   if (pieces.B === 0 || pieces.R === 0) return 'elimination';
   // Without painting there is nothing left to contest once no capture can ever occur.
   if (!cfg.territory && !capturesPossible(game.board, cfg)) return 'nocaptures';
@@ -284,6 +397,7 @@ export function terminalReason(game) {
   // A player who cannot move can no longer contest the board, so the game ends immediately
   // rather than letting the mobile side keep painting/capturing against a locked-out opponent.
   if (!hasMove(game.board, BLUE, cfg) || !hasMove(game.board, RED, cfg)) return 'immobilization';
+  if (cfg.threefold && (game.repetitions?.[repetitionKey(game)] || 0) >= 3) return 'repetition';
   if (game.dry >= Math.max(60, cfg.size * cfg.size)) return 'stall';
   return null;
 }
@@ -292,6 +406,7 @@ function endNow(game) {
   const reason = terminalReason(game);
   if (!reason) return false;
   game.endReason = game.endReason || reason;
+  if (reason === 'repetition') game.winner = null;
   return true;
 }
 
@@ -307,6 +422,7 @@ export function resolveTurn(game) {
 // A turn is up to cfg.actionsPerTurn moves by the same player.
 export function applyMove(game, m) {
   const cfg = game.cfg, b = game.board, p = b[m.fr][m.fc].piece;
+  if (cfg.threefold) seedRepetitions(game);
   const captured = b[m.tr][m.tc].piece;
   const cap = !!captured;
   let claimedNeutral = cfg.territory && !cap && b[m.tr][m.tc].owner === null;
@@ -319,6 +435,9 @@ export function applyMove(game, m) {
     }
   }
   b[m.tr][m.tc] = { owner: cfg.territory ? p.color : b[m.tr][m.tc].owner, piece: p };
+  const enclosed = cfg.territory && cfg.enclosure
+    ? captureEnclosures(b, p.color)
+    : { regions: 0, squares: 0, pieces: 0 };
   game.lastMove = { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc };
   game.moves.push({
     c: p.color,
@@ -326,17 +445,23 @@ export function applyMove(game, m) {
     from: [m.fr, m.fc],
     to: [m.tr, m.tc],
     capture: captured ? captured.type : null,
+    enclosed: enclosed.pieces,
     t: `${LETTER[p.type]} ${sqName(m.fr, m.fc, b.length)}${cap ? '×' : '–'}${sqName(m.tr, m.tc, b.length)}`,
   });
   game.passStreak = 0;
-  game.dry = (cap || claimedNeutral) ? 0 : (game.dry + 1);
+  game.dry = (cap || claimedNeutral || enclosed.squares) ? 0 : (game.dry + 1);
   game.acts = (game.acts || 0) + 1;
-  if (endNow(game)) { game.gameOver = true; return cap; }
+  if (endNow(game)) { game.gameOver = true; return cap || enclosed.pieces > 0; }
   const N = cfg.actionsPerTurn || 1;
-  if (game.acts < N && hasMove(game.board, p.color, cfg)) return cap;   // same player moves again
-  game.turn = other(p.color);
-  resolveTurn(game);
-  return cap;
+  if (game.acts >= N || !hasMove(game.board, p.color, cfg)) {
+    game.turn = other(p.color);
+    resolveTurn(game);
+  }
+  if (!game.gameOver && cfg.threefold) {
+    recordRepetition(game);
+    if (endNow(game)) game.gameOver = true;
+  }
+  return cap || enclosed.pieces > 0;
 }
 
 export function newGame(cfg, board) {
@@ -353,29 +478,65 @@ export function newGame(cfg, board) {
     lastMove: null,
     dry: 0,
     acts: 0,
+    repetitions: {},
     cfg,
   };
   resolveTurn(g);
+  seedRepetitions(g);
   return g;
+}
+
+// Rebuild the visible position after every recorded action. Online spectators,
+// the replay theatre, and exports all receive the same compact start layers and
+// move coordinates, so this keeps historical boards grounded in engine legality.
+export function replayFrames(record) {
+  const cfg = sanitizeCfg(record?.cfg);
+  const pieces = decodePos(record?.startPos || record?.pos, cfg.size);
+  const board = pieces && decodeOwners(record?.startOwners || record?.own, pieces);
+  if (!board) throw new Error('The game does not contain a replayable starting position');
+  const game = newGame(cfg, board);
+  const frames = [{ board: cloneBoard(game.board), lastMove: null }];
+
+  for (const recorded of record.moves || []) {
+    const move = {
+      fr: recorded.from?.[0],
+      fc: recorded.from?.[1],
+      tr: recorded.to?.[0],
+      tc: recorded.to?.[1],
+    };
+    const source = game.board[move.fr]?.[move.fc]?.piece;
+    if (game.gameOver
+      || (recorded.c && recorded.c !== game.turn)
+      || (recorded.piece && recorded.piece !== source?.type)
+      || !isLegal(game.board, move, game.turn, cfg)) {
+      throw new Error('The game contains an illegal replay move');
+    }
+    applyMove(game, move);
+    frames.push({
+      board: cloneBoard(game.board),
+      lastMove: game.lastMove ? { ...game.lastMove } : null,
+    });
+  }
+  return frames;
 }
 
 export const PRESETS = {
   standard: {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
-    moveStyle: 'kings', capture: 'rps', territory: false, retread: false, trail: false,
-    layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    moveStyle: 'kings', capture: 'rps', territory: false, retread: false, trail: false, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   kings: {
     size: 9, perType: 2, rockMove: 'rook', paperMove: 'knight', scissorsMove: 'bishop',
-    moveStyle: 'custom', capture: 'rps', territory: false, retread: false, trail: false,
-    layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    moveStyle: 'custom', capture: 'rps', territory: false, retread: false, trail: false, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   painters: {
     size: 9, perType: 2, rockMove: 'queen', paperMove: 'queen', scissorsMove: 'queen',
-    moveStyle: 'queens', capture: 'rps', territory: true, retread: false, trail: true,
-    layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    moveStyle: 'queens', capture: 'rps', territory: true, retread: false, trail: true, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
-  // Every preset spells out all twelve compared fields, so presetOf() can recognise one
+  // Every preset spells out every compared field, so presetOf() can recognise one
   // exactly. Standard's values are the base; each variant states only what it changes.
   ...Object.fromEntries(Object.entries({
     skirmish: { size: 6, perType: 1 },
@@ -384,11 +545,11 @@ export const PRESETS = {
     ambush: { layout: 'scattered' },
     siege: { layout: 'corners', retread: false },
     expanse: { size: 13, perType: 4 },
-    melee: { capture: 'chess', territory: false, retread: false },
+    melee: { enclosure: true },
   }).map(([key, over]) => [key, {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
-    capture: 'rps', territory: true, retread: true, trail: false,
-    layout: 'rows', actionsPerTurn: 1, first: BLUE, ...over,
+    capture: 'rps', territory: true, retread: true, trail: false, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE, ...over,
   }])),
 };
 
@@ -403,7 +564,7 @@ export const PRESET_INFO = {
   siege: { label: 'Siege', tagline: 'A corner stand-off with no stepping back — only fresh ground counts.' },
   expanse: { label: 'Expanse', tagline: '13×13 with four of each. A long, patient campaign.' },
   kings: { label: "King's field", tagline: 'Rook, knight, bishop. No painting — take the last piece standing.' },
-  melee: { label: 'Melee', tagline: 'Capture anything you reach. The RPS cycle is switched off.' },
+  melee: { label: 'Melee', tagline: 'Close territory loops to swallow whole regions. First past half wins.' },
   custom: { label: 'Custom', tagline: 'Your rules. Every dial below is yours to turn.' },
 };
 export const PRESET_KEYS = Object.keys(PRESET_INFO);
@@ -413,7 +574,7 @@ export function presetOf(cfg) {
   const safe = sanitizeCfg(cfg);
   const fields = [
     'size', 'perType', 'rockMove', 'paperMove', 'scissorsMove', 'capture',
-    'territory', 'retread', 'trail', 'layout', 'actionsPerTurn', 'first',
+    'territory', 'retread', 'trail', 'enclosure', 'threefold', 'layout', 'actionsPerTurn', 'first',
   ];
   for (const k in PRESETS) if (fields.every((field) => PRESETS[k][field] === safe[field])) return k;
   return 'custom';
@@ -436,6 +597,8 @@ export function variantLabel(cfg) {
   const parts = [`${safe.size}×${safe.size}`, movementLabel(safe), safe.capture === 'rps' ? 'RPS' : 'chess-capture'];
   parts.push(safe.territory ? (safe.retread ? 'territory+' : 'territory') : 'elimination');
   if (safe.trail) parts.push('ink');
+  if (safe.enclosure) parts.push('enclosure');
+  if (!safe.threefold) parts.push('no 3-fold');
   if (safe.layout !== 'rows') parts.push(safe.layout);
   if (safe.actionsPerTurn > 1) parts.push(`${safe.actionsPerTurn} actions`);
   return parts.join(' · ');
@@ -481,9 +644,18 @@ export function rulesSummary(cfg) {
         ? 'Painted squares can be landed on again.'
         : 'Only unclaimed squares can be landed on — painted ones are glided over.'}`
         + (safe.trail ? ' Sliders ink every unclaimed square they cross.' : ''),
-    }, {
+    });
+    if (safe.enclosure) {
+      out.push({
+        h: 'Enclosure',
+        p: 'Close a loop of your territory around a region. Every square inside becomes yours and enemy pieces there are removed.',
+      });
+    }
+    out.push({
       h: 'Winning',
-      p: 'Most squares wins, counted when the board fills, a side runs out of pieces, or a side cannot move.',
+      p: safe.enclosure
+        ? 'First to own more than half the board wins. Elimination, immobilization and the no-progress guard remain backstops.'
+        : 'Most squares wins, counted when the board fills, a side runs out of pieces, or a side cannot move.',
     });
   } else {
     out.push({
@@ -493,6 +665,12 @@ export function rulesSummary(cfg) {
   }
   if (safe.actionsPerTurn > 1) {
     out.push({ h: 'Turns', p: `${safe.actionsPerTurn} moves per turn, with any of your pieces.` });
+  }
+  if (safe.threefold) {
+    out.push({
+      h: 'Repetition',
+      p: 'The third occurrence of the same position is a draw. Side to move and the action within a multi-action turn must also match.',
+    });
   }
   return out;
 }
@@ -526,6 +704,8 @@ export function sanitizeCfg(raw) {
     territory,
     retread: territory && raw.retread !== false,
     trail: territory && !!raw.trail,
+    enclosure: territory && !!raw.enclosure,
+    threefold: raw.threefold !== false,
     layout: one(raw.layout, ['rows', 'corners', 'scattered'], 'rows'),
     actionsPerTurn: clamp(raw.actionsPerTurn, 1, 3, 1),
     first: raw.first === RED ? RED : BLUE,

@@ -30,7 +30,7 @@ writer, parser, and legality-checked replayer are in `public/notation.js`.
 [RulesetVersion "1.0"]
 [Board "6x6"]
 [StartLayout "rows"]
-[Rules "size=6;perType=1;rockMove=rook;paperMove=knight;scissorsMove=bishop;capture=rps;territory=1;retread=1;trail=0;layout=rows;actionsPerTurn=2;first=B"]
+[Rules "size=6;perType=1;rockMove=rook;paperMove=knight;scissorsMove=bishop;capture=rps;territory=1;retread=1;trail=0;enclosure=0;threefold=1;layout=rows;actionsPerTurn=2;first=B"]
 [Position "6:R..................................s"]
 [Territory "6:B..................................R"]
 [Rated "0"]
@@ -110,6 +110,8 @@ capture=rps|chess
 territory=0|1
 retread=0|1
 trail=0|1
+enclosure=0|1
+threefold=0|1
 layout=rows|corners|scattered
 actionsPerTurn=1..3
 first=B|R
@@ -131,7 +133,7 @@ Sliding pieces are `rook`, `bishop`, and `queen`. Only sliders paint intermediat
 squares when `trail=1`; jumps never paint or inspect their intervening square.
 
 A reader must pass decoded values through the same bounds and enum validation as
-the rules engine. `retread` and `trail` are false when `territory=0`.
+the rules engine. `retread`, `trail`, and `enclosure` are false when `territory=0`.
 
 ### 1.0 compatibility
 
@@ -142,7 +144,9 @@ JPGN 1.0 used one legacy `moveStyle` field:
 - `queens` → all queens.
 
 The bundled parser accepts 1.0 records and expands that field to the three 1.1
-movement assignments. New writers must emit the explicit 1.1 fields.
+movement assignments. New writers must emit the explicit 1.1 fields. Records that
+omit `threefold` are read with repetition disabled, preserving the historical rules
+under which they were written; new writers always emit it explicitly.
 
 ## 5. Starting position layers
 
@@ -180,11 +184,12 @@ Each action is a prefix/move pair:
 
 ```text
 1.B1 Rb6-c6 1.R1 Sh6-g5 2.B1 Pc5-c7
-1.B1 Rb6-c6 1.B2 Pc5-c7 1.R1 Sh6-g5
+1.B1 Rb6-c6 1.B2 Pc5-c7 1.B3 Sd5-e5 1.R1 Rh1-h2 1.R2 Pg1-e2 1.R3 Sf1-e1
 ```
 
-The second example is a two-actions-per-turn game. Movetext ends with the exact
-same result token as the `Result` tag.
+The second example is a three-actions-per-turn game. Every action repeats the
+piece letter, so moving different pieces—or moving one piece repeatedly—remains
+unambiguous. Movetext ends with the exact same result token as the `Result` tag.
 
 ## 7. Results and scoring
 
@@ -192,6 +197,7 @@ For completed territory games, compare painted squares. For completed eliminatio
 games, compare surviving pieces. The higher value wins; equal values produce
 `1/2-1/2`. A forced result from resignation, abandonment, or external adjudication
 may differ from the board score, so both `Result` and `Score` are retained.
+Threefold repetition is always a draw even when the current board score is unequal.
 
 Unfinished records use `Result "*"`, `Termination "unterminated"`, and the current
 score.
@@ -199,8 +205,11 @@ score.
 ## 8. Termination values
 
 - `territory`: no neutral square remains;
+- `majority`: an enclosure game gave one side more than half the board;
 - `elimination`: a player has no pieces;
+- `nocaptures`: no surviving RPS piece type can capture another;
 - `immobilization`: either player has no legal move;
+- `repetition`: the same playable state occurred for the third time;
 - `stall`: the bounded no-progress guard fired;
 - `resign`: a seated player resigned;
 - `abandon`: a rated player exceeded the disconnect grace period;
@@ -208,7 +217,7 @@ score.
 - `unterminated`: play is active.
 
 Only `resign`, `abandon`, and `adjudication` can impose a winner independently of
-the reconstructed board.
+the reconstructed board. `repetition` imposes a draw independently of board score.
 
 ## 9. Strict replay algorithm
 

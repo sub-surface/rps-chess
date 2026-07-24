@@ -1,7 +1,7 @@
 // JANKEN client — homepage, local play (over-the-board / bot / bot-vs-bot), and online rooms.
 // All rules live in engine.js (shared with the server), so hints match server validation.
 import * as E from '/engine.js';
-import { exportJpgn } from '/notation.js';
+import { annotateMoves, exportJpgn } from '/notation.js';
 const { BLUE, RED, other } = E;
 
 // ── config + identity (persisted) ───────────────────────────────────────────
@@ -32,8 +32,20 @@ const legacyStandard = !['rockMove', 'paperMove', 'scissorsMove'].some((field) =
   && rulesCfg.layout === 'rows'
   && rulesCfg.actionsPerTurn === 1
   && rulesCfg.first === BLUE;
+const legacyMelee = rulesCfg.size === 9
+  && rulesCfg.perType === 2
+  && ['rock', 'paper', 'scissors'].every((type) => E.movementFor(rulesCfg, type) === 'king')
+  && rulesCfg.capture === 'chess'
+  && !rulesCfg.territory
+  && rulesCfg.layout === 'rows'
+  && rulesCfg.actionsPerTurn === 1
+  && rulesCfg.first === BLUE;
 if (legacyStandard) {
   Object.assign(rulesCfg, E.PRESETS.standard);
+} else if (legacyMelee) {
+  // Melee was formerly the all-kings chess-capture/elimination preset. Keep players who
+  // selected that exact ruleset on Melee as it evolves into the enclosure variant.
+  Object.assign(rulesCfg, E.PRESETS.melee);
 }
 const cfg = {
   ...DEFAULTS,
@@ -151,6 +163,7 @@ const state = {
   endReason: null,
   winner: null,
   dry: 0,
+  repetitions: {},
   thinking: false,
   cfg,
 };
@@ -159,11 +172,13 @@ let mode = 'human';        // 'human' | 'bot' | 'botbot' | (online → net set)
 let net = null;
 let gen = 0;               // bumps to cancel stale bot timeouts / sockets
 let editing = false, editBoard = null, tool = 'move';
+let analysisDraft = null;
 let edSel = null, edTargets = [];
 const BOTSIDE = RED;
 
 const liveIndex = () => positions.length - 1;
 const isLive = () => viewPly === liveIndex();
+const canNavigateHistory = () => !net || net.role === 'S';
 const snap = () => JSON.stringify({
   board: state.board,
   startPos: state.startPos,
@@ -178,6 +193,7 @@ const snap = () => JSON.stringify({
   winner: state.winner,
   lastMove: state.lastMove,
   dry: state.dry,
+  repetitions: state.repetitions,
 });
 function loadLive(s) {
   const d = JSON.parse(s);
@@ -195,6 +211,7 @@ function loadLive(s) {
     winner: d.winner || null,
     lastMove: d.lastMove,
     dry: d.dry,
+    repetitions: d.repetitions || {},
     selected: null,
     targets: [],
     justMovedTo: null,
@@ -230,8 +247,12 @@ function botPick(color) {
       }
     }
     b[m.tr][m.tc] = { owner: cfg.territory ? color : b[m.tr][m.tc].owner, piece: p };
+    const enclosed = cfg.territory && cfg.enclosure
+      ? E.captureEnclosures(b, color)
+      : { squares: 0, pieces: 0 };
     let v = metricDiff(b, color);
     if (cap) v += cfg.territory ? 2.2 : 3.0;
+    if (enclosed.pieces) v += enclosed.pieces * 3;
     v += 0.05 * (mid - Math.abs(mid - m.tr)) + 0.05 * (mid - Math.abs(mid - m.tc)) + Math.random() * 0.25;
     if (v > bv) { bv = v; best = [m]; } else if (v === bv) best.push(m);
   }
@@ -359,7 +380,7 @@ function renderHUD(board) {
     : state.thinking ? (state.turn === BLUE ? 'Blue' : 'Red') + ' thinking…'
       : (state.turn === BLUE ? 'Blue' : 'Red') + ' to move' + (!isLive() ? ' · reviewing' : actNote);
 
-  const scrub = !!net;
+  const scrub = !canNavigateHistory();
   $('nav-prev').disabled = scrub || viewPly <= 0;
   $('nav-start').disabled = scrub || viewPly <= 0;
   $('nav-next').disabled = scrub || viewPly >= liveIndex();
@@ -375,23 +396,48 @@ function renderHUD(board) {
 }
 
 function renderLog() {
-  const key = state.moves.map((move) => `${move.c}:${move.t}`).join('|');
+  const key = state.moves
+    .map((move) => `${move.c}:${move.piece}:${move.from}:${move.to}:${move.capture || ''}:${move.t || ''}`)
+    .join('|');
   if (key === lastLogKey) return;
   lastLogKey = key;
-  const rows = []; let cur = null, ply = 0;
-  for (const m of state.moves) {
-    ply++;
-    if (m.c === BLUE) { cur = { n: rows.length + 1, b: m.t, bp: ply, r: '', rp: 0 }; rows.push(cur); }
-    else { if (!cur) { cur = { n: rows.length + 1, b: '', bp: 0, r: '', rp: 0 }; rows.push(cur); } cur.r = m.t; cur.rp = ply; }
+  const rows = [];
+  for (const entry of annotateMoves(state.moves, cfg.size)) {
+    let row = rows[rows.length - 1];
+    if (!row || row.n !== entry.round) {
+      row = { n: entry.round, B: [], R: [] };
+      rows.push(row);
+    }
+    if (row[entry.color]) row[entry.color].push(entry);
   }
   const log = $('log');
-  log.innerHTML = rows.map(row => `<li class="n">${row.n}.</li><span class="mv b" data-ply="${row.bp}">${row.b}</span><span class="mv r" data-ply="${row.rp}">${row.r}</span>`).join('');
+  const fragment = document.createDocumentFragment();
+  const multi = (cfg.actionsPerTurn || 1) > 1;
+  for (const row of rows) {
+    const number = document.createElement('li');
+    number.className = 'n';
+    number.textContent = `${row.n}.`;
+    fragment.append(number);
+    for (const color of [BLUE, RED]) {
+      const cell = document.createElement('span');
+      cell.className = 'turn-moves';
+      for (const entry of row[color]) {
+        const move = document.createElement('span');
+        move.className = `mv ${color === BLUE ? 'b' : 'r'}`;
+        move.dataset.ply = entry.ply;
+        move.textContent = `${multi ? `${entry.action}:` : ''}${entry.display || '?'}`;
+        cell.append(move);
+      }
+      fragment.append(cell);
+    }
+  }
+  log.replaceChildren(fragment);
   log.scrollTop = log.scrollHeight;
 }
-// Click a move to review that position (local games — online keeps only the live state).
+// Local games and online spectators can jump straight to any recorded action.
 $('log').onclick = (e) => {
   const mv = e.target.closest('.mv');
-  if (!mv || net || !+mv.dataset.ply || +mv.dataset.ply > liveIndex()) return;
+  if (!mv || !canNavigateHistory() || !+mv.dataset.ply || +mv.dataset.ply > liveIndex()) return;
   nav(+mv.dataset.ply);
 };
 
@@ -400,8 +446,9 @@ function renderBanner(res) {
   const el = $('banner');
   if (!state.gameOver || editing || !isLive()) { el.hidden = true; return; }
   // An adjudicated (abandonment) result overrides the board score.
+  const repetitionDraw = state.endReason === 'repetition';
   const forced = net && state.winner ? state.winner : null;
-  const side = forced || (res.B > res.R ? BLUE : res.R > res.B ? RED : null);
+  const side = repetitionDraw ? null : forced || (res.B > res.R ? BLUE : res.R > res.B ? RED : null);
   const winner = side === BLUE ? 'Blue wins' : side === RED ? 'Red wins' : 'Draw';
   const cls = side === BLUE ? 'tb' : side === RED ? 'tr' : '';
   const win = side === BLUE ? 'win-b' : side === RED ? 'win-r' : 'win-d';
@@ -409,6 +456,7 @@ function renderBanner(res) {
   const lines = [];
   if (net && state.endReason === 'abandon') lines.push(`${side === BLUE ? 'Red' : 'Blue'} left the game`);
   else if (net && state.endReason === 'resign') lines.push(`${side === BLUE ? 'Red' : 'Blue'} resigned`);
+  else if (repetitionDraw) lines.push('Position repeated three times');
   lines.push(`Blue ${res.B} · Red ${res.R}${unit}`);
   if (net && state.deltas) lines.push(`rating ${fmtDelta(state.deltas.B)} / ${fmtDelta(state.deltas.R)}`);
   else if (net && state.rated && state.ratingError) lines.push('rating could not be recorded');
@@ -522,13 +570,19 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === 'f' || e.key === 'F') && document.body.dataset.screen === 'game') {
     flipped = !flipped; store.set('janken-flip', flipped ? '1' : '0'); render(); drawAnnos(); return;
   }
-  if (editing || net) return;
+  if (editing || !canNavigateHistory()) return;
   if (e.key === 'ArrowLeft') { nav(viewPly - 1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { nav(viewPly + 1); e.preventDefault(); }
   else if (e.key === 'Home') { nav(0); e.preventDefault(); }
   else if (e.key === 'End') { nav(liveIndex()); e.preventDefault(); }
 });
-function nav(to) { if (net) return; viewPly = Math.max(0, Math.min(liveIndex(), to)); state.selected = null; state.targets = []; render(); }
+function nav(to) {
+  if (!canNavigateHistory()) return;
+  viewPly = Math.max(0, Math.min(liveIndex(), to));
+  state.selected = null;
+  state.targets = [];
+  render();
+}
 
 // ── annotations — right-click arrows and highlights, lichess-style ──────────
 // Stored in board coordinates so they follow a flip. Left-click clears.
@@ -625,6 +679,7 @@ function freshLocal(board) {
     gameOver: gm.gameOver,
     lastMove: gm.lastMove,
     dry: gm.dry,
+    repetitions: gm.repetitions,
     selected: null,
     targets: [],
     justMovedTo: null,
@@ -833,6 +888,9 @@ $('resign-btn').onclick = () => {
 let lastServerMoves = -1;
 function applyServerState(s) {
   if (!s || !s.cfg || !Array.isArray(s.board)) return;
+  const previousServerMoves = lastServerMoves;
+  const wasFollowingLive = isLive();
+  const reviewedPly = viewPly;
   const rematch = (state.startedAt && s.startedAt && state.startedAt !== s.startedAt)
     || (state.gameOver && !s.gameOver && (!s.moves || s.moves.length === 0));
   if (rematch) resetChat();
@@ -873,7 +931,41 @@ function applyServerState(s) {
   net.ratings = s.ratings || {}; net.accounts = s.accounts || {};
   net.error = '';
   if (account && (net.role === 'B' || net.role === 'R') && net.accounts[net.role] === account.id) setMyRating(net.ratings[net.role]);
-  positions = [snap()]; viewPly = 0;
+  if (net.role === 'S') {
+    const frame = () => JSON.stringify({
+      board: E.cloneBoard(state.board),
+      lastMove: state.lastMove ? { ...state.lastMove } : null,
+    });
+    const canAppend = !rematch
+      && previousServerMoves >= 0
+      && moves.length === previousServerMoves + 1
+      && positions.length === previousServerMoves + 1;
+    const canRefresh = !rematch
+      && previousServerMoves === moves.length
+      && positions.length === moves.length + 1;
+    if (canAppend) {
+      positions.push(frame());
+    } else if (canRefresh) {
+      positions[positions.length - 1] = frame();
+    } else {
+      try {
+        positions = E.replayFrames({
+          cfg,
+          startPos: state.startPos,
+          startOwners: state.startOwners,
+          moves,
+        }).map((item) => JSON.stringify(item));
+      } catch {
+        positions = [frame()];
+      }
+    }
+    viewPly = (rematch || wasFollowingLive)
+      ? liveIndex()
+      : Math.min(reviewedPly, liveIndex());
+  } else {
+    positions = [snap()];
+    viewPly = 0;
+  }
   renderLegend(); render(); updateOnlineUI();
 }
 function updateOnlineUI() {
@@ -944,7 +1036,67 @@ function markTool() {
         : (b.dataset.type === tool.type && b.dataset.color === tool.color));
   }
 }
+function updateAnalysisRuleMenu() {
+  const preset = E.presetOf(E.sanitizeCfg(cfg));
+  $('ed-rule-label').textContent = `Rules · ${E.presetLabel(preset)} ▾`;
+  $('ed-rule-label').title = E.variantLabel(cfg);
+  for (const button of $('ed-rule-list').querySelectorAll('[data-preset]')) {
+    button.classList.toggle('on', button.dataset.preset === preset);
+  }
+}
+function applyAnalysisPreset(key) {
+  if (!E.PRESETS[key]) return;
+  const previousSize = cfg.size;
+  customising = false;
+  Object.assign(cfg, E.sanitizeCfg(E.PRESETS[key]));
+  adoptRules();
+  if (cfg.size !== previousSize) {
+    build(cfg.size);
+    editBoard = E.blocksBoard(cfg.size, cfg.perType, cfg.layout);
+  }
+  edSel = null;
+  edTargets = [];
+  $('ed-first').value = cfg.first;
+  $('ed-rule-menu').open = false;
+  updateAnalysisRuleMenu();
+  renderLegend();
+  render();
+}
+function openAnalysisRuleEditor() {
+  analysisDraft = { board: E.cloneBoard(editBoard), size: editBoard.length };
+  editing = false;
+  edSel = null;
+  edTargets = [];
+  $('editpanel').hidden = true;
+  $('panel').hidden = false;
+  showHome({ keepAnalysisDraft: true });
+  choosePreset('custom');
+  $('analysis-btn').textContent = 'return to analysis';
+  requestAnimationFrame(() => $('config-details').scrollIntoView({ behavior: 'smooth', block: 'center' }));
+}
+function buildAnalysisRuleMenu() {
+  const list = $('ed-rule-list');
+  list.innerHTML = '';
+  for (const key of E.PRESET_KEYS.filter((preset) => preset !== 'custom')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.preset = key;
+    button.textContent = E.PRESET_INFO[key].label;
+    button.title = E.PRESET_INFO[key].tagline;
+    button.onclick = () => applyAnalysisPreset(key);
+    list.append(button);
+  }
+  const custom = document.createElement('button');
+  custom.type = 'button';
+  custom.className = 'custom';
+  custom.textContent = 'Customise rules…';
+  custom.onclick = openAnalysisRuleEditor;
+  list.append(custom);
+}
+buildAnalysisRuleMenu();
 function enterEdit(startBoard) {
+  analysisDraft = null;
+  $('analysis-btn').textContent = 'analysis';
   gen++; leaveOnline(); mode = 'human'; showGame();
   if (curSize !== cfg.size) build(cfg.size);
   if (!paletteBuilt) buildPalette();
@@ -952,6 +1104,7 @@ function enterEdit(startBoard) {
   editBoard = startBoard || E.blocksBoard(cfg.size, cfg.perType, cfg.layout);
   $('ed-first').value = cfg.first;
   $('panel').hidden = true; $('editpanel').hidden = false; $('online').hidden = true; $('players').hidden = true;
+  updateAnalysisRuleMenu();
   render();
 }
 function cancelEdit() { editing = false; edSel = null; edTargets = []; $('editpanel').hidden = true; $('panel').hidden = false; showHome(); }
@@ -967,7 +1120,10 @@ function analysisMove(fr, fc, tr, tc) {
     }
   }
   b[tr][tc] = { owner: safe.territory ? p.color : b[tr][tc].owner, piece: p };
-  if (cap) soundCap(); else soundMove();
+  const enclosed = safe.territory && safe.enclosure
+    ? E.captureEnclosures(b, p.color)
+    : { pieces: 0 };
+  if (cap || enclosed.pieces) soundCap(); else soundMove();
 }
 function editClick(r, c) {
   if (tool === 'move') {
@@ -1022,11 +1178,12 @@ $('ed-copy').onclick = async () => {
 $('ed-clear').onclick = () => { editBoard = E.emptyBoard(cfg.size); edSel = null; edTargets = []; render(); };
 $('ed-blocks').onclick = () => { editBoard = E.blocksBoard(cfg.size, cfg.perType, cfg.layout); edSel = null; edTargets = []; render(); };
 $('ed-mirror').onclick = () => {
-  edSel = null; edTargets = [];
-  const S = editBoard.length;
-  for (let r = 0; r < S; r++) for (let c = 0; c < S; c++) if (editBoard[r][c].piece && editBoard[r][c].piece.color === RED) editBoard[r][c] = { owner: null, piece: null };
-  for (let r = 0; r < S; r++) for (let c = 0; c < S; c++) { const p = editBoard[r][c].piece; if (p && p.color === BLUE) { const rr = S - 1 - r, cc = S - 1 - c; if (!(editBoard[rr][cc].piece && editBoard[rr][cc].piece.color === BLUE)) editBoard[rr][cc] = { owner: RED, piece: { type: p.type, color: RED } }; } }
-  render();
+  editBoard = E.mirrorArmy(editBoard, BLUE);
+  edSel = null; edTargets = []; render();
+};
+$('ed-rotate').onclick = () => {
+  editBoard = E.rotateBoard(editBoard);
+  edSel = null; edTargets = []; render();
 };
 
 // ── screens / homepage ────────────────────────────────────────────────────────
@@ -1178,7 +1335,11 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
     button.onclick = () => { previewPiece = button.dataset.previewPiece; renderVariantPreview(); };
   }
   const capture = safe.capture === 'rps' ? 'RPS captures' : 'capture any piece';
-  const goal = safe.territory ? (safe.retread ? 'territory + re-tread' : 'new territory only') : 'elimination';
+  const goal = safe.enclosure
+    ? 'enclosure · first past half'
+    : safe.territory
+      ? (safe.retread ? 'territory + re-tread' : 'new territory only')
+      : 'elimination';
   const facts = [
     `${safe.size}×${safe.size}`,
     `${safe.perType} / type`,
@@ -1187,8 +1348,10 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
     capture,
     goal,
     `${safe.layout} start`,
+    safe.threefold ? '3-fold draw' : 'no repetition draw',
   ];
   if (safe.trail) facts.push('ink trail');
+  if (safe.enclosure) facts.push('surround capture');
   $('preview-facts').innerHTML = facts.map((fact) => `<span>${fact}</span>`).join('');
 }
 for (const tab of $('preview-tabs').children) {
@@ -1207,7 +1370,13 @@ function ensureShowcase() {
   else setTimeout(load, 80);
 }
 function showGame() { document.body.dataset.screen = 'game'; currentProfile = null; $('home').hidden = true; $('game').hidden = false; $('profilepage').hidden = true; stopLobbyPoll(); }
-function showHome() { gen++; leaveOnline(); toggleRulesFlap(false); Object.assign(cfg, ownRules); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); ensureShowcase(); }
+function showHome(options = {}) {
+  if (!options?.keepAnalysisDraft) {
+    analysisDraft = null;
+    $('analysis-btn').textContent = 'analysis';
+  }
+  gen++; leaveOnline(); toggleRulesFlap(false); Object.assign(cfg, ownRules); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); ensureShowcase();
+}
 
 // ── profile screen ───────────────────────────────────────────────────────────
 function statEl(value, label) {
@@ -1346,13 +1515,15 @@ function fillHome() {
   $('s-move-paper').value = E.movementFor(cfg, 'paper');
   $('s-move-scissors').value = E.movementFor(cfg, 'scissors');
   $('s-cap').value = cfg.capture;
+  $('s-threefold').checked = cfg.threefold;
   $('s-terr').value = cfg.territory ? 'territory' : 'elimination';
-  $('s-retread').checked = cfg.retread; $('s-trail').checked = cfg.trail;
+  $('s-retread').checked = cfg.retread; $('s-trail').checked = cfg.trail; $('s-enclosure').checked = cfg.enclosure;
   $('s-layout').value = cfg.layout; $('s-first').value = cfg.first;
   $('s-coords').checked = cfg.coords; $('s-hints').checked = cfg.hints; $('s-sound').checked = cfg.sound;
   $('name-input').value = name;
   $('retread-row').hidden = !cfg.territory;
   $('trail-row').hidden = !cfg.territory;
+  $('enclosure-row').hidden = !cfg.territory;
   updateVariantLine(); markPreset(); renderVariantPreview();
   if (customising || E.presetOf(E.sanitizeCfg(cfg)) === 'custom') $('config-details').open = true;
 }
@@ -1362,8 +1533,10 @@ function readHome() {
   cfg.paperMove = $('s-move-paper').value;
   cfg.scissorsMove = $('s-move-scissors').value;
   cfg.capture = $('s-cap').value; cfg.layout = $('s-layout').value;
+  cfg.threefold = $('s-threefold').checked;
   cfg.territory = $('s-terr').value === 'territory'; cfg.retread = $('s-retread').checked && cfg.territory;
   cfg.trail = $('s-trail').checked && cfg.territory;
+  cfg.enclosure = $('s-enclosure').checked && cfg.territory;
   cfg.first = $('s-first').value; cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked;
   Object.assign(cfg, E.sanitizeCfg(cfg));
   adoptRules(); updateVariantLine(); markPreset(); renderVariantPreview();
@@ -1385,7 +1558,7 @@ function markPreset() {
 $('s-size').oninput = () => { $('s-size-v').textContent = `${$('s-size').value}×${$('s-size').value}`; readHome(); };
 $('s-per').oninput = () => { $('s-per-v').textContent = $('s-per').value; readHome(); };
 $('s-acts').oninput = () => { $('s-acts-v').textContent = $('s-acts').value; readHome(); };
-for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors', 's-cap', 's-first', 's-retread', 's-trail', 's-layout']) $(id).onchange = readHome;
+for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors', 's-cap', 's-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout']) $(id).onchange = readHome;
 $('s-move-rotate').onclick = () => {
   const rock = $('s-move-rock').value;
   $('s-move-rock').value = $('s-move-scissors').value;
@@ -1398,7 +1571,13 @@ for (const id of ['s-coords', 's-hints', 's-sound']) $(id).onchange = () => {
   cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked; saveCfg();
   if (document.body.dataset.screen === 'game') render();
 };
-$('s-terr').onchange = () => { const elim = $('s-terr').value !== 'territory'; $('retread-row').hidden = elim; $('trail-row').hidden = elim; readHome(); };
+$('s-terr').onchange = () => {
+  const elim = $('s-terr').value !== 'territory';
+  $('retread-row').hidden = elim;
+  $('trail-row').hidden = elim;
+  $('enclosure-row').hidden = elim;
+  readHome();
+};
 let renameTimer = null;
 $('name-input').oninput = () => {
   name = ($('name-input').value || '').replace(/[^\w \-]/g, '').slice(0, 20) || randomGuest();
@@ -1544,6 +1723,12 @@ $('play-btn').onclick = showHome;
 // From a game, analyse the position in front of you; from anywhere else, the variant's opening.
 $('analysis-btn').onclick = () => {
   if (editing) return;
+  if (analysisDraft) {
+    const draft = analysisDraft;
+    const board = draft.size === cfg.size ? E.cloneBoard(draft.board) : undefined;
+    enterEdit(board);
+    return;
+  }
   const live = document.body.dataset.screen === 'game' && Array.isArray(state.board);
   enterEdit(live ? E.cloneBoard(state.board) : undefined);
 };

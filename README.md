@@ -14,6 +14,11 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   A piece you cannot take blocks you instead.
 - **Territory** is an opt-in mode used by Painters, Siege and friends: landing paints a square
   permanently, and most squares wins once the board is claimed.
+- **Melee** adds enclosure to territory: close a loop around an orthogonally connected region
+  to claim every square inside and remove trapped pieces. The first side past half the board wins.
+- **Threefold repetition** is universal and enabled for every named variant: the third occurrence
+  of the same position, side to move, and action within a multi-action turn is an automatic draw.
+  Custom rules expose it as a checkbox.
 - **One click to play.** The home page leads with a play card: your name, the variant you are
   on, and four ways in — **Play online** (a public room anyone in the lobby can join),
   **Challenge a friend** (a private room, its link copied to your clipboard, never listed),
@@ -25,22 +30,27 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   update automatically. Transfer codes (options → Preferences) move an account between devices.
   A game that is under way can only be finished or resigned — never discarded — so a result
   always follows a started rated game.
-- **Analysis board**: move either side freely under the current rules, place or erase pieces,
-  then continue over the board, vs bot, or as an **online challenge from that exact position**.
-  Reachable from the header on any screen; opened mid-game it loads the live position.
+- **Analysis board**: move either side freely, place or erase pieces, switch named rules in place,
+  mirror Blue into Red, rotate or reset the position, then continue over the board, vs bot, or as
+  an **online challenge from that exact position**. Customise rules through the existing selector
+  without losing the draft. Reachable from the header on any screen; opened mid-game it loads the
+  live position.
 - Click or drag pieces to move. Right-click draws precisely aligned **arrows and highlights**
   (shift/alt recolour); drag the corner grip to resize, press `f` to flip, and click moves in the
   log to review.
 - Online games include rate-limited, ephemeral player chat (spectators may read) and resignation.
+  Spectators can use the move log, arrow keys, or board controls to review any earlier position
+  without losing their place when another live move arrives.
 - **Ten named variants**, each a real combination rather than a slider preset — Standard,
   Skirmish (6×6, one of each), Triple step (3 actions/turn), Cavalry (all knights), Painters
   (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
-  (13×13, four of each), King's field (rook/knight/bishop, elimination), and Melee (chess
-  capture, elimination) — plus **Custom**. See `SPEC.md` §1.
+  (13×13, four of each), King's field (rook/knight/bishop, elimination), and Melee (all kings,
+  RPS captures, territory enclosure) — plus **Custom**. See `SPEC.md` §1.
 - Everything the presets are built from is still yours to set: board size, pieces/type, up to
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
   `queen`, `cross`, or `long king`) per RPS piece, chess capture, elimination, ink trails,
-  rows/corners/scattered layouts, and custom starting positions.
+  enclosure captures, threefold repetition, rows/corners/scattered layouts, and custom starting
+  positions.
 - **Contextual rules everywhere**: a `rules` tab on the board's left edge slides out the whole
   game explained from scratch *for the variant you are playing* — and the same text backs the
   how-to-play dialog. It is generated from the rules engine, so it can never go stale.

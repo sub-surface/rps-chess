@@ -90,6 +90,8 @@ describe('GameRoom Durable Object', () => {
     expect(host.welcome.state.cfg.actionsPerTurn).toBe(1);
     expect(host.welcome.state.cfg.territory).toBe(false);   // Standard does not paint
     expect(host.welcome.state.cfg.retread).toBe(false);
+    expect(host.welcome.state.cfg.enclosure).toBe(false);
+    expect(host.welcome.state.cfg.threefold).toBe(true);
     expect(host.welcome.state.cfg).toMatchObject({
       rockMove: 'king',
       paperMove: 'king',
@@ -124,6 +126,52 @@ describe('GameRoom Durable Object', () => {
     host.socket.close(1000, 'done');
     guest.socket.close(1000, 'done');
     spectator.socket.close(1000, 'done');
+  });
+
+  it('adjudicates threefold repetition from authoritative room state', async () => {
+    const room = 'threefold-room';
+    const board = E.emptyBoard(6);
+    board[5][0] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[5][2] = { owner: E.BLUE, piece: { type: 'scissors', color: E.BLUE } };
+    board[0][5] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    const cfg = {
+      ...E.PRESETS.standard,
+      size: 6,
+      perType: 1,
+      capture: 'chess',
+      pos: E.encodePos(board),
+      own: E.encodeOwners(board),
+    };
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', cfg });
+    const guest = await connect(stub, room, { name: 'Guest' });
+    const cycle = [
+      { from: [5, 0], to: [4, 0] },
+      { from: [0, 5], to: [1, 5] },
+      { from: [4, 0], to: [5, 0] },
+      { from: [1, 5], to: [0, 5] },
+    ];
+
+    let final = null;
+    for (let ply = 0; ply < 8; ply++) {
+      const active = ply % 2 === 0 ? host.socket : guest.socket;
+      const observer = ply % 2 === 0 ? guest.socket : host.socket;
+      const updated = nextMessage(observer, (message) =>
+        message.type === 'state' && message.state.moves.length === ply + 1);
+      active.send(JSON.stringify({ type: 'move', ...cycle[ply % cycle.length] }));
+      final = (await updated).state;
+    }
+
+    expect(final.gameOver).toBe(true);
+    expect(final.endReason).toBe('repetition');
+    expect(final.winner).toBeNull();
+    expect(final.result).toMatchObject({ B: 2, R: 1, metric: 'pieces' });
+    await runInDurableObject(stub, async (instance) => {
+      expect(instance.game.repetitions[E.repetitionKey(instance.game)]).toBe(3);
+    });
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
   });
 
   it('honours a valid custom starting position and keeps it for rematches', async () => {

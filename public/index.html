@@ -110,6 +110,9 @@
               <label class="frow" title="Board size, 6×6 to 13×13. Bigger boards reward slow, patient expansion."><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
               <label class="frow" title="How many rocks, papers and scissors each side gets — 1 to 4 of each."><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
               <label class="frow" title="Moves per turn. More actions means ground changes hands far faster."><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
+              <div class="frow" title="The same pieces, territory, side to move and action number occurring three times ends the game as a draw."><span>Threefold draw</span>
+                <label class="chk"><input type="checkbox" id="s-threefold" checked> third repetition draws</label>
+              </div>
               <fieldset class="movement-picker">
                 <legend>Movement</legend>
                 <label class="movement-row"><span class="movement-piece rock">R</span><span>Rock</span><select id="s-move-rock"></select></label>
@@ -134,6 +137,9 @@
               </div>
               <div class="frow child" id="trail-row" title="Sliding pieces paint every unclaimed square they pass through, not just where they stop."><span>Ink trail</span>
                 <label class="chk"><input type="checkbox" id="s-trail"> sliders ink squares they pass over</label>
+              </div>
+              <div class="frow child" id="enclosure-row" title="Close a loop of territory to claim every square inside it and remove trapped enemy pieces."><span>Enclosure</span>
+                <label class="chk"><input type="checkbox" id="s-enclosure"> closed regions flip; trapped pieces fall</label>
               </div>
               <label class="frow" title="Where the two armies begin. Every layout is 180° rotationally symmetric, so neither side is favoured."><span>Layout</span>
                 <select id="s-layout">
@@ -254,10 +260,15 @@
 
     <aside class="panel editpanel" id="editpanel" hidden>
       <h3 class="eh">Analysis board</h3>
+      <details class="ed-rule-menu" id="ed-rule-menu">
+        <summary class="btn ghost sm" id="ed-rule-label">Rules · Standard ▾</summary>
+        <div class="ed-rule-pop" id="ed-rule-list"></div>
+      </details>
       <div class="palette" id="palette"></div>
       <div class="ed-actions">
-        <button class="btn ghost sm" id="ed-mirror" title="Copy Blue to Red">Mirror ⤾</button>
-        <button class="btn ghost sm" id="ed-blocks" title="Reset to the standard start">Standard</button>
+        <button class="btn ghost sm" id="ed-mirror" title="Rebuild Red as a rotated copy of Blue">Mirror B→R</button>
+        <button class="btn ghost sm" id="ed-rotate" title="Rotate the whole position 180 degrees">Rotate 180°</button>
+        <button class="btn ghost sm" id="ed-blocks" title="Reset to the selected rules' starting position">Reset</button>
         <button class="btn ghost sm" id="ed-clear" title="Remove all">Clear</button>
       </div>
       <p class="hint">Move pieces freely — either side, any time, current rules apply. Pick a palette piece to place it. Right-click draws arrows; shift or alt recolours.</p>

@@ -10,6 +10,7 @@ describe('shared rules engine', () => {
       capture: 'anything',
       territory: false,
       retread: true,
+      enclosure: true,
       actionsPerTurn: 8,
       first: 'x',
     })).toEqual({
@@ -23,6 +24,8 @@ describe('shared rules engine', () => {
       territory: false,
       retread: false,
       trail: false,
+      enclosure: false,
+      threefold: true,
       layout: 'rows',
       actionsPerTurn: 3,
       first: E.BLUE,
@@ -34,6 +37,10 @@ describe('shared rules engine', () => {
     expect(E.presetOf(E.sanitizeCfg({}))).toBe('standard');
     expect(E.sanitizeCfg({ territory: true }).retread).toBe(true);
     expect(E.sanitizeCfg({ territory: true, retread: false }).retread).toBe(false);
+    expect(E.sanitizeCfg({ enclosure: true }).enclosure).toBe(false);
+    expect(E.sanitizeCfg({ territory: true, enclosure: true }).enclosure).toBe(true);
+    expect(E.sanitizeCfg({}).threefold).toBe(true);
+    expect(E.sanitizeCfg({ threefold: false }).threefold).toBe(false);
     expect(E.sanitizeCfg({ moveStyle: 'classic' })).toMatchObject({
       rockMove: 'king',
       paperMove: 'rook',
@@ -53,6 +60,51 @@ describe('shared rules engine', () => {
     expect(game.board[5][2].owner).toBe(E.RED);    // trail never repaints
     expect(game.board[5][3].owner).toBe(E.BLUE);
     expect(game.board[5][4].owner).toBe(E.BLUE);   // landing square
+  });
+
+  it('claims closed orthogonal regions and removes enemy pieces inside', () => {
+    const board = E.emptyBoard(6);
+    for (const [r, c] of [[1, 2], [1, 3], [2, 1], [2, 4], [3, 2], [3, 3]]) {
+      board[r][c].owner = E.BLUE;
+    }
+    board[2][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    board[2][3].owner = null;
+    board[0][5] = { owner: E.RED, piece: { type: 'rock', color: E.RED } };
+
+    expect(E.captureEnclosures(board, E.BLUE)).toEqual({ regions: 1, squares: 2, pieces: 1 });
+    expect(board[2][2]).toEqual({ owner: E.BLUE, piece: null });
+    expect(board[2][3].owner).toBe(E.BLUE);
+    expect(board[0][5].piece).toEqual({ type: 'rock', color: E.RED }); // edge-connected exterior stays open
+  });
+
+  it('applies enclosure captures after a move closes the loop', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.melee, size: 6, perType: 1 });
+    const board = E.emptyBoard(6);
+    for (const [r, c] of [[1, 2], [2, 1], [2, 3]]) board[r][c].owner = E.BLUE;
+    board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[2][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    const game = E.newGame(cfg, board);
+
+    expect(E.applyMove(game, { fr: 4, fc: 2, tr: 3, tc: 2 })).toBe(true);
+    expect(game.board[2][2]).toEqual({ owner: E.BLUE, piece: null });
+    expect(game.moves.at(-1).enclosed).toBe(1);
+    expect(game.gameOver).toBe(true);
+    expect(game.endReason).toBe('elimination');
+  });
+
+  it('ends enclosure games as soon as one side owns more than half', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.melee, size: 6, perType: 1 });
+    const board = E.emptyBoard(6);
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 6; col++) board[row][col].owner = E.BLUE;
+    board[2][0].piece = { type: 'rock', color: E.BLUE };
+    board[5][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    const game = E.newGame(cfg, board);
+
+    expect(E.scoreOf(board).B).toBe(18);
+    E.applyMove(game, { fr: 2, fc: 0, tr: 3, tc: 0 });
+    expect(E.scoreOf(game.board).B).toBe(19);
+    expect(game.gameOver).toBe(true);
+    expect(game.endReason).toBe('majority');
   });
 
   it('round-trips position codes and rejects malformed ones', () => {
@@ -107,6 +159,133 @@ describe('shared rules engine', () => {
         R: perType * 3,
       });
     }
+  });
+
+  it('mirrors Blue into Red and rotates analysis positions without mutating the source', () => {
+    const board = E.emptyBoard(6);
+    board[5][0] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[4][1].owner = E.BLUE;
+    board[0][0] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    board[1][0].owner = E.RED;
+
+    const mirrored = E.mirrorArmy(board);
+    expect(mirrored[0][5]).toEqual({ owner: E.RED, piece: { type: 'rock', color: E.RED } });
+    expect(mirrored[1][4]).toEqual({ owner: E.RED, piece: null });
+    expect(mirrored[0][0]).toEqual({ owner: null, piece: null });
+    expect(board[0][0]).toEqual({ owner: E.RED, piece: { type: 'paper', color: E.RED } });
+
+    const rotated = E.rotateBoard(board);
+    expect(rotated[0][5]).toEqual({ owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } });
+    expect(rotated[5][5]).toEqual({ owner: E.RED, piece: { type: 'paper', color: E.RED } });
+    expect(E.rotateBoard(rotated)).toEqual(board);
+  });
+
+  it('draws the third occurrence even when one side leads on material', () => {
+    const cfg = E.sanitizeCfg({
+      ...E.PRESETS.standard,
+      size: 6,
+      perType: 1,
+      capture: 'chess',
+    });
+    const board = E.emptyBoard(6);
+    board[5][0] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[5][2] = { owner: E.BLUE, piece: { type: 'scissors', color: E.BLUE } };
+    board[0][5] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    const game = E.newGame(cfg, board);
+    const cycle = [
+      { fr: 5, fc: 0, tr: 4, tc: 0 },
+      { fr: 0, fc: 5, tr: 1, tc: 5 },
+      { fr: 4, fc: 0, tr: 5, tc: 0 },
+      { fr: 1, fc: 5, tr: 0, tc: 5 },
+    ];
+
+    for (const move of cycle) E.applyMove(game, move);
+    expect(game.gameOver).toBe(false);
+    expect(game.repetitions[E.repetitionKey(game)]).toBe(2);
+    for (const move of cycle.slice(0, -1)) E.applyMove(game, move);
+    expect(game.gameOver).toBe(false);
+    E.applyMove(game, cycle.at(-1));
+
+    expect(E.result(game)).toMatchObject({ B: 2, R: 1 });
+    expect(game.gameOver).toBe(true);
+    expect(game.endReason).toBe('repetition');
+    expect(game.winner).toBeNull();
+  });
+
+  it('includes the action phase in threefold identity and can disable the rule', () => {
+    const makeGame = (threefold) => {
+      const cfg = E.sanitizeCfg({
+        ...E.PRESETS.standard,
+        size: 6,
+        perType: 1,
+        capture: 'chess',
+        actionsPerTurn: 3,
+        threefold,
+      });
+      const board = E.emptyBoard(6);
+      board[5][0] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+      board[5][2] = { owner: E.BLUE, piece: { type: 'scissors', color: E.BLUE } };
+      board[0][5] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+      return E.newGame(cfg, board);
+    };
+    const bounce = (game) => {
+      const color = game.turn;
+      const type = color === E.BLUE ? 'rock' : 'paper';
+      let source = null;
+      for (let row = 0; row < 6; row++) for (let col = 0; col < 6; col++) {
+        if (game.board[row][col].piece?.color === color && game.board[row][col].piece.type === type) {
+          source = [row, col];
+        }
+      }
+      const [fr, fc] = source;
+      const tr = color === E.BLUE ? (fr === 5 ? 4 : 5) : (fr === 0 ? 1 : 0);
+      E.applyMove(game, { fr, fc, tr, tc: fc });
+    };
+
+    const game = makeGame(true);
+    const opening = E.repetitionKey(game);
+    bounce(game);
+    bounce(game);
+    expect(E.encodePos(game.board)).toBe(game.startPos);
+    expect(E.repetitionKey(game)).not.toBe(opening); // same board, but action 2 of Blue's turn
+    for (let ply = 2; ply < 24; ply++) {
+      expect(game.gameOver, `ended at ply ${ply}`).toBe(false);
+      bounce(game);
+    }
+    expect(game.gameOver).toBe(true);
+    expect(game.endReason).toBe('repetition');
+
+    const disabled = makeGame(false);
+    for (let ply = 0; ply < 24; ply++) bounce(disabled);
+    expect(disabled.gameOver).toBe(false);
+    expect(disabled.repetitions).toEqual({});
+  });
+
+  it('reconstructs every authoritative replay frame for spectator review', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.standard, size: 6, perType: 1 });
+    const game = E.newGame(cfg);
+    for (let ply = 0; ply < 6; ply++) {
+      const move = E.allMoves(game.board, game.turn, cfg)[0];
+      expect(move).toBeTruthy();
+      E.applyMove(game, move);
+    }
+    const record = {
+      cfg,
+      startPos: game.startPos,
+      startOwners: game.startOwners,
+      moves: game.moves,
+    };
+    const frames = E.replayFrames(record);
+
+    expect(frames).toHaveLength(game.moves.length + 1);
+    expect(E.encodePos(frames[0].board)).toBe(game.startPos);
+    expect(E.encodePos(frames.at(-1).board)).toBe(E.encodePos(game.board));
+    expect(E.encodeOwners(frames.at(-1).board)).toBe(E.encodeOwners(game.board));
+    expect(frames.at(-1).lastMove).toEqual(game.lastMove);
+
+    const tampered = structuredClone(record);
+    tampered.moves[2].c = E.other(tampered.moves[2].c);
+    expect(() => E.replayFrames(tampered)).toThrow(/illegal replay move/i);
   });
 
   it('supports every per-piece movement archetype', () => {
@@ -222,6 +401,7 @@ describe('shared rules engine', () => {
       { size: 9, rockMove: 'knight', paperMove: 'queen', scissorsMove: 'cross', capture: 'rps', territory: true, trail: true, actionsPerTurn: 1 },
       { size: 7, rockMove: 'longking', paperMove: 'rook', scissorsMove: 'king', capture: 'rps', territory: true, layout: 'scattered', actionsPerTurn: 1 },
       { size: 8, rockMove: 'bishop', paperMove: 'knight', scissorsMove: 'queen', capture: 'rps', territory: true, layout: 'corners', trail: true, actionsPerTurn: 2 },
+      E.PRESETS.melee,
     ];
 
     for (const raw of variants) {
@@ -245,6 +425,7 @@ describe('preset library', () => {
     for (const [key, preset] of Object.entries(E.PRESETS)) {
       // A duplicate ruleset would make presetOf silently report the earlier key.
       expect(E.presetOf(E.sanitizeCfg(preset)), `${key} is not uniquely recognisable`).toBe(key);
+      expect(preset.threefold, `${key} must enable threefold by default`).toBe(true);
     }
     expect(Object.keys(E.PRESETS).length).toBeGreaterThanOrEqual(10);
   });
@@ -259,6 +440,14 @@ describe('preset library', () => {
     expect(E.PRESET_KEYS).toContain('custom');   // the picker's escape hatch
     expect(E.presetLabel('kings')).toBe("King's field");
     expect(E.presetLabel('nonsense')).toBe('Custom');
+    expect(E.PRESETS.melee).toMatchObject({
+      rockMove: 'king',
+      paperMove: 'king',
+      scissorsMove: 'king',
+      capture: 'rps',
+      territory: true,
+      enclosure: true,
+    });
   });
 
   it('every preset produces a playable opening position', () => {
@@ -292,9 +481,10 @@ describe('rules summary', () => {
     expect(standard).not.toContain('Jumps ignore');
 
     const melee = text(E.PRESETS.melee);
-    expect(melee).toContain('Take any enemy piece');
-    expect(melee).toContain('Take every enemy piece');
-    expect(melee).not.toContain('Painting');   // no territory section at all
+    expect(melee).toContain('rock takes scissors');
+    expect(melee).toContain('Enclosure');
+    expect(melee).toContain('more than half the board');
+    expect(melee).not.toContain('Take any enemy piece');
 
     const painters = text(E.PRESETS.painters);
     expect(painters).toContain('Sliders ink every unclaimed square they cross');

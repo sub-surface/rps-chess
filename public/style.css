@@ -442,7 +442,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .log::-webkit-scrollbar { width: 8px; } .log::-webkit-scrollbar-thumb { background: var(--line); } .log::-webkit-scrollbar-track { background: transparent; }
 .log:empty { display: none; }
 .log .n { color: var(--muted); text-align: right; }
-.log .mv { cursor: pointer; }
+.log .turn-moves { min-width: 0; display: flex; flex-wrap: wrap; gap: 0 9px; }
+.log .mv { cursor: pointer; white-space: nowrap; }
 .log .mv:hover { text-decoration: underline; }
 .log .mv.b { color: color-mix(in srgb, var(--blue) 82%, var(--text)); }
 .log .mv.r { color: color-mix(in srgb, var(--red) 82%, var(--text)); }
@@ -456,7 +457,20 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .pal.erase { color: var(--muted); font-size: 12px; }
 .pal.move { color: var(--muted); font-size: 17px; }
 .pal.move.on, .pal.erase.on { color: var(--text); }
-.ed-actions { display: flex; gap: 6px; } .ed-actions .btn { flex: 1; }
+.ed-rule-menu { position: relative; width: 100%; }
+.ed-rule-menu > summary { list-style: none; width: 100%; text-align: left; color: var(--text); }
+.ed-rule-menu > summary::-webkit-details-marker { display: none; }
+.ed-rule-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20;
+  max-height: 280px; overflow-y: auto; padding: 5px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 12px 30px rgba(0,0,0,.32);
+}
+.ed-rule-pop button { border: 0; padding: 7px 8px; text-align: left; font: inherit; font-size: 11.5px; color: var(--muted); background: transparent; cursor: pointer; }
+.ed-rule-pop button:hover, .ed-rule-pop button.on { color: var(--text); background: var(--surface-2); }
+.ed-rule-pop button.custom { grid-column: 1 / -1; color: var(--accent); }
+.ed-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .hint { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
 
 /* ── profile ────────────────────────────────────────── */
