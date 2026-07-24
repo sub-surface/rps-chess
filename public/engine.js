@@ -47,13 +47,13 @@ export const MOVEMENT_DESCRIPTIONS = {
 };
 // Full-sentence forms, for prose rules and tooltips rather than compact labels.
 export const MOVEMENT_SENTENCES = {
-  king: 'moves one square in any direction',
-  rook: 'slides any distance in a straight line',
-  bishop: 'slides any distance diagonally',
-  knight: 'jumps in an L, clearing anything in between',
-  queen: 'slides any distance in any direction',
-  cross: 'moves one square up, down, left or right',
-  longking: 'moves one square any way, or jumps exactly two squares straight',
+  king: 'moves one square any way',
+  rook: 'slides in a straight line',
+  bishop: 'slides diagonally',
+  knight: 'jumps in an L',
+  queen: 'slides any way',
+  cross: 'moves one square straight',
+  longking: 'moves one square any way, or jumps two straight',
 };
 const MOVEMENT_PATTERNS = {
   king: { dirs: KING, slide: false },
@@ -235,6 +235,20 @@ export function legalDest(board, r, c, cfg) {
   return out;
 }
 
+// Whether a capture remains possible for anyone, judged on surviving piece types rather than
+// geometry: under RPS rules, rocks facing only rocks can never take each other however they
+// move. This is what ends a Standard game — not an immediate "nothing is en prise", which
+// would be true on move one.
+export function capturesPossible(board, cfg) {
+  const types = { [BLUE]: new Set(), [RED]: new Set() };
+  for (const row of board) for (const cell of row) if (cell.piece) types[cell.piece.color].add(cell.piece.type);
+  if (!types[BLUE].size || !types[RED].size) return false;
+  if (cfg.capture === 'chess') return true;
+  for (const type of types[BLUE]) if (types[RED].has(BEATS[type])) return true;
+  for (const type of types[RED]) if (types[BLUE].has(BEATS[type])) return true;
+  return false;
+}
+
 export function hasMove(board, color, cfg) {
   for (let r = 0; r < board.length; r++) for (let c = 0; c < board.length; c++) {
     const p = board[r][c].piece;
@@ -262,6 +276,8 @@ export function terminalReason(game) {
   const cfg = game.cfg;
   const pieces = pieceCounts(game.board);
   if (pieces.B === 0 || pieces.R === 0) return 'elimination';
+  // Without painting there is nothing left to contest once no capture can ever occur.
+  if (!cfg.territory && !capturesPossible(game.board, cfg)) return 'nocaptures';
   if (cfg.territory) {
     if (scoreOf(game.board).open === 0) return 'territory';
   }
@@ -346,7 +362,7 @@ export function newGame(cfg, board) {
 export const PRESETS = {
   standard: {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
-    moveStyle: 'kings', capture: 'rps', territory: true, retread: true, trail: false,
+    moveStyle: 'kings', capture: 'rps', territory: false, retread: false, trail: false,
     layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   kings: {
@@ -378,7 +394,7 @@ export const PRESETS = {
 
 // Display order and flavour for the variant picker. Every PRESETS key appears here.
 export const PRESET_INFO = {
-  standard: { label: 'Standard', tagline: 'Everything moves one square. Land anywhere, and it is yours.' },
+  standard: { label: 'Standard', tagline: 'Everything moves one square. Take what you beat; most pieces standing wins.' },
   skirmish: { label: 'Skirmish', tagline: 'A pocket 6×6 with one of each piece. Decided in a hurry.' },
   triple: { label: 'Triple step', tagline: 'Three moves a turn. Ground changes hands three times as fast.' },
   cavalry: { label: 'Cavalry', tagline: 'All knights. Nothing blocks a jump, so nothing is ever safe.' },
@@ -431,62 +447,52 @@ const LAYOUT_PROSE = {
   corners: 'blocks anchored to opposite corners',
   scattered: 'scattered at random within each half',
 };
-// The whole game explained from scratch for exactly these rules — used by the in-game rules
-// flap, so a player reading it is never told about a variant they are not playing.
+// The whole game, stated as briefly as it can be stated, for exactly these rules — used by
+// the in-game rules flap and the how-to-play dialog, so a player is never told about a
+// variant they are not playing.
 export function rulesSummary(cfg) {
   const safe = sanitizeCfg(cfg);
   const n = safe.perType, s = n === 1 ? '' : 's';
+  const moves = ['rock', 'paper', 'scissors'].map((type) => movementFor(safe, type));
+  const slides = moves.some((move) => MOVEMENT_PATTERNS[move].slide);
+  const jumps = moves.some((move) => move === 'knight' || move === 'longking');
   const out = [{
-    h: 'The board',
-    p: `Blue and Red share a ${safe.size}×${safe.size} board. Each side starts with ${n} rock${s}, `
-      + `${n} paper${s} and ${n} scissors, arranged in ${LAYOUT_PROSE[safe.layout]} with 180° `
-      + `rotational symmetry. ${safe.first === BLUE ? 'Blue' : 'Red'} moves first.`,
+    h: 'Board',
+    p: `${safe.size}×${safe.size}. ${n} rock${s}, ${n} paper${s} and ${n} scissors a side, `
+      + `in ${LAYOUT_PROSE[safe.layout]}. ${safe.first === BLUE ? 'Blue' : 'Red'} opens.`,
   }, {
     h: 'Moving',
-    // When all three share one archetype, say it once instead of three times.
-    p: (() => {
-      const moves = ['rock', 'paper', 'scissors'].map((type) => movementFor(safe, type));
-      const body = moves.every((move) => move === moves[0])
-        ? `Every piece ${MOVEMENT_SENTENCES[moves[0]]}.`
-        : `${moves.map((move, i) => `${PIECE_WORDS[['rock', 'paper', 'scissors'][i]]} ${MOVEMENT_SENTENCES[move]}`).join('; ')}.`;
-      return `${body} A slide stops at the first piece in its path; a jump ignores whatever it passes over.`;
-    })(),
+    // One line when all three share an archetype, otherwise one clause each.
+    p: (moves.every((move) => move === moves[0])
+      ? `Every piece ${MOVEMENT_SENTENCES[moves[0]]}.`
+      : `${moves.map((move, i) => `${PIECE_WORDS[['rock', 'paper', 'scissors'][i]]} ${MOVEMENT_SENTENCES[move]}`).join('; ')}.`)
+      + (slides ? ' Slides stop at the first piece in the way.' : '')
+      + (jumps ? ' Jumps ignore whatever they pass over.' : ''),
   }, {
     h: 'Capturing',
     p: safe.capture === 'rps'
-      ? 'You may only take a piece you beat — rock takes scissors, scissors takes paper, paper '
-        + 'takes rock. An enemy you cannot take blocks you instead, which makes piece identity '
-        + 'as much a wall as a weapon.'
-      : 'Any enemy piece may be captured. The rock-paper-scissors cycle is switched off, so '
-        + 'every piece threatens every other.',
+      ? 'Take only what you beat — rock takes scissors, scissors takes paper, paper takes rock. Anything else blocks you.'
+      : 'Take any enemy piece. The RPS cycle is off.',
   }];
   if (safe.territory) {
     out.push({
       h: 'Painting',
-      p: 'Every square a piece lands on is painted its colour, permanently. '
-        + (safe.retread
-          ? 'Pieces may stop on squares that are already painted, including your own.'
-          : 'A piece may only stop on unclaimed ground or on a capture — painted squares are '
-            + 'glided over, never landed on.')
-        + (safe.trail ? ' Sliding pieces also ink every unclaimed square they pass through.' : ''),
+      p: `Landing on a square paints it yours, for good. ${safe.retread
+        ? 'Painted squares can be landed on again.'
+        : 'Only unclaimed squares can be landed on — painted ones are glided over.'}`
+        + (safe.trail ? ' Sliders ink every unclaimed square they cross.' : ''),
     }, {
       h: 'Winning',
-      p: 'The game ends when no unclaimed square is left, when a side has no pieces, or when a '
-        + 'side cannot move. Whoever holds the most squares wins.',
+      p: 'Most squares wins, counted when the board fills, a side runs out of pieces, or a side cannot move.',
     });
   } else {
     out.push({
       h: 'Winning',
-      p: 'Nothing is painted here. Capture every enemy piece to win outright; if a side cannot '
-        + 'move or the game stalls, whoever has more pieces left wins.',
+      p: 'Take every enemy piece, or hold the most when no capture is possible any more.',
     });
   }
   if (safe.actionsPerTurn > 1) {
-    out.push({
-      h: 'Turns',
-      p: `A turn is up to ${safe.actionsPerTurn} moves by the same player, and they may be made `
-        + 'with the same piece or different ones. The turn ends early if no legal move remains.',
-    });
+    out.push({ h: 'Turns', p: `${safe.actionsPerTurn} moves per turn, with any of your pieces.` });
   }
   return out;
 }
@@ -496,7 +502,8 @@ export function sanitizeCfg(raw) {
   raw = raw || {};
   const clamp = (v, lo, hi, d) => { v = Math.floor(+v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
   const one = (v, set, d) => set.includes(v) ? v : d;
-  const territory = raw.territory !== false;
+  // Territory is opt-in: an absent flag means Standard, which does not paint.
+  const territory = !!raw.territory;
   const legacy = LEGACY_MOVES[raw.moveStyle] || LEGACY_MOVES.kings;
   const rockMove = one(raw.rockMove, MOVEMENT_TYPES, legacy.rock);
   const paperMove = one(raw.paperMove, MOVEMENT_TYPES, legacy.paper);

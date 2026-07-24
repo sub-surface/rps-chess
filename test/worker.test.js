@@ -88,7 +88,8 @@ describe('GameRoom Durable Object', () => {
     const host = await connect(stub, room, { name: 'Host' });
     expect(host.welcome.role).toBe(E.BLUE);
     expect(host.welcome.state.cfg.actionsPerTurn).toBe(1);
-    expect(host.welcome.state.cfg.retread).toBe(true);
+    expect(host.welcome.state.cfg.territory).toBe(false);   // Standard does not paint
+    expect(host.welcome.state.cfg.retread).toBe(false);
     expect(host.welcome.state.cfg).toMatchObject({
       rockMove: 'king',
       paperMove: 'king',
@@ -377,6 +378,34 @@ describe('room lifecycle', () => {
 
     third.socket.close(1000, 'done');
     fourth.socket.close(1000, 'done');
+  });
+
+  it('keeps a private friend challenge out of the public lobby', async () => {
+    const room = 'private-challenge';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, {
+      name: 'Host', cfg: { ...E.PRESETS.standard, unlisted: true },
+    });
+    expect(host.welcome.state.unlisted).toBe(true);
+    const lobby = env.LOBBY.getByName('global');
+    expect((await lobby.list()).some((entry) => entry.room === room)).toBe(false);
+
+    // A guest with the link still joins normally.
+    const guest = await connect(stub, room, { name: 'Guest' });
+    expect(guest.welcome.role).toBe(E.RED);
+    expect((await lobby.list()).some((entry) => entry.room === room)).toBe(false);
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
+  it('lists an ordinary open room in the public lobby', async () => {
+    const room = 'public-challenge';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', cfg: E.PRESETS.standard });
+    expect(host.welcome.state.unlisted).toBe(false);
+    expect((await env.LOBBY.getByName('global').list()).some((e) => e.room === room)).toBe(true);
+    host.socket.close(1000, 'done');
   });
 
   it('mints its own seat token instead of trusting a client-chosen one', async () => {

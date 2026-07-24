@@ -122,6 +122,7 @@ export class GameRoom extends DurableObject {
       this.accounts = { B: null, R: null, ...(saved.accounts || {}) };
       this.ratings = { B: null, R: null, ...(saved.ratings || {}) };
       this.room = saved.room || null;
+      this.unlisted = !!saved.unlisted;
       this.expiresAt = saved.expiresAt || (Date.now() + ROOM_TTL_MS);
     });
   }
@@ -138,6 +139,7 @@ export class GameRoom extends DurableObject {
     this.ratings = { B: null, R: null };
     this.room = null;
     this.expiresAt = 0;
+    this.unlisted = false;
     this.lobbyListed = null;
     this.lobbyFingerprint = null;
   }
@@ -212,6 +214,8 @@ export class GameRoom extends DurableObject {
         try {
           const parsed = JSON.parse(atob(raw));
           config = E.sanitizeCfg(parsed);
+          // A friend challenge is private: it never enters the public lobby index.
+          this.unlisted = !!parsed.unlisted;
           if (typeof parsed.pos === 'string') {
             posBoard = E.decodePos(parsed.pos, config.size);
             if (posBoard) {
@@ -609,6 +613,7 @@ export class GameRoom extends DurableObject {
       seats: { B: !!this.seats.B, R: !!this.seats.R },
       online: { B: this.seatIsOnline(E.BLUE), R: this.seatIsOnline(E.RED) },
       rated: !!game.rated,
+      unlisted: !!this.unlisted,
       pos: game.pos || null,
       own: game.own || null,
       winner: game.winner || null,
@@ -637,6 +642,7 @@ export class GameRoom extends DurableObject {
       accounts: this.accounts,
       ratings: this.ratings,
       room: this.room,
+      unlisted: this.unlisted,
       expiresAt: this.expiresAt,
     });
   }
@@ -645,7 +651,8 @@ export class GameRoom extends DurableObject {
   async syncLobby() {
     if (!this.room || !this.game) return;
     try {
-      const isOpen = this.seats.B
+      const isOpen = !this.unlisted
+        && this.seats.B
         && this.seatIsOnline(E.BLUE)
         && !this.seats.R
         && !this.game.gameOver

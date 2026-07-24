@@ -1,4 +1,4 @@
-// JANKEN client — homepage, local play (hot-seat / bot / bot-vs-bot), and online rooms.
+// JANKEN client — homepage, local play (over-the-board / bot / bot-vs-bot), and online rooms.
 // All rules live in engine.js (shared with the server), so hints match server validation.
 import * as E from '/engine.js';
 import { exportJpgn } from '/notation.js';
@@ -674,6 +674,8 @@ function startOnline(room, opts = {}) {
     timer: null,
     socketGeneration: 0,
     hostConfig: !!opts.host,
+    unlisted: !!opts.unlisted,
+    notice: '',
     pos: opts.pos || null,
     own: opts.own || null,
     error: '',
@@ -701,6 +703,7 @@ function connectOnline(session) {
   if (session.token) params.set('token', session.token);
   else if (session.hostConfig) params.set('cfg', btoa(JSON.stringify({
     ...E.sanitizeCfg(cfg),
+    ...(session.unlisted ? { unlisted: true } : {}),
     ...(session.pos ? { pos: session.pos } : {}),
     ...(session.own ? { own: session.own } : {}),
   })));
@@ -864,6 +867,7 @@ function applyServerState(s) {
     endReason: s.endReason || null,
     deltas: s.deltas || null,
     ratingError: !!s.ratingError,
+    unlisted: !!s.unlisted,
   });
   net.names = s.names || {}; net.seats = s.seats || {}; net.online = s.online || {};
   net.ratings = s.ratings || {}; net.accounts = s.accounts || {};
@@ -885,6 +889,9 @@ function updateOnlineUI() {
   else if (net.status === 'replaced') label = 'Seat continued in another tab';
   else if (net.error) label = net.error;
   else if (net.role !== 'S' && !(net.seats.B && net.seats.R)) label += ' · waiting for opponent';
+  $('oprivate').hidden = !state.unlisted;
+  $('onotice').textContent = net.notice || '';
+  $('onotice').hidden = !net.notice;
   $('orole-text').textContent = label;
   $('rtag').hidden = !state.rated;
   $('oshare').value = location.origin + '/#r=' + net.room;
@@ -1361,7 +1368,12 @@ function readHome() {
   Object.assign(cfg, E.sanitizeCfg(cfg));
   adoptRules(); updateVariantLine(); markPreset(); renderVariantPreview();
 }
-function updateVariantLine() { $('variant-line').textContent = E.variantLabel(E.sanitizeCfg(cfg)); }
+function updateVariantLine() {
+  const safe = E.sanitizeCfg(cfg);
+  $('variant-line').textContent = E.variantLabel(safe);
+  $('play-variant').textContent = E.presetLabel(customising ? 'custom' : E.presetOf(safe));
+  $('play-variant').title = E.variantLabel(safe);
+}
 // Explicitly chosen via the Custom tab; keeps Custom active even while the config
 // still matches a named preset. Cleared by picking a preset tab.
 let customising = false;
@@ -1428,11 +1440,23 @@ function buildPresets() {
 }
 buildPresets();
 
-for (const b of document.querySelectorAll('.play [data-mode]')) b.onclick = () => {
+for (const b of document.querySelectorAll('[data-mode]')) b.onclick = () => {
   readHome();
   const m = b.dataset.mode;
   if (m === 'online') startOnline(genRoom(), { host: true });
-  else startLocal(m);
+  else if (m === 'friend') {
+    // Copy inside the click so the clipboard write keeps its user gesture.
+    const room = genRoom();
+    const link = `${location.origin}/#r=${room}`;
+    const copied = navigator.clipboard?.writeText(link).then(() => true, () => false) ?? Promise.resolve(false);
+    startOnline(room, { host: true, unlisted: true });
+    copied.then((ok) => {
+      if (net && net.room === room) {
+        net.notice = ok ? 'Private room — link copied, send it to a friend.' : 'Private room — copy the link below and send it.';
+        updateOnlineUI();
+      }
+    });
+  } else startLocal(m);
 };
 
 // lobby
@@ -1511,6 +1535,18 @@ $('quick-btn').onclick = async () => {
   } catch { startOnline(genRoom(), { host: true }); }
 };
 $('custom-btn').onclick = () => { readHome(); enterEdit(); };
+$('change-variant').onclick = () => {
+  $('presets').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const chip = document.querySelector('#presets .chip.on') || $('presets').firstElementChild;
+  if (chip) chip.focus({ preventScroll: true });
+};
+$('play-btn').onclick = showHome;
+// From a game, analyse the position in front of you; from anywhere else, the variant's opening.
+$('analysis-btn').onclick = () => {
+  if (editing) return;
+  const live = document.body.dataset.screen === 'game' && Array.isArray(state.board);
+  enterEdit(live ? E.cloneBoard(state.board) : undefined);
+};
 
 // ── appearance ────────────────────────────────────────────────────────────────
 const PSTYLES = [['line', 'Line'], ['solid', 'Solid'], ['pixel', 'Pixel'], ['kanji', 'Kanji']];

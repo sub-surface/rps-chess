@@ -1,18 +1,24 @@
 # JANKEN — rock · paper · scissors chess
 
-A minimal territory game. Rock–paper–scissors pieces move like chess pieces; every square you
-land on is painted your colour. Fill the board, hold the most ground. Live at
+A minimal strategy game. Rock–paper–scissors pieces move like chess pieces and may take only
+what they beat, so identity is as much a wall as a weapon. Outlast your opponent — or switch on
+**territory** and race to paint the board. Live at
 **[rps.subsurfaces.net](https://rps.subsurfaces.net)**.
 
 ## Play
 
-- **Standard** gives Rock, Paper, and Scissors the same one-square king movement. Capturing
-  still follows the RPS cycle, so piece identity remains strategically distinct.
+- **Standard** gives Rock, Paper, and Scissors the same one-square king movement. Nothing is
+  painted: you take what you beat, and the game ends the moment no capture is possible any
+  more — whoever has more pieces standing wins.
 - **RPS capture** (default): you may only take a piece you beat — rock > scissors > paper > rock.
-- **Territory** (default): landing paints a square; Standard permits stepping back onto painted
-  empty squares. The game ends when the board is claimed or either player cannot move, and most
-  squares wins.
-- Modes: hot-seat, vs bot, bot-vs-bot, and **online** (share a link or pick from the lobby).
+  A piece you cannot take blocks you instead.
+- **Territory** is an opt-in mode used by Painters, Siege and friends: landing paints a square
+  permanently, and most squares wins once the board is claimed.
+- **One click to play.** The home page leads with a play card: your name, the variant you are
+  on, and four ways in — **Play online** (a public room anyone in the lobby can join),
+  **Challenge a friend** (a private room, its link copied to your clipboard, never listed),
+  **vs Bot**, and **Over the board**. Quick match and bot-vs-bot sit alongside. The header
+  carries `play ▸` and `analysis` from every screen.
 - **Rated play**: one-click device accounts ("get rated"), Elo ratings, lichess-style profile
   pages (`#u=id`), 30-second abandonment forfeits, and Elo-proximity **quick match**. Games
   with guests stay unrated. Change your username anytime in the **you are** field; rated profiles
@@ -20,7 +26,8 @@ land on is painted your colour. Fill the board, hold the most ground. Live at
   A game that is under way can only be finished or resigned — never discarded — so a result
   always follows a started rated game.
 - **Analysis board**: move either side freely under the current rules, place or erase pieces,
-  then continue hot-seat, vs bot, or as an **online challenge from that exact position**.
+  then continue over the board, vs bot, or as an **online challenge from that exact position**.
+  Reachable from the header on any screen; opened mid-game it loads the live position.
 - Click or drag pieces to move. Right-click draws precisely aligned **arrows and highlights**
   (shift/alt recolour); drag the corner grip to resize, press `f` to flip, and click moves in the
   log to review.
@@ -97,14 +104,13 @@ npm install
 npm run dev          # local Worker, assets, and Durable Objects
 npm run verify       # syntax checks + Workers-runtime tests
 npm run deploy:dry   # verify + build a no-upload Wrangler bundle
-npm run d1:migrate   # apply pending D1 migrations before deploying code that needs them
+npm run d1:migrate   # apply pending D1 migrations on their own (deploy runs this for you)
 ```
 
-This release adds `migrations/0003_signups.sql`, so run `npm run d1:migrate` **before**
-deploying it — `/api/account` throttling reads the new table.
-
 `npm run deploy` verifies the app, refuses an uncommitted application tree, stamps
-`public/version.json` with the exact commit, and then runs `wrangler deploy`. Commit release
-changes before deploying so the footer always identifies the source that is live.
+`public/version.json`, **applies pending D1 migrations**, and only then uploads — so schema
+always lands before the code that depends on it. `npm run d1:migrate` runs them alone.
+
+Commit release changes before deploying so the footer always identifies the source that is live.
 
 Worker `rps-chess` · custom domain `rps.subsurfaces.net` · repo `sub-surface/rps-chess`.

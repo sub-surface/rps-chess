@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>JANKEN — rock · paper · scissors chess</title>
-  <meta name="description" content="A minimal territory game: rock-paper-scissors chess. Pick a variant, play a friend online, or take on the bot." />
+  <meta name="description" content="Rock-paper-scissors chess. Pieces move like chess pieces and take only what they beat. Pick a variant, play a friend online, or take on the bot." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#000000" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <meta property="og:title" content="JANKEN — rock · paper · scissors chess" />
-  <meta property="og:description" content="Rock, paper, and scissors move like chess pieces. Every square you land on is painted your colour — hold the most ground." />
+  <meta property="og:description" content="Rock, paper, and scissors move like chess pieces, and take only what they beat. Outlast your opponent — or switch on territory and paint the board." />
   <meta property="og:type" content="website" />
   <link rel="stylesheet" href="/style.css" />
 </head>
@@ -29,6 +29,8 @@
       <span class="word">JANKEN<em>rps · chess</em></span>
     </a>
     <nav class="tools">
+      <button id="play-btn" class="tbtn accent" title="Back to the play menu">play ▸</button>
+      <button id="analysis-btn" class="tbtn" title="Analysis board — set up or explore any position">analysis</button>
       <button id="pieces-btn" class="tbtn" title="Preferences">options</button>
       <button id="flip-btn" class="tbtn gameonly" title="Flip board">flip</button>
       <button id="theme-btn" class="tbtn" title="Toggle theme">theme</button>
@@ -46,24 +48,34 @@
       <svg class="tetro t6" viewBox="0 0 20 30"><rect x="0" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="0" y="20" width="10" height="10"/><rect x="10" y="20" width="10" height="10"/></svg>
     </div>
     <div class="home-inner">
-      <div class="hero">
-        <div class="hero-copy">
+      <section class="lead">
+        <div class="lead-copy">
           <h1>JANKEN</h1>
-          <p>Rock–paper–scissors, played like chess. Choose a variant and paint the board.</p>
+          <p>Rock–paper–scissors, played like chess. Take only what you beat.</p>
           <div class="hero-glyphs" id="hero-glyphs" aria-hidden="true"></div>
         </div>
-        <aside class="showcase" id="showcase" aria-labelledby="showcase-label">
-          <div class="showcase-head">
-            <span id="showcase-label">Variant theatre</span>
-            <button id="showcase-toggle" type="button" aria-label="Pause replay" title="Pause replay">Ⅱ</button>
+        <div class="playcard">
+          <label class="namefield" title="Your display name. Change it any time — a rated profile follows along."><span>you are <small>editable</small></span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
+          <div class="pc-variant">
+            <span class="pc-label">playing</span>
+            <b id="play-variant">Standard</b>
+            <button class="linklike" id="change-variant" title="Pick a different variant">change ▾</button>
           </div>
-          <svg id="showcase-board" class="showcase-board" viewBox="0 0 180 180" role="img" aria-label="Autoplaying recent game"></svg>
-          <div class="showcase-caption" aria-live="polite">
-            <b id="showcase-players">Preparing a game…</b>
-            <span id="showcase-variant">recent games and bot variations</span>
+          <div class="play">
+            <button class="btn big primary" data-mode="online" title="Open a public room — anyone in the lobby can join.">Play online ▸</button>
+            <button class="btn big" data-mode="friend" title="Create a private room and copy its link. Only people you send it to can join.">Challenge a friend</button>
+            <button class="btn big" data-mode="bot" title="Play Blue against a quick greedy bot.">vs Bot</button>
+            <button class="btn big" data-mode="human" title="Both players share this screen, taking turns.">Over the board</button>
           </div>
-        </aside>
-      </div>
+          <div class="play-more">
+            <button id="quick-btn" class="tbtn" title="Join the open game whose host rating is closest to yours">quick match</button>
+            <button class="tbtn" data-mode="botbot" title="Sit back and watch two bots fight it out.">bot vs bot</button>
+            <span class="pm-spacer"></span>
+            <button id="acct-btn" class="tbtn accent" title="Create an account to play rated games" hidden>get rated →</button>
+            <button id="acct-chip" class="tbtn" title="Your profile" hidden>★ 1200</button>
+          </div>
+        </div>
+      </section>
 
       <section class="config">
         <div class="presets" id="presets" role="group" aria-label="Variant"></div>
@@ -139,25 +151,25 @@
         </details>
       </section>
 
-      <section class="play">
-        <button class="btn big" data-mode="human" title="Both players share this screen, taking turns.">Hot-seat</button>
-        <button class="btn big" data-mode="bot" title="Play Blue against a quick greedy bot.">vs Bot</button>
-        <button class="btn big" data-mode="botbot" title="Sit back and watch two bots fight it out.">Bot vs Bot</button>
-        <button class="btn big primary" data-mode="online" title="Open a room and share the link — or wait for someone from the lobby.">Play online ▸</button>
-      </section>
-
       <section class="lobby">
         <div class="lobby-head">
-          <span class="lh">Open games <button id="refresh-lobby" class="tbtn" title="Refresh open games">⟳</button> <button id="quick-btn" class="tbtn" title="Join the closest-rated open game">quick match</button></span>
-          <span class="lobby-tools">
-            <label class="namefield" title="Change your display name at any time; rated accounts update automatically"><span>you are <small>editable</small></span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
-            <button id="acct-btn" class="tbtn accent" title="Create an account to play rated games" hidden>get rated →</button>
-            <button id="acct-chip" class="tbtn" title="Your profile" hidden>★ 1200</button>
-          </span>
+          <span class="lh">Open games <button id="refresh-lobby" class="tbtn" title="Refresh open games">⟳</button></span>
         </div>
         <ul class="games" id="games"></ul>
         <p class="lobby-empty" id="lobby-empty" aria-live="polite">No open games right now — create one and share the link.</p>
       </section>
+
+        <aside class="showcase" id="showcase" aria-labelledby="showcase-label">
+        <div class="showcase-head">
+          <span id="showcase-label">Variant theatre</span>
+          <button id="showcase-toggle" type="button" aria-label="Pause replay" title="Pause replay">Ⅱ</button>
+        </div>
+        <svg id="showcase-board" class="showcase-board" viewBox="0 0 180 180" role="img" aria-label="Autoplaying recent game"></svg>
+        <div class="showcase-caption" aria-live="polite">
+          <b id="showcase-players">Preparing a game…</b>
+          <span id="showcase-variant">recent games and bot variations</span>
+        </div>
+      </aside>
     </div>
   </main>
 
@@ -224,7 +236,8 @@
 
       <div class="online" id="online" hidden>
         <div class="oinfo">
-          <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span><span class="rtag" id="rtag" hidden>rated</span></div>
+          <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span><span class="rtag" id="rtag" hidden>rated</span><span class="rtag private" id="oprivate" hidden title="Not listed in the lobby — only people with the link can join">private</span></div>
+          <p class="onotice" id="onotice" aria-live="polite" hidden></p>
           <div class="oshare"><input id="oshare" readonly aria-label="Room link" /><button id="ocopy" class="tbtn">copy link</button></div>
           <button id="resign-btn" class="btn ghost sm" hidden>Resign</button>
         </div>
@@ -250,7 +263,7 @@
       <p class="hint">Move pieces freely — either side, any time, current rules apply. Pick a palette piece to place it. Right-click draws arrows; shift or alt recolours.</p>
       <label class="frow"><span>To move</span><select id="ed-first"><option value="B">Blue</option><option value="R">Red</option></select></label>
       <div class="controls">
-        <button id="ed-start" class="btn">Hot-seat</button>
+        <button id="ed-start" class="btn">Over the board</button>
         <button id="ed-bot" class="btn">vs Bot</button>
         <button id="ed-chal" class="btn primary">Challenge ▸</button>
       </div>

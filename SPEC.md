@@ -42,8 +42,13 @@ per-piece movement fields at the trust boundary.
     no-progress guard still guarantees termination.
   - `trail` makes sliding moves paint the **unclaimed** squares they pass over (never repainting
     claimed ground).
-- **elimination**: there is no painting. Capture all opposing pieces, or hold the most when a
-  double-pass/stall ends the game.
+- **elimination** (the default, and what Standard plays): there is no painting. Capture all
+  opposing pieces, or hold the most when the game ends. It ends as soon as **no capture is
+  possible any more** — judged on surviving piece *types*, not geometry: under RPS rules a side
+  holding only rocks can never take a side holding only rocks, however either of them moves.
+  `engine.capturesPossible()` decides this, and it is deliberately not "nothing is currently en
+  prise", which would be true on move one. Immobilization and the no-progress guard remain as
+  backstops.
 
 ### Starting layout (`layout`)
 
@@ -69,14 +74,14 @@ round-trips to its own key, since a duplicate ruleset would silently report the 
 
 | Preset | Rules |
 | --- | --- |
-| **Standard** | 9×9, all kings, RPS capture, territory with re-tread, one action |
-| **Skirmish** | 6×6, one piece per type — otherwise Standard |
-| **Triple step** | Standard with three actions per turn |
+| **Standard** | 9×9, all kings, RPS capture, elimination, one action |
+| **Skirmish** | 6×6, one piece per type, territory with re-tread |
+| **Triple step** | Three actions per turn, territory with re-tread |
 | **Cavalry** | All knights, territory with re-tread |
 | **Painters** | All queens, territory with ink trails, no re-tread |
-| **Ambush** | Standard from a scattered random start |
+| **Ambush** | Scattered random start, territory with re-tread |
 | **Siege** | Corner stand-off, territory without re-tread |
-| **Expanse** | 13×13, four per type |
+| **Expanse** | 13×13, four per type, territory with re-tread |
 | **King's field** | Rock rook / Paper knight / Scissors bishop, elimination |
 | **Melee** | Chess capture (no RPS cycle), elimination |
 
@@ -85,6 +90,9 @@ Overriding any rules field produces **Custom**. Adding a variant is a one-file c
 JPGN `Ruleset` tag, and rules text all pick it up.
 
 ## 2. Config schema
+
+`territory` is **opt-in**: an absent flag sanitizes to `false`, so a room created with no config
+is Standard. `retread` and `trail` are forced off whenever `territory` is off.
 
 ```text
 size 6..13 · perType 1..4
@@ -116,6 +124,9 @@ game never rewrites your saved preset.
 - The selector preview renders the actual start formation plus a synthetic selected piece, then
   calls `engine.legalDest()` for its arrows and destinations. Its movement mapping, first player,
   actions, capture mode, goal, ownership, and layout all come from the sanitized config.
+- Home leads with the play card — name, current variant, and the four ways into a game — so the
+  first action is reachable without scrolling, on a phone as much as a desktop. Variant choice
+  is a refinement below it, and the variant theatre closes the page as ambient flavour.
 - The variant stage sits above the collapsed rules editor, so picking a variant is visual by
   default. Hovering or focusing a preset chip previews that variant across the whole stage —
   board, per-piece movement cards, description, and facts — without committing to it; leaving
@@ -145,6 +156,8 @@ game never rewrites your saved preset.
 - Mints its own unguessable seat capability tokens. A client-supplied token is honoured only
   when it already holds that seat, so no client can choose a weak capability for itself; a
   reconnect with a valid token keeps its colour and fences the older connection.
+- A room created with `unlisted` (the friend challenge) never enters the global lobby index.
+  The flag is persisted with the room and survives rematches, so a private room stays private.
 - Refuses to discard a game in progress. `new` is accepted only once the game is over or while
   the board is still untouched, so a losing player cannot escape a started rated result — the
   only ways out are finishing, resigning, or the abandonment alarm.
@@ -196,7 +209,8 @@ Connect:
 /ws?room=&name=&token?=&cfg?=
 ```
 
-`cfg` may carry a `pos` — a compact custom starting piece position (one char per cell: `.`
+`cfg` may carry `unlisted: true`, which keeps the room out of the public lobby. It may also
+carry a `pos` — a compact custom starting piece position (one char per cell: `.`
 empty, `R/P/S` Blue, `r/p/s` Red) — plus `own`, a matching paint layer (`B`, `R`, or `.`).
 Both are validated by the shared engine; positions require both sides and at most
 `engine.MAX_PIECES_PER_SIDE` each — one constant derived from the `perType` clamp, so the piece
@@ -229,7 +243,7 @@ Server → client:
 { type: "expired" }
 ```
 
-`state` contains board, exact starting piece/paint layers, start time, turn, actions used,
+`state` contains board, exact starting piece/paint layers, listing privacy, start time, turn, actions used,
 structured moves, game-over reason, last move, sanitized config, result, names, occupied seats,
 presence, and the rating fields below. Blue may select the config and custom position for a new
 online game; Red rematches with the current config and position. Chat is a separate transient
@@ -306,6 +320,10 @@ npm run verify
 npm run deploy:dry
 npm run deploy
 ```
+
+`deploy` applies pending D1 migrations between the version stamp and the upload, so a release
+that needs a new table cannot reach production before the table does. `deploy:dry` deliberately
+omits it — a dry run must not touch the production database.
 
 Production deploy is intentionally guarded: application files must be committed before the
 version stamp and upload can run.

@@ -27,8 +27,12 @@ describe('shared rules engine', () => {
       actionsPerTurn: 3,
       first: E.BLUE,
     });
-    expect(E.sanitizeCfg({}).retread).toBe(true);
+    // Standard does not paint, so an absent territory flag must not turn painting on.
+    expect(E.sanitizeCfg({}).territory).toBe(false);
+    expect(E.sanitizeCfg({}).retread).toBe(false);
     expect(E.sanitizeCfg({})).toMatchObject(E.PRESETS.standard);
+    expect(E.presetOf(E.sanitizeCfg({}))).toBe('standard');
+    expect(E.sanitizeCfg({ territory: true }).retread).toBe(true);
     expect(E.sanitizeCfg({ territory: true, retread: false }).retread).toBe(false);
     expect(E.sanitizeCfg({ moveStyle: 'classic' })).toMatchObject({
       rockMove: 'king',
@@ -278,34 +282,70 @@ describe('rules summary', () => {
   it('describes the variant actually passed in', () => {
     const standard = text(E.PRESETS.standard);
     expect(standard).toContain('9×9');
-    expect(standard).toContain('moves one square in any direction');
+    expect(standard).toContain('Every piece moves one square any way');
     expect(standard).toContain('rock takes scissors');
-    expect(standard).toMatch(/may stop on squares that are already painted/);
+    expect(standard).toContain('Take every enemy piece');
+    expect(standard).not.toContain('Painting');
     expect(standard).not.toMatch(/Turns/);
+    // Standard has no sliders and no jumpers, so neither caveat should appear.
+    expect(standard).not.toContain('Slides stop');
+    expect(standard).not.toContain('Jumps ignore');
 
     const melee = text(E.PRESETS.melee);
-    expect(melee).toContain('Any enemy piece may be captured');
-    expect(melee).toContain('Capture every enemy piece');
+    expect(melee).toContain('Take any enemy piece');
+    expect(melee).toContain('Take every enemy piece');
     expect(melee).not.toContain('Painting');   // no territory section at all
 
     const painters = text(E.PRESETS.painters);
-    expect(painters).toContain('ink every unclaimed square');
-    expect(painters).toContain('never landed on');
+    expect(painters).toContain('Sliders ink every unclaimed square they cross');
+    expect(painters).toContain('glided over');
+    expect(painters).toContain('Slides stop at the first piece');
 
-    expect(text(E.PRESETS.triple)).toContain('up to 3 moves');
+    expect(text(E.PRESETS.triple)).toContain('3 moves per turn');
     expect(text(E.PRESETS.skirmish)).toContain('1 rock, 1 paper and 1 scissors');
     // A shared archetype is stated once; mixed assignments are spelled out per piece.
     expect(text(E.PRESETS.cavalry)).toContain('Every piece jumps in an L');
     const mixed = text(E.PRESETS.kings);
-    expect(mixed).toContain('Rock slides any distance in a straight line');
-    expect(mixed).toContain('Scissors slides any distance diagonally');
+    expect(mixed).toContain('Rock slides in a straight line');
+    expect(mixed).toContain('Scissors slides diagonally');
     expect(mixed).not.toContain('Every piece');
+    expect(mixed).toContain('Jumps ignore');   // Paper is a knight here
+  });
+
+  it('ends a captureless position and scores it by pieces', () => {
+    const cfg = E.sanitizeCfg(E.PRESETS.standard);
+    const board = E.emptyBoard(9);
+    // Rocks facing rocks: legal moves remain, but no capture can ever happen.
+    board[4][2].piece = { type: 'rock', color: E.BLUE };
+    board[4][3].piece = { type: 'rock', color: E.BLUE };
+    board[4][6].piece = { type: 'rock', color: E.RED };
+    expect(E.capturesPossible(board, cfg)).toBe(false);
+    expect(E.allMoves(board, E.BLUE, cfg).length).toBeGreaterThan(0);
+    const game = E.newGame(cfg, board);
+    expect(game.gameOver).toBe(true);
+    expect(game.endReason).toBe('nocaptures');
+    expect(E.result(game)).toMatchObject({ B: 2, R: 1, metric: 'pieces' });
+
+    // A matchup that can still resolve keeps playing.
+    const live = E.cloneBoard(board);
+    live[4][6].piece = { type: 'scissors', color: E.RED };
+    expect(E.capturesPossible(live, cfg)).toBe(true);
+    expect(E.newGame(cfg, live).gameOver).toBe(false);
+
+    // Chess capture always leaves a capture available while both sides have pieces.
+    expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'chess' }))).toBe(true);
+    // A full Standard opening is never captureless.
+    expect(E.capturesPossible(E.blocksBoard(9, 2, 'rows'), cfg)).toBe(true);
   });
 
   it('sanitizes hostile input rather than echoing it', () => {
     const summary = text({ size: 999, perType: -4, capture: '<script>', layout: 'nope' });
     expect(summary).toContain('13×13');
     expect(summary).toContain('facing blocks near the centre');
+    // Concise: no section should run long.
+    for (const section of E.rulesSummary(E.PRESETS.standard)) {
+      expect(section.p.length, `${section.h} is verbose`).toBeLessThan(190);
+    }
     expect(summary).not.toContain('<script>');
   });
 });

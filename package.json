@@ -13,7 +13,7 @@
     "version:stamp": "node scripts/version.mjs",
     "d1:migrate": "wrangler d1 migrations apply rps-chess --remote",
     "d1:migrate:local": "wrangler d1 migrations apply rps-chess --local",
-    "deploy": "npm run verify && node scripts/assert-clean.mjs && node scripts/version.mjs && wrangler deploy",
+    "deploy": "npm run verify && node scripts/assert-clean.mjs && node scripts/version.mjs && npm run d1:migrate && wrangler deploy",
     "tail": "wrangler tail rps-chess",
     "preview": "wrangler dev --remote"
   },
