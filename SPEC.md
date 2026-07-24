@@ -112,9 +112,10 @@ turning it off makes the ruleset Custom. New games count their initial state as 
 Persisted rooms created before tracking existed seed their current state as occurrence one rather
 than inventing history that was never stored.
 
-Client-only preferences are `pieceStyle` (`line|solid|pixel|kanji`), `coords`, `hints`, theme,
-board flip, and guest name. `engine.sanitizeCfg()` clamps every rules field at browser restore and
-at the server boundary.
+Client-only preferences are `pieceStyle` (the IDs exported by `public/pieces.js`), `coords`,
+`hints`, theme, board flip, and guest name. The fourteen SVG families are colour-aware and remain
+asset-free; invalid or retired style IDs fall back to `line`. `engine.sanitizeCfg()` clamps every
+rules field at browser restore and at the server boundary.
 
 The client separates the two lifetimes: `cfg` is the live config the board plays under, which an
 online room's rules overwrite, while `ownRules` is the variant this player chose. Only `ownRules`

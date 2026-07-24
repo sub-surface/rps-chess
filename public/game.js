@@ -2,11 +2,11 @@
 // All rules live in engine.js (shared with the server), so hints match server validation.
 import * as E from '/engine.js';
 import { annotateMoves, exportJpgn } from '/notation.js';
+import { glyph, PIECE_STYLE_IDS, PIECE_STYLES } from '/pieces.js';
 const { BLUE, RED, other } = E;
 
 // ── config + identity (persisted) ───────────────────────────────────────────
 const DEFAULTS = { ...E.PRESETS.standard, coords: true, hints: true, sound: true, pieceStyle: 'line' };
-const PIECE_STYLES = ['line', 'solid', 'pixel', 'kanji'];
 const store = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* storage is optional */ } },
@@ -53,7 +53,7 @@ const cfg = {
   coords: savedCfg.coords !== false,
   hints: savedCfg.hints !== false,
   sound: savedCfg.sound !== false,
-  pieceStyle: PIECE_STYLES.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : 'line',
+  pieceStyle: PIECE_STYLE_IDS.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : 'line',
 };
 // `cfg` is the live config the board plays under, so joining an online room overwrites its
 // rules. `ownRules` is the variant this player chose, and only it is ever persisted —
@@ -110,37 +110,8 @@ const soundCap = () => blip(150, 0.09, 0.06, 'square');
 const soundEnd = () => { blip(392, 0.09, 0.05); setTimeout(() => blip(523, 0.14, 0.05), 100); };
 
 // ── piece glyphs ─────────────────────────────────────────────────────────────
-const LINE = {
-  rock: `<path d="M14 62 L26 43 L35 29 L46 41 L58 25 L70 40 L86 47 L81 67 L69 82 L38 84 L21 75 Z"/>
-         <path d="M35 29 L43 58 M58 25 L53 60 M70 40 L64 62" stroke-width="4"/><path d="M30 68 L74 65" stroke-width="4"/>`,
-  paper: `<path d="M31 17 H60 L74 31 V83 H31 Z"/><path d="M60 17 V31 H74" stroke-width="5"/><path d="M40 46 H64 M40 58 H64 M40 70 H56" stroke-width="5"/>`,
-  scissors: `<circle cx="33" cy="73" r="9" stroke-width="6"/><circle cx="67" cy="73" r="9" stroke-width="6"/><path d="M40 67 L76 21"/><path d="M60 67 L24 21"/><circle cx="50" cy="44" r="3.4" fill="currentColor" stroke="none"/>`,
-};
-const PIX = {
-  rock: ["............", "............", "....XXXX....", "...XXXXXX...", "..XXXXXXXX..", ".XXXXXXXXXX.", "XXXXXXXXXXXX", "XXXXXXXXXXXX", "XXXXXXXXXXXX", ".XXXXXXXXXX.", "............", "............"],
-  paper: ["............", "..XXXXXXXX..", "..X......X..", "..X.XXXX.X..", "..X......X..", "..X.XXXX.X..", "..X......X..", "..X.XXX..X..", "..X......X..", "..XXXXXXXX..", "............", "............"],
-  scissors: ["............", ".X........X.", "..X......X..", "...X....X...", "....X..X....", ".....XX.....", "....X..X....", "...X....X...", "..XX....XX..", "..XX....XX..", "............", "............"],
-};
-const SOLID = {
-  rock: `<path d="M18 64 L30 36 L50 22 L72 34 L84 60 L70 82 L32 82 Z"/>`,
-  paper: `<path d="M30 14 L62 14 L76 28 L76 86 L30 86 Z"/><path d="M62 14 L76 28 L62 28 Z" opacity=".45"/>
-          <path d="M38 44 H68 M38 56 H68 M38 68 H58" stroke="currentColor" stroke-width="4" opacity=".35" fill="none"/>`,
-  scissors: `<path d="M27 18 L37 13 L58 60 L48 66 Z"/><path d="M73 18 L63 13 L42 60 L52 66 Z"/>
-             <circle cx="34" cy="76" r="10"/><circle cx="66" cy="76" r="10"/>`,
-};
-const KANJI = { rock: '石', paper: '紙', scissors: '鋏' };
-function glyph(type, color, style) {
-  style = style || cfg.pieceStyle;
-  if (style === 'pixel') {
-    const m = PIX[type]; let cells = '';
-    for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) if (m[y][x] === 'X') cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
-    return `<svg class="pc pix pc-${color}" viewBox="0 0 12 12" fill="currentColor" stroke="none">${cells}</svg>`;
-  }
-  if (style === 'solid') return `<svg class="pc solid pc-${color}" viewBox="0 0 100 100" fill="currentColor" stroke="none">${SOLID[type]}</svg>`;
-  if (style === 'kanji') return `<svg class="pc kanji pc-${color}" viewBox="0 0 100 100" fill="currentColor" stroke="none"><text x="50" y="57" text-anchor="middle" dominant-baseline="central" font-size="70" font-weight="600">${KANJI[type]}</text></svg>`;
-  return `<svg class="pc pc-${color}" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7">${LINE[type]}</svg>`;
-}
-const legendGlyph = (type) => glyph(type, 'B').replace('pc-B', 'pc');
+const pieceGlyph = (type, color, style = cfg.pieceStyle) => glyph(type, color, style);
+const legendGlyph = (type) => pieceGlyph(type, 'B').replace('pc-B', 'pc');
 const PIECE_NAMES = { rock: 'Rock', paper: 'Paper', scissors: 'Scissors' };
 const moveDescription = (type, rules = cfg) => E.MOVEMENT_DESCRIPTIONS[E.movementFor(rules, type)];
 
@@ -347,7 +318,7 @@ function render() {
     if (s.btn.className !== cls) s.btn.className = cls;
     const pieceKey = cell.piece ? `${cell.piece.color}:${cell.piece.type}:${cfg.pieceStyle}` : '';
     if (s.pieceKey !== pieceKey) {
-      s.pcw.innerHTML = cell.piece ? glyph(cell.piece.type, cell.piece.color) : '';
+      s.pcw.innerHTML = cell.piece ? pieceGlyph(cell.piece.type, cell.piece.color) : '';
       s.pieceKey = pieceKey;
     }
     const label = cell.piece
@@ -506,7 +477,7 @@ function ghostFor(piece, sqEl) {
   const g = document.createElement('div');
   g.className = 'drag-ghost';
   g.style.width = rect.width + 'px'; g.style.height = rect.height + 'px';
-  g.innerHTML = glyph(piece.type, piece.color);
+  g.innerHTML = pieceGlyph(piece.type, piece.color);
   document.body.appendChild(g);
   return g;
 }
@@ -1022,7 +993,7 @@ function buildPalette() {
   const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'pal move'; mv.textContent = '✥'; mv.title = 'Move pieces'; mv.dataset.move = '1';
   mv.onclick = () => { tool = 'move'; markTool(); render(); }; pal.appendChild(mv);
   for (const color of [BLUE, RED]) for (const type of ['rock', 'paper', 'scissors']) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'pal'; b.dataset.type = type; b.dataset.color = color; b.innerHTML = glyph(type, color);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pal'; b.dataset.type = type; b.dataset.color = color; b.innerHTML = pieceGlyph(type, color);
     b.onclick = () => { tool = { type, color }; edSel = null; edTargets = []; markTool(); render(); }; pal.appendChild(b);
   }
   const er = document.createElement('button'); er.type = 'button'; er.className = 'pal erase'; er.textContent = 'erase'; er.dataset.erase = '1';
@@ -1189,7 +1160,7 @@ $('ed-rotate').onclick = () => {
 // ── screens / homepage ────────────────────────────────────────────────────────
 let previewPiece = 'rock';
 function previewGlyph(type, color, x, y, size) {
-  return glyph(type, color).replace('<svg ', `<svg x="${x}" y="${y}" width="${size}" height="${size}" `);
+  return pieceGlyph(type, color).replace('<svg ', `<svg x="${x}" y="${y}" width="${size}" height="${size}" `);
 }
 function previewStart(rules) {
   let seed = rules.size * 1009 + rules.perType * 97;
@@ -1734,14 +1705,13 @@ $('analysis-btn').onclick = () => {
 };
 
 // ── appearance ────────────────────────────────────────────────────────────────
-const PSTYLES = [['line', 'Line'], ['solid', 'Solid'], ['pixel', 'Pixel'], ['kanji', 'Kanji']];
 function buildPStyle() {
   const el = $('pstyle'); el.innerHTML = '';
-  for (const [val, label] of PSTYLES) {
-    const o = document.createElement('button'); o.type = 'button'; o.className = 'opt'; o.dataset.style = val;
-    o.innerHTML = `<div class="row">${glyph('rock', 'R', val)}${glyph('paper', 'B', val)}${glyph('scissors', 'R', val)}</div><div class="nm">${label}</div>`;
+  for (const { id, label } of PIECE_STYLES) {
+    const o = document.createElement('button'); o.type = 'button'; o.className = 'opt'; o.dataset.style = id;
+    o.innerHTML = `<div class="row">${pieceGlyph('rock', 'R', id)}${pieceGlyph('paper', 'B', id)}${pieceGlyph('scissors', 'R', id)}</div><div class="nm">${label}</div>`;
     o.onclick = () => {
-      cfg.pieceStyle = val; saveCfg(); markPStyle(); renderVariantPreview(); renderHero();
+      cfg.pieceStyle = id; saveCfg(); markPStyle(); renderVariantPreview(); renderHero();
       if (curSize) renderLegend();
       if (paletteBuilt) buildPalette();
       if (document.body.dataset.screen === 'game') render();
@@ -1822,7 +1792,7 @@ fetch('/version.json').then(r => r.json()).then(v => { if (v && v.short) { const
 // The hero shows the beats-cycle in the player's chosen piece style.
 function renderHero() {
   $('hero-glyphs').innerHTML = ['rock', 'scissors', 'paper']
-    .map((t) => glyph(t, 'N')).join('<span class="hg-sep">▸</span>');
+    .map((t) => pieceGlyph(t, 'N')).join('<span class="hg-sep">▸</span>');
 }
 
 // ── boot ────────────────────────────────────────────────────────────────────

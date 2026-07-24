@@ -56,7 +56,9 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   how-to-play dialog. It is generated from the rules engine, so it can never go stale.
 - The Standard 9×9 start uses centred facing blocks: Blue occupies b4–c6, with Rock/Paper/Scissors
   ordered vertically, and Red uses its 180° mirror on g4–h6.
-- Four piece styles — line, solid, pixel, and kanji (石 紙 鋏) — in the Preferences dialog.
+- Fourteen crisp, colour-aware piece styles in Preferences: line, solid, pixel, kanji (石 紙 鋏),
+  rounded kawaii, chunky blob, geometric, hand-drawn, origami, sticker, retro arcade, halftone,
+  ghost line, and long shadow.
 - The home selector shows a live variant stage: board preview with movement arrows, the actual
   starting formation and ownership, per-piece movement cards, action count, first player,
   capture rule, and goal — all generated from the same rules engine used during play. Hovering
