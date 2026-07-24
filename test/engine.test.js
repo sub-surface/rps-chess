@@ -19,9 +19,57 @@ describe('shared rules engine', () => {
       capture: 'rps',
       territory: false,
       retread: false,
+      trail: false,
+      layout: 'rows',
       actionsPerTurn: 3,
       first: E.BLUE,
     });
+  });
+
+  it('paints an ink trail over unclaimed squares only', () => {
+    const config = E.sanitizeCfg({ size: 6, moveStyle: 'queens', territory: true, trail: true, retread: true });
+    const board = E.emptyBoard(6);
+    board[5][0].piece = { type: 'paper', color: E.BLUE };
+    board[5][2].owner = E.RED;
+    board[0][5].piece = { type: 'rock', color: E.RED };
+    const game = E.newGame(config, board);
+    E.applyMove(game, { fr: 5, fc: 0, tr: 5, tc: 4 });
+    expect(game.board[5][1].owner).toBe(E.BLUE);   // trail claims fresh ground
+    expect(game.board[5][2].owner).toBe(E.RED);    // trail never repaints
+    expect(game.board[5][3].owner).toBe(E.BLUE);
+    expect(game.board[5][4].owner).toBe(E.BLUE);   // landing square
+  });
+
+  it('round-trips position codes and rejects malformed ones', () => {
+    const board = E.blocksBoard(9, 2, 'corners');
+    const pos = E.encodePos(board);
+    expect(pos).toHaveLength(81);
+    const decoded = E.decodePos(pos, 9);
+    expect(E.encodePos(decoded)).toBe(pos);
+    expect(decoded[8][0].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(decoded[8][0].owner).toBe(E.BLUE);
+
+    expect(E.decodePos(pos, 6)).toBeNull();                       // wrong length
+    expect(E.decodePos(pos.replace('R', 'X'), 9)).toBeNull();     // bad glyph
+    expect(E.decodePos('.'.repeat(81), 9)).toBeNull();            // no pieces
+    expect(E.decodePos('R' + '.'.repeat(80), 9)).toBeNull();      // one-sided
+    expect(E.decodePos('R'.repeat(40) + 'r'.repeat(41), 9)).toBeNull(); // over cap
+  });
+
+  it('builds symmetric starting boards for every layout', () => {
+    for (const layout of ['rows', 'corners', 'scattered']) {
+      const board = E.blocksBoard(9, 2, layout);
+      const counts = E.pieceCounts(board);
+      expect(counts).toEqual({ B: 6, R: 6 });
+      for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+        const piece = board[r][c].piece;
+        if (!piece) continue;
+        const mirror = board[8 - r][8 - c].piece;
+        expect(mirror, `${layout} not symmetric at ${r},${c}`).toBeTruthy();
+        expect(mirror.type).toBe(piece.type);
+        expect(mirror.color).toBe(E.other(piece.color));
+      }
+    }
   });
 
   it('derives classic and queen movement from the selected parameters', () => {
@@ -84,6 +132,9 @@ describe('shared rules engine', () => {
       { size: 9, moveStyle: 'kings', capture: 'rps', territory: false, actionsPerTurn: 2 },
       { size: 10, moveStyle: 'queens', capture: 'chess', territory: true, retread: true, actionsPerTurn: 3 },
       { size: 13, moveStyle: 'classic', capture: 'chess', territory: false, actionsPerTurn: 1 },
+      { size: 9, moveStyle: 'queens', capture: 'rps', territory: true, trail: true, actionsPerTurn: 1 },
+      { size: 7, moveStyle: 'classic', capture: 'rps', territory: true, layout: 'scattered', actionsPerTurn: 1 },
+      { size: 8, moveStyle: 'classic', capture: 'rps', territory: true, layout: 'corners', trail: true, actionsPerTurn: 2 },
     ];
 
     for (const raw of variants) {

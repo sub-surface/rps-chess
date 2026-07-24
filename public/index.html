@@ -29,7 +29,7 @@
       <span class="word">JANKEN<em>rps · chess</em></span>
     </a>
     <nav class="tools">
-      <button id="pieces-btn" class="tbtn" title="Appearance">pieces</button>
+      <button id="pieces-btn" class="tbtn" title="Preferences">options</button>
       <button id="flip-btn" class="tbtn gameonly" title="Flip board">flip</button>
       <button id="theme-btn" class="tbtn" title="Toggle theme">theme</button>
     </nav>
@@ -42,70 +42,85 @@
       <svg class="tetro t2" viewBox="0 0 40 20"><rect x="0" y="0" width="10" height="10"/><rect x="10" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/><rect x="30" y="0" width="10" height="10"/></svg>
       <svg class="tetro t3" viewBox="0 0 30 20"><rect x="0" y="0" width="10" height="10"/><rect x="10" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/></svg>
       <svg class="tetro t4" viewBox="0 0 20 20"><rect x="0" y="0" width="10" height="10"/><rect x="10" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/></svg>
+      <svg class="tetro t5" viewBox="0 0 30 20"><rect x="10" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/></svg>
+      <svg class="tetro t6" viewBox="0 0 20 30"><rect x="0" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="0" y="20" width="10" height="10"/><rect x="10" y="20" width="10" height="10"/></svg>
     </div>
     <div class="home-inner">
       <div class="hero">
         <h1>JANKEN</h1>
         <p>Rock–paper–scissors, played like chess. Choose a variant and paint the board.</p>
+        <div class="hero-glyphs" id="hero-glyphs" aria-hidden="true"></div>
       </div>
 
-      <section class="card config">
+      <section class="config">
         <div class="presets" id="presets">
-          <button class="chip" data-preset="standard">Standard</button>
-          <button class="chip" data-preset="kings">King's field</button>
-          <button class="chip" data-preset="custom">Custom</button>
+          <button class="chip" data-preset="standard" title="Classic pieces · claim the most ground">Standard</button>
+          <button class="chip" data-preset="kings" title="Everything steps one square · last army standing">King's field</button>
+          <button class="chip" data-preset="painters" title="Queens with ink trails · flood the board">Painters</button>
+          <button class="chip" data-preset="custom" title="Your rules">Custom</button>
         </div>
-        <div class="config-body">
-          <div class="config-grid">
-            <label class="frow"><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
-            <label class="frow"><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
-            <label class="frow"><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
-            <label class="frow"><span>Movement</span>
-              <select id="s-move">
-                <option value="classic">Classic — R king, P rook, S bishop</option>
-                <option value="kings">All kings — every piece steps 1</option>
-                <option value="queens">All queens — every piece slides far</option>
-              </select>
-            </label>
-            <label class="frow"><span>Capturing</span>
-              <select id="s-cap">
-                <option value="rps">RPS — you only take what you beat</option>
-                <option value="chess">Chess — capture anything</option>
-              </select>
-            </label>
-            <label class="frow"><span>Goal</span>
-              <select id="s-terr">
-                <option value="territory">Territory — paint the most squares</option>
-                <option value="elimination">Elimination — capture all pieces</option>
-              </select>
-            </label>
-            <div class="frow child" id="retread-row"><span>Re-tread</span>
-              <label class="chk"><input type="checkbox" id="s-retread"> may re-enter your own squares</label>
-            </div>
-            <label class="frow"><span>First move</span>
-              <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
-            </label>
-            <div class="frow toggles">
-              <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
-              <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
-            </div>
-          </div>
-          <aside class="variant-preview" aria-labelledby="preview-title">
-            <div class="preview-head">
-              <span id="preview-title">Move preview</span>
-              <div class="preview-tabs" id="preview-tabs" aria-label="Preview piece">
-                <button type="button" data-preview-piece="rock" aria-label="Preview Rock" title="Rock" aria-pressed="true">R</button>
-                <button type="button" data-preview-piece="paper" aria-label="Preview Paper" title="Paper" aria-pressed="false">P</button>
-                <button type="button" data-preview-piece="scissors" aria-label="Preview Scissors" title="Scissors" aria-pressed="false">S</button>
+        <details class="custom-rules" id="config-details">
+          <summary>
+            <span class="variant-line" id="variant-line"></span>
+            <span class="caret">customise</span>
+          </summary>
+          <div class="config-body">
+            <div class="config-grid">
+              <label class="frow"><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
+              <label class="frow"><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
+              <label class="frow"><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
+              <label class="frow"><span>Movement</span>
+                <select id="s-move">
+                  <option value="classic">Classic — R king, P rook, S bishop</option>
+                  <option value="kings">All kings — every piece steps 1</option>
+                  <option value="queens">All queens — every piece slides far</option>
+                </select>
+              </label>
+              <label class="frow"><span>Capturing</span>
+                <select id="s-cap">
+                  <option value="rps">RPS — you only take what you beat</option>
+                  <option value="chess">Chess — capture anything</option>
+                </select>
+              </label>
+              <label class="frow"><span>Goal</span>
+                <select id="s-terr">
+                  <option value="territory">Territory — paint the most squares</option>
+                  <option value="elimination">Elimination — capture all pieces</option>
+                </select>
+              </label>
+              <div class="frow child" id="retread-row"><span>Re-tread</span>
+                <label class="chk"><input type="checkbox" id="s-retread"> may stop on painted squares</label>
               </div>
+              <div class="frow child" id="trail-row"><span>Ink trail</span>
+                <label class="chk"><input type="checkbox" id="s-trail"> sliders ink squares they pass over</label>
+              </div>
+              <label class="frow"><span>Layout</span>
+                <select id="s-layout">
+                  <option value="rows">Rows — centred blocks</option>
+                  <option value="corners">Corners — diagonal stand-off</option>
+                  <option value="scattered">Scattered — random, symmetric</option>
+                </select>
+              </label>
+              <label class="frow"><span>First move</span>
+                <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
+              </label>
             </div>
-            <svg id="preview-board" class="preview-board" viewBox="0 0 240 240" role="img" aria-labelledby="preview-title preview-description"></svg>
-            <p id="preview-description" class="preview-description" aria-live="polite"></p>
-            <div class="preview-facts" id="preview-facts"></div>
-          </aside>
-        </div>
-        <p class="variant-line" id="variant-line"></p>
-        <button class="linklike edit-link" id="custom-btn">Set up a custom starting position →</button>
+            <aside class="variant-preview" aria-labelledby="preview-title">
+              <div class="preview-head">
+                <span id="preview-title">Move preview</span>
+                <div class="preview-tabs" id="preview-tabs" aria-label="Preview piece">
+                  <button type="button" data-preview-piece="rock" aria-label="Preview Rock" title="Rock" aria-pressed="true">R</button>
+                  <button type="button" data-preview-piece="paper" aria-label="Preview Paper" title="Paper" aria-pressed="false">P</button>
+                  <button type="button" data-preview-piece="scissors" aria-label="Preview Scissors" title="Scissors" aria-pressed="false">S</button>
+                </div>
+              </div>
+              <svg id="preview-board" class="preview-board" viewBox="0 0 240 240" role="img" aria-labelledby="preview-title preview-description"></svg>
+              <p id="preview-description" class="preview-description" aria-live="polite"></p>
+              <div class="preview-facts" id="preview-facts"></div>
+            </aside>
+          </div>
+          <button class="linklike edit-link" id="custom-btn">Analysis board — set up any position →</button>
+        </details>
       </section>
 
       <section class="play">
@@ -115,10 +130,14 @@
         <button class="btn big primary" data-mode="online">Play online ▸</button>
       </section>
 
-      <section class="card lobby">
+      <section class="lobby">
         <div class="lobby-head">
-          <label class="namefield"><span>You are</span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
-          <button id="refresh-lobby" class="tbtn" title="Refresh">open games ⟳</button>
+          <span class="lh">Open games <button id="refresh-lobby" class="tbtn" title="Refresh open games">⟳</button> <button id="quick-btn" class="tbtn" title="Join the closest-rated open game">quick match</button></span>
+          <span class="lobby-tools">
+            <label class="namefield"><span>you are</span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
+            <button id="acct-btn" class="tbtn accent" title="Create an account to play rated games" hidden>get rated →</button>
+            <button id="acct-chip" class="tbtn" title="Your profile" hidden>★ 1200</button>
+          </span>
         </div>
         <ul class="games" id="games"></ul>
         <p class="lobby-empty" id="lobby-empty" aria-live="polite">No open games right now — create one and share the link.</p>
@@ -128,9 +147,11 @@
 
   <!-- ══════════════ GAME ══════════════ -->
   <main class="app" id="game" hidden>
-    <section class="board-wrap">
+    <section class="board-wrap" id="board-wrap">
       <div class="board" id="board" role="grid" aria-label="Game board"></div>
+      <svg class="anno" id="anno" aria-hidden="true"></svg>
       <div class="banner" id="banner" hidden></div>
+      <button class="board-grip" id="board-grip" aria-label="Resize board" title="Drag to resize · double-click to reset"></button>
     </section>
 
     <aside class="panel" id="panel">
@@ -169,7 +190,7 @@
 
       <div class="online" id="online" hidden>
         <div class="oinfo">
-          <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span></div>
+          <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span><span class="rtag" id="rtag" hidden>rated</span></div>
           <div class="oshare"><input id="oshare" readonly aria-label="Room link" /><button id="ocopy" class="tbtn">copy link</button></div>
         </div>
       </div>
@@ -178,19 +199,40 @@
     </aside>
 
     <aside class="panel editpanel" id="editpanel" hidden>
-      <h3 class="eh">Set up a position</h3>
+      <h3 class="eh">Analysis board</h3>
       <div class="palette" id="palette"></div>
       <div class="ed-actions">
         <button class="btn ghost sm" id="ed-mirror" title="Copy Blue to Red">Mirror ⤾</button>
-        <button class="btn ghost sm" id="ed-blocks" title="Reset to standard">Standard</button>
+        <button class="btn ghost sm" id="ed-blocks" title="Reset to the standard start">Standard</button>
         <button class="btn ghost sm" id="ed-clear" title="Remove all">Clear</button>
       </div>
-      <p class="hint">Pick a piece, click squares to place or remove it.</p>
+      <p class="hint">Move pieces freely — either side, any time, current rules apply. Pick a palette piece to place it. Right-click draws arrows; shift or alt recolours.</p>
+      <label class="frow"><span>To move</span><select id="ed-first"><option value="B">Blue</option><option value="R">Red</option></select></label>
       <div class="controls">
-        <button id="ed-start" class="btn">Start game</button>
-        <button id="ed-cancel" class="btn ghost">Cancel</button>
+        <button id="ed-start" class="btn">Hot-seat</button>
+        <button id="ed-bot" class="btn">vs Bot</button>
+        <button id="ed-chal" class="btn primary">Challenge ▸</button>
+      </div>
+      <div class="controls">
+        <button id="ed-copy" class="btn ghost sm" title="Copy the position code">Copy position</button>
+        <button id="ed-cancel" class="btn ghost sm">⌂ Home</button>
       </div>
     </aside>
+  </main>
+
+  <!-- ══════════════ PROFILE ══════════════ -->
+  <main class="pfscreen" id="profilepage" hidden>
+    <div class="pf-inner">
+      <button class="linklike" id="pf-back">← back</button>
+      <header class="pf-head">
+        <h2 id="pf-name">…</h2>
+        <div class="pf-rating"><b id="pf-rating">—</b><span>rating</span></div>
+      </header>
+      <div class="pf-stats" id="pf-stats"></div>
+      <h3 class="lh">Recent rated games</h3>
+      <ol class="pf-matches" id="pf-matches"></ol>
+      <p class="lobby-empty" id="pf-empty" hidden>No rated games yet — win some.</p>
+    </div>
   </main>
 
   <footer class="foot">
@@ -216,16 +258,24 @@
       <h3>Territory</h3>
       <p>Every square a piece lands on is <b>painted your colour</b>. You can only stop on empty <b>unclaimed</b> ground or an enemy — so every move gains territory and the board fills. Most squares wins.</p>
       <h3>Variants</h3>
-      <p>Change board size, movement, up to <b>3 actions per turn</b>, or switch to pure <b>elimination</b> — all from the home menu.</p>
+      <p>Change board size, movement, or starting layout, take up to <b>3 actions per turn</b>, let sliders leave an <b>ink trail</b>, or switch to pure <b>elimination</b> — all from the home menu.</p>
       <button class="btn" value="close">Got it</button>
     </form>
   </dialog>
 
   <dialog id="pieces" class="modal">
     <form method="dialog">
-      <h2>Appearance</h2>
+      <h2>Preferences</h2>
       <h3>Piece style</h3>
       <div class="pstyle" id="pstyle"></div>
+      <h3>Board</h3>
+      <div class="prefrow">
+        <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
+        <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
+        <label class="chk"><input type="checkbox" id="s-sound" checked> Sounds</label>
+      </div>
+      <h3>Account</h3>
+      <div class="acct-box" id="acct-box"></div>
       <button class="btn" value="close">Done</button>
     </form>
   </dialog>

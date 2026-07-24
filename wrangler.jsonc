@@ -25,6 +25,14 @@
       { "name": "LOBBY", "class_name": "Lobby" }
     ]
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rps-chess",
+      "database_id": "af563d71-f96d-4758-9bad-1215443feef5",
+      "migrations_dir": "migrations"
+    }
+  ],
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GameRoom", "Lobby"] }
   ],

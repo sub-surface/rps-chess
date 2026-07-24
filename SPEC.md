@@ -29,8 +29,16 @@ Sliding pieces are blocked by pieces, but may pass over empty painted squares.
   empty unclaimed square or a capturable enemy. Most squares wins.
   - `retread` permits stopping on painted empty squares. The no-progress guard still guarantees
     termination.
+  - `trail` makes sliding moves paint the **unclaimed** squares they pass over (never repainting
+    claimed ground).
 - **elimination**: there is no painting. Capture all opposing pieces, or hold the most when a
   double-pass/stall ends the game.
+
+### Starting layout (`layout`)
+
+All layouts have 180° rotational symmetry: **rows** (centred blocks, default), **corners**
+(blocks anchored to opposite corners), and **scattered** (random cells within each player's near
+half — fair because the generated board itself is the shared state).
 
 ### Turns (`actionsPerTurn`)
 
@@ -42,18 +50,20 @@ no-progress guard.
 
 - **Standard**: 9×9, classic, RPS capture, territory, one action.
 - **King's field**: 9×9, all kings, RPS capture, elimination, one action.
+- **Painters**: 9×9, all queens, RPS capture, territory with ink trails, one action.
 - Overriding any rules field produces **Custom**.
 
 ## 2. Config schema
 
 ```text
 size 6..13 · perType 1..4 · moveStyle classic|kings|queens · capture rps|chess
-territory bool · retread bool · actionsPerTurn 1..3 · first B|R
+territory bool · retread bool · trail bool · layout rows|corners|scattered
+actionsPerTurn 1..3 · first B|R
 ```
 
-Client-only preferences are `pieceStyle` (`line|pixel`), `coords`, `hints`, theme, board flip, and
-guest name. `engine.sanitizeCfg()` clamps every rules field at browser restore and at the server
-boundary.
+Client-only preferences are `pieceStyle` (`line|solid|pixel|kanji`), `coords`, `hints`, theme,
+board flip, and guest name. `engine.sanitizeCfg()` clamps every rules field at browser restore and
+at the server boundary.
 
 ## 3. Client architecture
 
@@ -110,6 +120,10 @@ Connect:
 /ws?room=&name=&token?=&cfg?=
 ```
 
+`cfg` may carry a `pos` — a compact custom starting position (one char per cell: `.` empty,
+`R/P/S` Blue, `r/p/s` Red), validated by `engine.decodePos()` (both sides present, ≤ 12 pieces
+each). Challenge rooms keep their position across rematches.
+
 The server replies:
 
 ```text
@@ -120,7 +134,8 @@ Client → server:
 
 ```text
 { type: "move", from: [r,c], to: [r,c] }
-{ type: "new", cfg }
+{ type: "new", cfg, pos? }
+{ type: "auth", id, secret }
 { type: "sync" }
 ```
 
@@ -133,8 +148,27 @@ Server → client:
 ```
 
 `state` contains board, turn, actions used, moves, game-over status, last move, sanitized config,
-result, names, occupied seats, and presence. Blue may select the config for a new online game;
-Red rematches with the current config.
+result, names, occupied seats, presence, and the rating fields below. Blue may select the config
+for a new online game; Red rematches with the current config.
+
+## 5b. Accounts and ratings (D1)
+
+Accounts are device-bound pseudonyms in D1 (`accounts`, `matches` tables; `migrations/`): an
+unguessable id plus a secret whose SHA-256 hash is stored. Endpoints (all `no-store`):
+
+- `POST /api/account` `{name}` → `{id, secret, name, rating}` — mint an account.
+- `POST /api/account/verify` `{id, secret}` → `{account}` — used by the transfer-code restore.
+- `POST /api/account/name` `{id, secret, name}` — rename.
+- `GET /api/profile?id=` → `{account, matches}` — public stats plus the 20 most recent rated games.
+
+A seated player binds an account by sending `auth` over the socket after `welcome`. When **both**
+seats are bound at the first move, the game snapshots as **rated** with a fresh `matchId`. On game
+over (or 30-second disconnect abandonment, adjudicated by alarm while the opponent is present),
+`finishRated` applies plain Elo (K=32, draws 0.5) — one D1 batch transaction covers the match
+insert and both rating updates, and the match-id primary key makes duplicate reports roll back
+harmlessly. `state` then carries `rated`, `winner`, `endReason`, `deltas`, `ratings`, `accounts`,
+and `pos`; the lobby row carries the host's rating for Elo-proximity quick match. Games involving
+any guest stay unrated.
 
 ## 6. Verification and release
 

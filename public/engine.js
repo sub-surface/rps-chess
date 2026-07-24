@@ -7,6 +7,8 @@
 //   capture                  'rps' (only what you beat) | 'chess' (always)
 //   territory                true = paint squares & race for area; false = elimination
 //   retread                  (territory only) may stop on already-claimed squares
+//   trail                    (territory only) sliders ink unclaimed squares they pass over
+//   layout                   'rows' (centred blocks) | 'corners' | 'scattered' (random, symmetric)
 //   first                    'B' | 'R'
 
 export const BLUE = 'B', RED = 'R';
@@ -30,16 +32,54 @@ export const sqName = (r, c, size) => fileL(c) + (size - r);
 export const emptyBoard = (S) => Array.from({ length: S }, () => Array.from({ length: S }, () => ({ owner: null, piece: null })));
 export const cloneBoard = (b) => b.map(row => row.map(c => ({ owner: c.owner, piece: c.piece ? { ...c.piece } : null })));
 
-export function blocksBoard(size, per) {
+// Starting position with 180° rotational symmetry. 'scattered' randomises within each
+// player's near half — fair because the whole board is shared state, not re-derived.
+export function blocksBoard(size, per, layout = 'rows') {
   const b = emptyBoard(size);
-  const c0 = Math.floor((size - per) / 2);
+  const put = (r, c, type) => {
+    b[r][c] = { owner: BLUE, piece: { type, color: BLUE } };
+    b[size - 1 - r][size - 1 - c] = { owner: RED, piece: { type, color: RED } };
+  };
   const rows = ['rock', 'paper', 'scissors'];
+  if (layout === 'scattered') {
+    const cells = [];
+    for (let r = Math.floor(size / 2) + 1; r < size; r++) for (let c = 0; c < size; c++) cells.push([r, c]);
+    for (let i = cells.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [cells[i], cells[j]] = [cells[j], cells[i]]; }
+    let k = 0;
+    for (const type of rows) for (let n = 0; n < per; n++) put(cells[k][0], cells[k++][1], type);
+    return b;
+  }
+  const c0 = layout === 'corners' ? 0 : Math.floor((size - per) / 2);
   for (let i = 0; i < rows.length; i++)
-    for (let k = 0; k < per; k++) {
-      const r = size - 1 - i, c = c0 + k;
-      b[r][c] = { owner: BLUE, piece: { type: rows[i], color: BLUE } };
-      b[size - 1 - r][size - 1 - c] = { owner: RED, piece: { type: rows[i], color: RED } };
-    }
+    for (let k = 0; k < per; k++) put(size - 1 - i, c0 + k, rows[i]);
+  return b;
+}
+
+// Compact start-position code: one char per cell, row-major. '.' is empty;
+// R/P/S are Blue rock/paper/scissors, lowercase for Red. Pieces stand on their
+// own colour (like blocksBoard); everything else starts unclaimed.
+const TYPE_OF = { R: 'rock', P: 'paper', S: 'scissors' };
+export function encodePos(board) {
+  return board.map((row) => row.map((cell) => {
+    if (!cell.piece) return '.';
+    const letter = LETTER[cell.piece.type];
+    return cell.piece.color === BLUE ? letter : letter.toLowerCase();
+  }).join('')).join('');
+}
+export function decodePos(str, size) {
+  if (typeof str !== 'string' || str.length !== size * size) return null;
+  const b = emptyBoard(size);
+  let blue = 0, red = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '.') continue;
+    const type = TYPE_OF[ch.toUpperCase()];
+    if (!type) return null;
+    const color = ch === ch.toUpperCase() ? BLUE : RED;
+    if (color === BLUE) blue++; else red++;
+    b[(i / size) | 0][i % size] = { owner: color, piece: { type, color } };
+  }
+  if (!blue || !red || blue > 12 || red > 12) return null;
   return b;
 }
 
@@ -145,8 +185,15 @@ export function resolveTurn(game) {
 export function applyMove(game, m) {
   const cfg = game.cfg, b = game.board, p = b[m.fr][m.fc].piece;
   const cap = !!b[m.tr][m.tc].piece;
-  const claimedNeutral = cfg.territory && !cap && b[m.tr][m.tc].owner === null;
+  let claimedNeutral = cfg.territory && !cap && b[m.tr][m.tc].owner === null;
   b[m.fr][m.fc].piece = null;
+  if (cfg.territory && cfg.trail) {
+    // Ink trail: a slide paints the unclaimed squares it glides over (never repaints).
+    const dr = Math.sign(m.tr - m.fr), dc = Math.sign(m.tc - m.fc);
+    for (let r = m.fr + dr, c = m.fc + dc; r !== m.tr || c !== m.tc; r += dr, c += dc) {
+      if (b[r][c].owner === null) { b[r][c].owner = p.color; claimedNeutral = true; }
+    }
+  }
   b[m.tr][m.tc] = { owner: cfg.territory ? p.color : b[m.tr][m.tc].owner, piece: p };
   game.lastMove = { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc };
   game.moves.push({ c: p.color, t: `${LETTER[p.type]} ${sqName(m.fr, m.fc, b.length)}${cap ? '×' : '–'}${sqName(m.tr, m.tc, b.length)}` });
@@ -162,18 +209,19 @@ export function applyMove(game, m) {
 }
 
 export function newGame(cfg, board) {
-  const g = { board: board || blocksBoard(cfg.size, cfg.perType), turn: cfg.first, moves: [], passStreak: 0, gameOver: false, lastMove: null, dry: 0, acts: 0, cfg };
+  const g = { board: board || blocksBoard(cfg.size, cfg.perType, cfg.layout), turn: cfg.first, moves: [], passStreak: 0, gameOver: false, lastMove: null, dry: 0, acts: 0, cfg };
   resolveTurn(g);
   return g;
 }
 
 export const PRESETS = {
-  standard: { size: 9, perType: 2, moveStyle: 'classic', capture: 'rps', territory: true, retread: false, actionsPerTurn: 1, first: BLUE },
-  kings: { size: 9, perType: 2, moveStyle: 'kings', capture: 'rps', territory: false, retread: false, actionsPerTurn: 1, first: BLUE },
+  standard: { size: 9, perType: 2, moveStyle: 'classic', capture: 'rps', territory: true, retread: false, trail: false, layout: 'rows', actionsPerTurn: 1, first: BLUE },
+  kings: { size: 9, perType: 2, moveStyle: 'kings', capture: 'rps', territory: false, retread: false, trail: false, layout: 'rows', actionsPerTurn: 1, first: BLUE },
+  painters: { size: 9, perType: 2, moveStyle: 'queens', capture: 'rps', territory: true, retread: false, trail: true, layout: 'rows', actionsPerTurn: 1, first: BLUE },
 };
 // Which preset (if any) a cfg currently matches, else 'custom'.
 export function presetOf(cfg) {
-  for (const k in PRESETS) if (['size', 'perType', 'moveStyle', 'capture', 'territory', 'retread', 'actionsPerTurn', 'first'].every(f => PRESETS[k][f] === cfg[f])) return k;
+  for (const k in PRESETS) if (['size', 'perType', 'moveStyle', 'capture', 'territory', 'retread', 'trail', 'layout', 'actionsPerTurn', 'first'].every(f => PRESETS[k][f] === cfg[f])) return k;
   return 'custom';
 }
 
@@ -181,6 +229,8 @@ export function presetOf(cfg) {
 export function variantLabel(cfg) {
   const parts = [`${cfg.size}×${cfg.size}`, cfg.moveStyle, cfg.capture === 'rps' ? 'RPS' : 'chess-capture'];
   parts.push(cfg.territory ? (cfg.retread ? 'territory+' : 'territory') : 'elimination');
+  if (cfg.trail) parts.push('ink');
+  if (cfg.layout && cfg.layout !== 'rows') parts.push(cfg.layout);
   if ((cfg.actionsPerTurn || 1) > 1) parts.push(`${cfg.actionsPerTurn} actions`);
   return parts.join(' · ');
 }
@@ -197,6 +247,8 @@ export function sanitizeCfg(raw) {
     capture: one(raw.capture, ['rps', 'chess'], 'rps'),
     territory: raw.territory !== false,
     retread: !!raw.retread && raw.territory !== false,
+    trail: !!raw.trail && raw.territory !== false,
+    layout: one(raw.layout, ['rows', 'corners', 'scattered'], 'rows'),
     actionsPerTurn: clamp(raw.actionsPerTurn, 1, 3, 1),
     first: raw.first === RED ? RED : BLUE,
   };

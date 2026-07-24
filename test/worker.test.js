@@ -81,6 +81,19 @@ describe('GameRoom Durable Object', () => {
     spectator.socket.close(1000, 'done');
   });
 
+  it('honours a valid custom starting position and keeps it for rematches', async () => {
+    const room = 'challenge-pos';
+    const pos = 'R' + '.'.repeat(34) + 's';   // 6×6: Blue rock at a6-corner, Red scissors opposite
+    const cfg = { ...E.PRESETS.standard, size: 6, pos };
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', cfg });
+    expect(host.welcome.state.pos).toBe(pos);
+    expect(host.welcome.state.board[0][0].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(host.welcome.state.board[5][5].piece).toEqual({ type: 'scissors', color: E.RED });
+    expect(E.pieceCounts(host.welcome.state.board)).toEqual({ B: 1, R: 1 });
+    host.socket.close(1000, 'done');
+  });
+
   it('reclaims the same seat token and fences its older connection', async () => {
     const room = 'seat-reconnect';
     const stub = env.ROOM.getByName(room);
@@ -138,6 +151,110 @@ describe('GameRoom Durable Object', () => {
     await runInDurableObject(stub, async (_instance, state) => {
       expect(await state.storage.get('room')).toBeUndefined();
     });
+    host.socket.close(1000, 'done');
+  });
+});
+
+describe('accounts and ratings', () => {
+  async function createAccount(name) {
+    const response = await exports.default.fetch('https://example.com/api/account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  }
+  const post = (path, body) => exports.default.fetch(`https://example.com${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  it('creates, verifies, renames, and serves profiles', async () => {
+    const created = await createAccount('Ana');
+    expect(created.id).toMatch(/^[a-z0-9]{10}$/);
+    expect(created.secret).toMatch(/^[a-f0-9]{32}$/);
+    expect(created.rating).toBe(1200);
+
+    const verified = await post('/api/account/verify', { id: created.id, secret: created.secret });
+    expect(verified.status).toBe(200);
+    expect((await verified.json()).account.name).toBe('Ana');
+
+    const rejected = await post('/api/account/verify', { id: created.id, secret: 'wrong' });
+    expect(rejected.status).toBe(403);
+
+    const renamed = await post('/api/account/name', { id: created.id, secret: created.secret, name: 'Ana Prime' });
+    expect((await renamed.json()).name).toBe('Ana Prime');
+
+    const profile = await exports.default.fetch(`https://example.com/api/profile?id=${created.id}`);
+    expect(profile.status).toBe(200);
+    const body = await profile.json();
+    expect(body.account.name).toBe('Ana Prime');
+    expect(body.account.secret_hash).toBeUndefined();
+    expect(body.matches).toEqual([]);
+  });
+
+  it('rates an abandoned game exactly once', async () => {
+    const ana = await createAccount('Ana');
+    const bo = await createAccount('Bo');
+    const room = 'rated-abandon';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'host' });
+    const guest = await connect(stub, room, { name: 'guest' });
+
+    const hostBound = nextMessage(host.socket, (m) => m.type === 'state' && m.state.accounts?.B === ana.id);
+    host.socket.send(JSON.stringify({ type: 'auth', id: ana.id, secret: ana.secret }));
+    await hostBound;
+    const guestBound = nextMessage(host.socket, (m) => m.type === 'state' && m.state.accounts?.R === bo.id);
+    guest.socket.send(JSON.stringify({ type: 'auth', id: bo.id, secret: bo.secret }));
+    await guestBound;
+
+    const move = E.allMoves(host.welcome.state.board, E.BLUE, host.welcome.state.cfg)[0];
+    const afterMove = nextMessage(host.socket, (m) => m.type === 'state' && m.state.moves.length === 1);
+    host.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
+    expect((await afterMove).state.rated).toBe(true);
+
+    guest.socket.close(1000, 'rage quit');
+    let disconnected = false;
+    for (let attempt = 0; attempt < 20 && !disconnected; attempt++) {
+      disconnected = await runInDurableObject(stub, async (instance) => !!instance.disconnected.R);
+      if (!disconnected) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(disconnected).toBe(true);
+
+    await runInDurableObject(stub, async (instance, state) => {
+      instance.disconnected.R = Date.now() - 31_000;
+      await instance.persist();
+      await state.storage.setAlarm(Date.now() + 60_000);
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+
+    await runInDurableObject(stub, async (instance) => {
+      expect(instance.game.gameOver).toBe(true);
+      expect(instance.game.winner).toBe(E.BLUE);
+      expect(instance.game.endReason).toBe('abandon');
+      expect(instance.game.recorded).toBe(true);
+      await instance.finishRated('board');   // duplicate report must be a no-op
+    });
+
+    const winner = await env.DB.prepare('SELECT rating, peak, wins, games FROM accounts WHERE id = ?1').bind(ana.id).first();
+    const loser = await env.DB.prepare('SELECT rating, peak, losses, games FROM accounts WHERE id = ?1').bind(bo.id).first();
+    expect(winner.rating).toBe(1216);
+    expect(winner.peak).toBe(1216);
+    expect(winner.wins).toBe(1);
+    expect(winner.games).toBe(1);
+    expect(loser.rating).toBe(1184);
+    expect(loser.peak).toBe(1200);
+    expect(loser.losses).toBe(1);
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM matches').first()).n).toBe(1);
+
+    const profile = await exports.default.fetch(`https://example.com/api/profile?id=${ana.id}`);
+    const body = await profile.json();
+    expect(body.matches).toHaveLength(1);
+    expect(body.matches[0].winner).toBe('B');
+    expect(body.matches[0].reason).toBe('abandon');
+
     host.socket.close(1000, 'done');
   });
 });
