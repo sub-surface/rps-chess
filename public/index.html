@@ -55,39 +55,54 @@
           <button class="chip" data-preset="kings">King's field</button>
           <button class="chip" data-preset="custom">Custom</button>
         </div>
-        <div class="config-grid">
-          <label class="frow"><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
-          <label class="frow"><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
-          <label class="frow"><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
-          <label class="frow"><span>Movement</span>
-            <select id="s-move">
-              <option value="classic">Classic — R king, P rook, S bishop</option>
-              <option value="kings">All kings — every piece steps 1</option>
-              <option value="queens">All queens — every piece slides far</option>
-            </select>
-          </label>
-          <label class="frow"><span>Capturing</span>
-            <select id="s-cap">
-              <option value="rps">RPS — you only take what you beat</option>
-              <option value="chess">Chess — capture anything</option>
-            </select>
-          </label>
-          <label class="frow"><span>Goal</span>
-            <select id="s-terr">
-              <option value="territory">Territory — paint the most squares</option>
-              <option value="elimination">Elimination — capture all pieces</option>
-            </select>
-          </label>
-          <label class="frow child" id="retread-row"><span>Re-tread</span>
-            <label class="chk"><input type="checkbox" id="s-retread"> may re-enter your own squares</label>
-          </label>
-          <label class="frow"><span>First move</span>
-            <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
-          </label>
-          <div class="frow toggles">
-            <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
-            <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
+        <div class="config-body">
+          <div class="config-grid">
+            <label class="frow"><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
+            <label class="frow"><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
+            <label class="frow"><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
+            <label class="frow"><span>Movement</span>
+              <select id="s-move">
+                <option value="classic">Classic — R king, P rook, S bishop</option>
+                <option value="kings">All kings — every piece steps 1</option>
+                <option value="queens">All queens — every piece slides far</option>
+              </select>
+            </label>
+            <label class="frow"><span>Capturing</span>
+              <select id="s-cap">
+                <option value="rps">RPS — you only take what you beat</option>
+                <option value="chess">Chess — capture anything</option>
+              </select>
+            </label>
+            <label class="frow"><span>Goal</span>
+              <select id="s-terr">
+                <option value="territory">Territory — paint the most squares</option>
+                <option value="elimination">Elimination — capture all pieces</option>
+              </select>
+            </label>
+            <div class="frow child" id="retread-row"><span>Re-tread</span>
+              <label class="chk"><input type="checkbox" id="s-retread"> may re-enter your own squares</label>
+            </div>
+            <label class="frow"><span>First move</span>
+              <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
+            </label>
+            <div class="frow toggles">
+              <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
+              <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
+            </div>
           </div>
+          <aside class="variant-preview" aria-labelledby="preview-title">
+            <div class="preview-head">
+              <span id="preview-title">Move preview</span>
+              <div class="preview-tabs" id="preview-tabs" aria-label="Preview piece">
+                <button type="button" data-preview-piece="rock" aria-label="Preview Rock" title="Rock" aria-pressed="true">R</button>
+                <button type="button" data-preview-piece="paper" aria-label="Preview Paper" title="Paper" aria-pressed="false">P</button>
+                <button type="button" data-preview-piece="scissors" aria-label="Preview Scissors" title="Scissors" aria-pressed="false">S</button>
+              </div>
+            </div>
+            <svg id="preview-board" class="preview-board" viewBox="0 0 240 240" role="img" aria-labelledby="preview-title preview-description"></svg>
+            <p id="preview-description" class="preview-description" aria-live="polite"></p>
+            <div class="preview-facts" id="preview-facts"></div>
+          </aside>
         </div>
         <p class="variant-line" id="variant-line"></p>
         <button class="linklike edit-link" id="custom-btn">Set up a custom starting position →</button>
@@ -106,7 +121,7 @@
           <button id="refresh-lobby" class="tbtn" title="Refresh">open games ⟳</button>
         </div>
         <ul class="games" id="games"></ul>
-        <p class="lobby-empty" id="lobby-empty">No open games right now — create one and share the link.</p>
+        <p class="lobby-empty" id="lobby-empty" aria-live="polite">No open games right now — create one and share the link.</p>
       </section>
     </div>
   </main>
@@ -154,7 +169,7 @@
 
       <div class="online" id="online" hidden>
         <div class="oinfo">
-          <div class="orole" id="orole"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span></div>
+          <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span></div>
           <div class="oshare"><input id="oshare" readonly aria-label="Room link" /><button id="ocopy" class="tbtn">copy link</button></div>
         </div>
       </div>

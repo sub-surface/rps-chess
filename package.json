@@ -6,12 +6,18 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "check:syntax": "node --check public/engine.js && node --check public/game.js && node --check src/worker.js",
+    "test": "vitest run",
+    "verify": "npm run check:syntax && npm test",
+    "deploy:dry": "npm run verify && wrangler deploy --dry-run",
     "version:stamp": "node scripts/version.mjs",
-    "deploy": "node scripts/version.mjs && wrangler deploy",
+    "deploy": "npm run verify && node scripts/assert-clean.mjs && node scripts/version.mjs && wrangler deploy",
     "tail": "wrangler tail rps-chess",
     "preview": "wrangler dev --remote"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.8",
+    "vitest": "^4.1.0",
     "wrangler": "^4.100.0"
   }
 }

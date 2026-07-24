@@ -4,7 +4,16 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-07-23",
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05
+    }
   },
   "assets": {
     "directory": "./public",
