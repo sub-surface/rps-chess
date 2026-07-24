@@ -54,12 +54,50 @@ describe('Lobby Durable Object', () => {
 });
 
 describe('GameRoom Durable Object', () => {
+  it('updates the global lobby only when a room changes index state', async () => {
+    const room = 'lobby-transition';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host' });
+    const lobby = env.LOBBY.getByName('global');
+    const before = (await lobby.list()).find((entry) => entry.room === room);
+    expect(before).toBeTruthy();
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await runInDurableObject(stub, async (instance, state) => {
+      await instance.syncLobby();
+      await instance.syncLobby();
+      expect(instance.lobbyListed).toBe(true);
+      expect((await state.storage.get('lobbyIndex')).listed).toBe(true);
+    });
+    const unchanged = (await lobby.list()).find((entry) => entry.room === room);
+    expect(unchanged.ts).toBe(before.ts);
+
+    const guest = await connect(stub, room, { name: 'Guest' });
+    expect((await lobby.list()).some((entry) => entry.room === room)).toBe(false);
+    await runInDurableObject(stub, async (instance, state) => {
+      expect(instance.lobbyListed).toBe(false);
+      expect((await state.storage.get('lobbyIndex')).listed).toBe(false);
+    });
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
   it('assigns seats, fills backward-compatible defaults, and validates moves', async () => {
     const room = 'roles-and-moves';
     const stub = env.ROOM.getByName(room);
     const host = await connect(stub, room, { name: 'Host' });
     expect(host.welcome.role).toBe(E.BLUE);
     expect(host.welcome.state.cfg.actionsPerTurn).toBe(1);
+    expect(host.welcome.state.cfg.retread).toBe(true);
+    expect(host.welcome.state.cfg).toMatchObject({
+      rockMove: 'king',
+      paperMove: 'king',
+      scissorsMove: 'king',
+    });
+    expect(host.welcome.state.board[3][1].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(host.welcome.state.board[5][7].piece).toEqual({ type: 'rock', color: E.RED });
+    expect(host.welcome.state.startPos).toHaveLength(81);
+    expect(host.welcome.state.startOwners).toHaveLength(81);
     expect(host.welcome.state.online.B).toBe(true);
 
     const guest = await connect(stub, room, { name: 'Guest' });
@@ -74,7 +112,13 @@ describe('GameRoom Durable Object', () => {
     const move = E.allMoves(host.welcome.state.board, E.BLUE, host.welcome.state.cfg)[0];
     const updated = nextMessage(guest.socket, (message) => message.type === 'state' && message.state.moves.length === 1);
     host.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
-    expect((await updated).state.moves).toHaveLength(1);
+    const moved = (await updated).state.moves;
+    expect(moved).toHaveLength(1);
+    expect(moved[0]).toMatchObject({
+      c: E.BLUE,
+      from: [move.fr, move.fc],
+      to: [move.tr, move.tc],
+    });
 
     host.socket.close(1000, 'done');
     guest.socket.close(1000, 'done');
@@ -84,14 +128,59 @@ describe('GameRoom Durable Object', () => {
   it('honours a valid custom starting position and keeps it for rematches', async () => {
     const room = 'challenge-pos';
     const pos = 'R' + '.'.repeat(34) + 's';   // 6×6: Blue rock at a6-corner, Red scissors opposite
-    const cfg = { ...E.PRESETS.standard, size: 6, pos };
+    const own = 'BB' + '.'.repeat(33) + 'R';
+    const cfg = { ...E.PRESETS.standard, size: 6, pos, own };
     const stub = env.ROOM.getByName(room);
     const host = await connect(stub, room, { name: 'Host', cfg });
     expect(host.welcome.state.pos).toBe(pos);
     expect(host.welcome.state.board[0][0].piece).toEqual({ type: 'rock', color: E.BLUE });
     expect(host.welcome.state.board[5][5].piece).toEqual({ type: 'scissors', color: E.RED });
+    expect(host.welcome.state.board[0][1].owner).toBe(E.BLUE);
+    expect(host.welcome.state.own).toBe(own);
     expect(E.pieceCounts(host.welcome.state.board)).toEqual({ B: 1, R: 1 });
     host.socket.close(1000, 'done');
+  });
+
+  it('archives a completed game for the public replay theatre', async () => {
+    const room = 'showcase-finish';
+    const pos = '.'.repeat(14) + 'Rs' + '.'.repeat(20);
+    const own = '.'.repeat(14) + 'BR' + '.'.repeat(20);
+    const cfg = {
+      ...E.PRESETS.standard,
+      size: 6,
+      perType: 1,
+      territory: false,
+      retread: false,
+      pos,
+      own,
+    };
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Blue Hero', cfg });
+    const guest = await connect(stub, room, { name: 'Red Hero' });
+    const finished = nextMessage(host.socket, (message) => message.type === 'state' && message.state.gameOver);
+    host.socket.send(JSON.stringify({ type: 'move', from: [2, 2], to: [2, 3] }));
+    const state = (await finished).state;
+    expect(state.endReason).toBe('elimination');
+
+    let stored = null;
+    for (let attempt = 0; attempt < 40 && !stored; attempt++) {
+      stored = await env.DB.prepare('SELECT payload FROM showcases ORDER BY played_at DESC LIMIT 1').first();
+      if (!stored) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(stored).toBeTruthy();
+    const replay = JSON.parse(stored.payload);
+    expect(replay.names).toEqual({ B: 'Blue Hero', R: 'Red Hero' });
+    expect(replay.moves).toHaveLength(1);
+    expect(replay.cfg.rockMove).toBe('king');
+
+    const response = await exports.default.fetch('https://showcase.example/api/showcase');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toContain('s-maxage=30');
+    const body = await response.json();
+    expect(body.games[0].id).toBe(replay.id);
+    expect(body.games[0].startOwners).toBe(own);
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
   });
 
   it('reclaims the same seat token and fences its older connection', async () => {
@@ -153,6 +242,158 @@ describe('GameRoom Durable Object', () => {
     });
     host.socket.close(1000, 'done');
   });
+
+  it('relays ephemeral chat from seated players and ignores spectators', async () => {
+    const room = 'chat-room';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host' });
+    const guest = await connect(stub, room, { name: 'Guest' });
+    const spectator = await connect(stub, room, { name: 'Viewer' });
+    const before = await runInDurableObject(stub, async (instance, state) => ({
+      expiresAt: instance.expiresAt,
+      storedExpiresAt: (await state.storage.get('room')).expiresAt,
+    }));
+
+    const gotByGuest = nextMessage(guest.socket, (m) => m.type === 'chat');
+    const gotBySpec = nextMessage(spectator.socket, (m) => m.type === 'chat');
+    host.socket.send(JSON.stringify({ type: 'chat', text: '  hi   there  ' }));
+    const relayed = await gotByGuest;
+    expect(relayed.role).toBe(E.BLUE);
+    expect(relayed.name).toBe('Host');
+    expect(relayed.text).toBe('hi there');            // trimmed and whitespace-collapsed
+    expect((await gotBySpec).text).toBe('hi there');  // spectators can read
+    const after = await runInDurableObject(stub, async (instance, state) => ({
+      expiresAt: instance.expiresAt,
+      storedExpiresAt: (await state.storage.get('room')).expiresAt,
+    }));
+    expect(after).toEqual(before);                     // chat creates no room-storage writes
+
+    let sawSpectatorChat = false;
+    guest.socket.addEventListener('message', (e) => {
+      try { const m = JSON.parse(e.data); if (m.type === 'chat' && m.text === 'noise') sawSpectatorChat = true; } catch { /* ignore */ }
+    });
+    spectator.socket.send(JSON.stringify({ type: 'chat', text: 'noise' }));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(sawSpectatorChat).toBe(false);             // spectators cannot send
+
+    const throttled = nextMessage(host.socket, (m) => m.type === 'error' && m.msg === 'chat rate exceeded');
+    for (let index = 0; index < 8; index++) {
+      host.socket.send(JSON.stringify({ type: 'chat', text: `burst ${index}` }));
+    }
+    expect((await throttled).msg).toBe('chat rate exceeded');
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+    spectator.socket.close(1000, 'done');
+  });
+});
+
+// Both of the defects these cover lived in transitions *between* games in one room —
+// rematch and room recycling — which single-game tests never exercise.
+describe('room lifecycle', () => {
+  async function createAccount(name) {
+    const response = await exports.default.fetch('https://example.com/api/account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    return response.json();
+  }
+  async function expire(stub) {
+    await runInDurableObject(stub, async (instance, state) => {
+      instance.expiresAt = Date.now() - 1;
+      await instance.persist();
+      await state.storage.setAlarm(Date.now() + 60_000);
+    });
+    await runDurableObjectAlarm(stub);
+    let expired = false;
+    for (let attempt = 0; attempt < 40 && !expired; attempt++) {
+      expired = await runInDurableObject(stub, async (instance) => instance.game === null);
+      if (!expired) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(expired).toBe(true);
+  }
+
+  it('refuses to discard a game that is already under way', async () => {
+    const room = 'no-escape';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host' });
+    const guest = await connect(stub, room, { name: 'Guest' });
+
+    const move = E.allMoves(host.welcome.state.board, E.BLUE, host.welcome.state.cfg)[0];
+    const started = nextMessage(host.socket, (m) => m.type === 'state' && m.state.moves.length === 1);
+    host.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
+    await started;
+
+    const refused = nextMessage(guest.socket, (m) => m.type === 'error');
+    guest.socket.send(JSON.stringify({ type: 'new' }));
+    expect((await refused).msg).toBe('finish or resign this game first');
+    await runInDurableObject(stub, async (instance) => {
+      expect(instance.game.moves).toHaveLength(1);   // the game survived
+    });
+
+    // Resigning ends it, and only then may the room start a fresh game.
+    const over = nextMessage(guest.socket, (m) => m.type === 'state' && m.state.gameOver);
+    guest.socket.send(JSON.stringify({ type: 'resign' }));
+    await over;
+    const restarted = nextMessage(guest.socket, (m) => m.type === 'state' && !m.state.gameOver);
+    guest.socket.send(JSON.stringify({ type: 'new' }));
+    expect((await restarted).state.moves).toHaveLength(0);
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
+  it('clears every trace of the last occupants when a room expires', async () => {
+    const ana = await createAccount('AnaLife');
+    const bo = await createAccount('BoLife');
+    const room = 'recycled';
+    const stub = env.ROOM.getByName(room);
+    const first = await connect(stub, room, { name: 'first' });
+    const second = await connect(stub, room, { name: 'second' });
+    const bound = nextMessage(first.socket, (m) => m.type === 'state' && m.state.accounts?.R === bo.id);
+    first.socket.send(JSON.stringify({ type: 'auth', id: ana.id, secret: ana.secret }));
+    second.socket.send(JSON.stringify({ type: 'auth', id: bo.id, secret: bo.secret }));
+    await bound;
+    first.socket.close(1000, 'gone');
+    second.socket.close(1000, 'gone');
+
+    await expire(stub);
+    await runInDurableObject(stub, async (instance) => {
+      expect(instance.accounts).toEqual({ B: null, R: null });
+      expect(instance.ratings).toEqual({ B: null, R: null });
+      expect(instance.lobbyListed).toBeNull();
+    });
+
+    // Two guests recycling the room must not inherit the previous pair's ratedness.
+    const third = await connect(stub, room, { name: 'third' });
+    const fourth = await connect(stub, room, { name: 'fourth' });
+    const move = E.allMoves(third.welcome.state.board, E.BLUE, third.welcome.state.cfg)[0];
+    const played = nextMessage(third.socket, (m) => m.type === 'state' && m.state.moves.length === 1);
+    third.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
+    const state = (await played).state;
+    expect(state.rated).toBe(false);
+    expect(state.accounts).toEqual({ B: null, R: null });
+
+    third.socket.close(1000, 'done');
+    fourth.socket.close(1000, 'done');
+  });
+
+  it('mints its own seat token instead of trusting a client-chosen one', async () => {
+    const room = 'token-mint';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', token: 'guessable' });
+    expect(host.welcome.role).toBe(E.BLUE);
+    expect(host.welcome.token).not.toBe('guessable');
+    expect(host.welcome.token).toMatch(/^[a-f0-9]{32}$/);
+
+    // The weak token confers nothing; the seat is taken, so this connection is Red.
+    const impostor = await connect(stub, room, { name: 'Impostor', token: 'guessable' });
+    expect(impostor.welcome.role).toBe(E.RED);
+
+    host.socket.close(1000, 'done');
+    impostor.socket.close(1000, 'done');
+  });
 });
 
 describe('accounts and ratings', () => {
@@ -193,6 +434,26 @@ describe('accounts and ratings', () => {
     expect(body.account.name).toBe('Ana Prime');
     expect(body.account.secret_hash).toBeUndefined();
     expect(body.matches).toEqual([]);
+  });
+
+  it('throttles repeated account minting from one source', async () => {
+    const mint = () => exports.default.fetch('https://example.com/api/account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.7' },
+      body: JSON.stringify({ name: 'Flood' }),
+    });
+    for (let attempt = 0; attempt < 6; attempt++) expect((await mint()).status).toBe(200);
+    const blocked = await mint();
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('cache-control')).toBe('no-store');
+
+    // A different source is unaffected.
+    const other = await exports.default.fetch('https://example.com/api/account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '198.51.100.4' },
+      body: JSON.stringify({ name: 'Elsewhere' }),
+    });
+    expect(other.status).toBe(200);
   });
 
   it('rates an abandoned game exactly once', async () => {
@@ -257,6 +518,39 @@ describe('accounts and ratings', () => {
 
     host.socket.close(1000, 'done');
   });
+
+  it('records a started rated game resigned by a seated player', async () => {
+    const ana = await createAccount('Ana');
+    const bo = await createAccount('Bo');
+    const room = 'rated-resign';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'host' });
+    const guest = await connect(stub, room, { name: 'guest' });
+
+    const hostBound = nextMessage(host.socket, (m) => m.type === 'state' && m.state.accounts?.B === ana.id);
+    host.socket.send(JSON.stringify({ type: 'auth', id: ana.id, secret: ana.secret }));
+    await hostBound;
+    const guestBound = nextMessage(host.socket, (m) => m.type === 'state' && m.state.accounts?.R === bo.id);
+    guest.socket.send(JSON.stringify({ type: 'auth', id: bo.id, secret: bo.secret }));
+    await guestBound;
+
+    const move = E.allMoves(host.welcome.state.board, E.BLUE, host.welcome.state.cfg)[0];
+    const started = nextMessage(host.socket, (m) => m.type === 'state' && m.state.moves.length === 1);
+    host.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
+    expect((await started).state.rated).toBe(true);
+
+    const finished = nextMessage(host.socket, (m) => m.type === 'state' && m.state.endReason === 'resign');
+    guest.socket.send(JSON.stringify({ type: 'resign' }));
+    const final = (await finished).state;
+    expect(final.gameOver).toBe(true);
+    expect(final.winner).toBe(E.BLUE);
+    expect(final.deltas).toEqual({ B: 16, R: -16 });
+
+    const match = await env.DB.prepare('SELECT winner, reason FROM matches WHERE reason = ?1').bind('resign').first();
+    expect(match).toEqual({ winner: E.BLUE, reason: 'resign' });
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
 });
 
 describe('admin stats', () => {
@@ -292,6 +586,9 @@ describe('Worker routes', () => {
     const method = await exports.default.fetch('https://example.com/api/lobby', { method: 'POST' });
     expect(method.status).toBe(405);
     expect(method.headers.get('cache-control')).toBe('no-store');
+    const showcaseMethod = await exports.default.fetch('https://example.com/api/showcase', { method: 'POST' });
+    expect(showcaseMethod.status).toBe(405);
+    expect(showcaseMethod.headers.get('cache-control')).toBe('no-store');
     const lobby = await exports.default.fetch('https://example.com/api/lobby');
     expect(lobby.status).toBe(200);
     expect(lobby.headers.get('cache-control')).toContain('s-maxage=3');

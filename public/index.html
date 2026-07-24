@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#000000" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <meta property="og:title" content="JANKEN — rock · paper · scissors chess" />
-  <meta property="og:description" content="Rock moves like a king, paper like a rook, scissors like a bishop. Pick a variant and paint the board." />
+  <meta property="og:description" content="Rock, paper, and scissors move like chess pieces. Every square you land on is painted your colour — hold the most ground." />
   <meta property="og:type" content="website" />
   <link rel="stylesheet" href="/style.css" />
 </head>
@@ -47,17 +47,46 @@
     </div>
     <div class="home-inner">
       <div class="hero">
-        <h1>JANKEN</h1>
-        <p>Rock–paper–scissors, played like chess. Choose a variant and paint the board.</p>
-        <div class="hero-glyphs" id="hero-glyphs" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <h1>JANKEN</h1>
+          <p>Rock–paper–scissors, played like chess. Choose a variant and paint the board.</p>
+          <div class="hero-glyphs" id="hero-glyphs" aria-hidden="true"></div>
+        </div>
+        <aside class="showcase" id="showcase" aria-labelledby="showcase-label">
+          <div class="showcase-head">
+            <span id="showcase-label">Variant theatre</span>
+            <button id="showcase-toggle" type="button" aria-label="Pause replay" title="Pause replay">Ⅱ</button>
+          </div>
+          <svg id="showcase-board" class="showcase-board" viewBox="0 0 180 180" role="img" aria-label="Autoplaying recent game"></svg>
+          <div class="showcase-caption" aria-live="polite">
+            <b id="showcase-players">Preparing a game…</b>
+            <span id="showcase-variant">recent games and bot variations</span>
+          </div>
+        </aside>
       </div>
 
       <section class="config">
-        <div class="presets" id="presets">
-          <button class="chip" data-preset="standard" title="Classic pieces · claim the most ground">Standard</button>
-          <button class="chip" data-preset="kings" title="Everything steps one square · last army standing">King's field</button>
-          <button class="chip" data-preset="painters" title="Queens with ink trails · flood the board">Painters</button>
-          <button class="chip" data-preset="custom" title="Your rules">Custom</button>
+        <div class="presets" id="presets" role="group" aria-label="Variant"></div>
+        <div class="variant-stage">
+          <aside class="variant-preview" aria-labelledby="preview-title">
+            <div class="preview-head">
+              <span id="preview-title">Move preview</span>
+              <div class="preview-tabs" id="preview-tabs" aria-label="Preview piece">
+                <button type="button" data-preview-piece="rock" aria-label="Preview Rock" title="Show how Rock moves in this variant" aria-pressed="true">R</button>
+                <button type="button" data-preview-piece="paper" aria-label="Preview Paper" title="Show how Paper moves in this variant" aria-pressed="false">P</button>
+                <button type="button" data-preview-piece="scissors" aria-label="Preview Scissors" title="Show how Scissors moves in this variant" aria-pressed="false">S</button>
+              </div>
+            </div>
+            <svg id="preview-board" class="preview-board" viewBox="0 0 240 240" role="img" aria-labelledby="preview-title preview-description"></svg>
+          </aside>
+          <div class="variant-brief">
+            <h3 class="vb-name" id="preset-name">Standard</h3>
+            <p class="vb-tagline" id="preset-tagline"></p>
+            <div class="preview-map" id="preview-map" aria-label="Movement assignments"></div>
+            <p id="preview-description" class="preview-description" aria-live="polite"></p>
+            <div class="preview-facts" id="preview-facts"></div>
+            <button class="linklike" id="rules-link" title="Read the full rules for this exact variant">how to play ▸</button>
+          </div>
         </div>
         <details class="custom-rules" id="config-details">
           <summary>
@@ -66,75 +95,62 @@
           </summary>
           <div class="config-body">
             <div class="config-grid">
-              <label class="frow"><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
-              <label class="frow"><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
-              <label class="frow"><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
-              <label class="frow"><span>Movement</span>
-                <select id="s-move">
-                  <option value="classic">Classic — R king, P rook, S bishop</option>
-                  <option value="kings">All kings — every piece steps 1</option>
-                  <option value="queens">All queens — every piece slides far</option>
-                </select>
-              </label>
-              <label class="frow"><span>Capturing</span>
+              <label class="frow" title="Board size, 6×6 to 13×13. Bigger boards reward slow, patient expansion."><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="6" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
+              <label class="frow" title="How many rocks, papers and scissors each side gets — 1 to 4 of each."><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
+              <label class="frow" title="Moves per turn. More actions means ground changes hands far faster."><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>
+              <fieldset class="movement-picker">
+                <legend>Movement</legend>
+                <label class="movement-row"><span class="movement-piece rock">R</span><span>Rock</span><select id="s-move-rock"></select></label>
+                <label class="movement-row"><span class="movement-piece paper">P</span><span>Paper</span><select id="s-move-paper"></select></label>
+                <label class="movement-row"><span class="movement-piece scissors">S</span><span>Scissors</span><select id="s-move-scissors"></select></label>
+                <button type="button" class="linklike movement-rotate" id="s-move-rotate" title="Rotate the three assigned movement types">rotate mapping ↻</button>
+              </fieldset>
+              <label class="frow" title="RPS keeps piece identity meaningful: what you cannot take, blocks you."><span>Capturing</span>
                 <select id="s-cap">
                   <option value="rps">RPS — you only take what you beat</option>
                   <option value="chess">Chess — capture anything</option>
                 </select>
               </label>
-              <label class="frow"><span>Goal</span>
+              <label class="frow" title="Paint the most squares, or wipe out the enemy army."><span>Goal</span>
                 <select id="s-terr">
                   <option value="territory">Territory — paint the most squares</option>
                   <option value="elimination">Elimination — capture all pieces</option>
                 </select>
               </label>
-              <div class="frow child" id="retread-row"><span>Re-tread</span>
+              <div class="frow child" id="retread-row" title="Off means only fresh ground counts — painted squares are glided over, never landed on."><span>Re-tread</span>
                 <label class="chk"><input type="checkbox" id="s-retread"> may stop on painted squares</label>
               </div>
-              <div class="frow child" id="trail-row"><span>Ink trail</span>
+              <div class="frow child" id="trail-row" title="Sliding pieces paint every unclaimed square they pass through, not just where they stop."><span>Ink trail</span>
                 <label class="chk"><input type="checkbox" id="s-trail"> sliders ink squares they pass over</label>
               </div>
-              <label class="frow"><span>Layout</span>
+              <label class="frow" title="Where the two armies begin. Every layout is 180° rotationally symmetric, so neither side is favoured."><span>Layout</span>
                 <select id="s-layout">
-                  <option value="rows">Rows — centred blocks</option>
+                  <option value="rows">Centre — facing blocks</option>
                   <option value="corners">Corners — diagonal stand-off</option>
                   <option value="scattered">Scattered — random, symmetric</option>
                 </select>
               </label>
-              <label class="frow"><span>First move</span>
+              <label class="frow" title="Which colour opens."><span>First move</span>
                 <select id="s-first"><option value="B">Blue</option><option value="R">Red</option></select>
               </label>
             </div>
-            <aside class="variant-preview" aria-labelledby="preview-title">
-              <div class="preview-head">
-                <span id="preview-title">Move preview</span>
-                <div class="preview-tabs" id="preview-tabs" aria-label="Preview piece">
-                  <button type="button" data-preview-piece="rock" aria-label="Preview Rock" title="Rock" aria-pressed="true">R</button>
-                  <button type="button" data-preview-piece="paper" aria-label="Preview Paper" title="Paper" aria-pressed="false">P</button>
-                  <button type="button" data-preview-piece="scissors" aria-label="Preview Scissors" title="Scissors" aria-pressed="false">S</button>
-                </div>
-              </div>
-              <svg id="preview-board" class="preview-board" viewBox="0 0 240 240" role="img" aria-labelledby="preview-title preview-description"></svg>
-              <p id="preview-description" class="preview-description" aria-live="polite"></p>
-              <div class="preview-facts" id="preview-facts"></div>
-            </aside>
           </div>
-          <button class="linklike edit-link" id="custom-btn">Analysis board — set up any position →</button>
+          <button class="linklike edit-link" id="custom-btn" title="Place any pieces you like, then play it out or challenge someone from that exact position.">Analysis board — set up any position →</button>
         </details>
       </section>
 
       <section class="play">
-        <button class="btn big" data-mode="human">Hot-seat</button>
-        <button class="btn big" data-mode="bot">vs Bot</button>
-        <button class="btn big" data-mode="botbot">Bot vs Bot</button>
-        <button class="btn big primary" data-mode="online">Play online ▸</button>
+        <button class="btn big" data-mode="human" title="Both players share this screen, taking turns.">Hot-seat</button>
+        <button class="btn big" data-mode="bot" title="Play Blue against a quick greedy bot.">vs Bot</button>
+        <button class="btn big" data-mode="botbot" title="Sit back and watch two bots fight it out.">Bot vs Bot</button>
+        <button class="btn big primary" data-mode="online" title="Open a room and share the link — or wait for someone from the lobby.">Play online ▸</button>
       </section>
 
       <section class="lobby">
         <div class="lobby-head">
           <span class="lh">Open games <button id="refresh-lobby" class="tbtn" title="Refresh open games">⟳</button> <button id="quick-btn" class="tbtn" title="Join the closest-rated open game">quick match</button></span>
           <span class="lobby-tools">
-            <label class="namefield"><span>you are</span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
+            <label class="namefield" title="Change your display name at any time; rated accounts update automatically"><span>you are <small>editable</small></span><input id="name-input" maxlength="20" placeholder="guest" autocomplete="off" spellcheck="false"></label>
             <button id="acct-btn" class="tbtn accent" title="Create an account to play rated games" hidden>get rated →</button>
             <button id="acct-chip" class="tbtn" title="Your profile" hidden>★ 1200</button>
           </span>
@@ -148,10 +164,22 @@
   <!-- ══════════════ GAME ══════════════ -->
   <main class="app" id="game" hidden>
     <section class="board-wrap" id="board-wrap">
-      <div class="board" id="board" role="grid" aria-label="Game board"></div>
-      <svg class="anno" id="anno" aria-hidden="true"></svg>
-      <div class="banner" id="banner" hidden></div>
-      <button class="board-grip" id="board-grip" aria-label="Resize board" title="Drag to resize · double-click to reset"></button>
+      <button class="rules-tab" id="rules-tab" aria-expanded="false" aria-controls="rules-flap"
+              title="The rules for this exact variant">rules</button>
+      <div class="board-stage" id="board-stage">
+        <div class="board" id="board" role="grid" aria-label="Game board"></div>
+        <svg class="anno" id="anno" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="banner" id="banner" hidden></div>
+        <button class="board-grip" id="board-grip" aria-label="Resize board" title="Drag to resize · double-click to reset"></button>
+        <aside class="rules-flap" id="rules-flap" hidden aria-labelledby="rf-title">
+          <div class="rf-head">
+            <b id="rf-title">Standard</b>
+            <button class="rf-close" id="rf-close" aria-label="Close rules" title="Close">×</button>
+          </div>
+          <p class="rf-line" id="rf-line"></p>
+          <div class="rf-body" id="rf-body"></div>
+        </aside>
+      </div>
     </section>
 
     <aside class="panel" id="panel">
@@ -183,15 +211,28 @@
       </div>
 
       <div class="controls">
-        <button id="new-btn" class="btn">New game</button>
-        <button id="home-btn" class="btn ghost">⌂ Home</button>
-        <button id="copy-btn" class="btn ghost" title="Copy moves">Copy</button>
+        <button id="new-btn" class="btn" title="Start again with the current rules.">New game</button>
+        <button id="home-btn" class="btn ghost" title="Back to the variant picker.">⌂ Home</button>
+        <details class="export-menu" id="export-menu">
+          <summary class="btn ghost">Export</summary>
+          <div class="export-pop">
+            <button id="copy-btn" type="button" title="Copy a complete, replayable text record of this game.">Copy JPGN</button>
+            <button id="gif-btn" type="button" title="Render the whole game as an animated GIF, in your browser.">Download GIF</button>
+          </div>
+        </details>
       </div>
 
       <div class="online" id="online" hidden>
         <div class="oinfo">
           <div class="orole" id="orole" aria-live="polite"><span class="odot" id="odot"></span><span id="orole-text">Connecting…</span><span class="rtag" id="rtag" hidden>rated</span></div>
           <div class="oshare"><input id="oshare" readonly aria-label="Room link" /><button id="ocopy" class="tbtn">copy link</button></div>
+          <button id="resign-btn" class="btn ghost sm" hidden>Resign</button>
+        </div>
+        <div class="chat" id="chat" hidden>
+          <div class="chat-log" id="chat-log" aria-live="polite" aria-label="Chat"></div>
+          <form class="chat-form" id="chat-form">
+            <input id="chat-input" maxlength="240" placeholder="say something…" autocomplete="off" spellcheck="false" />
+          </form>
         </div>
       </div>
 
@@ -236,29 +277,18 @@
   </main>
 
   <footer class="foot">
-    <button id="help-btn" class="linklike">how to play</button>
-    <span class="sep">·</span>
     <a href="https://subsurfaces.net" class="linklike">subsurfaces.net</a>
     <span class="sep">·</span>
     <a id="commit-link" class="linklike" href="https://github.com/sub-surface/rps-chess" target="_blank" rel="noopener">source</a>
   </footer>
 
+  <!-- Body is generated from engine.rulesSummary(cfg), so it always describes the variant
+       actually selected rather than a hardcoded default that can drift out of date. -->
   <dialog id="rules" class="modal">
     <form method="dialog">
-      <h2>How to play</h2>
-      <p>Two players — <b class="tb">Blue</b> and <b class="tr">Red</b> — take turns. Each starts with two rocks, two papers, two scissors.</p>
-      <h3>Movement (classic)</h3>
-      <ul>
-        <li><b>Rock</b> steps one square any way — a king.</li>
-        <li><b>Paper</b> slides straight — a rook.</li>
-        <li><b>Scissors</b> slides diagonally — a bishop.</li>
-      </ul>
-      <h3>Capturing (RPS)</h3>
-      <p>By default you may only capture a piece you <b>beat</b>: rock takes scissors, scissors takes paper, paper takes rock.</p>
-      <h3>Territory</h3>
-      <p>Every square a piece lands on is <b>painted your colour</b>. You can only stop on empty <b>unclaimed</b> ground or an enemy — so every move gains territory and the board fills. Most squares wins.</p>
-      <h3>Variants</h3>
-      <p>Change board size, movement, or starting layout, take up to <b>3 actions per turn</b>, let sliders leave an <b>ink trail</b>, or switch to pure <b>elimination</b> — all from the home menu.</p>
+      <h2>How to play — <span id="rules-variant">Standard</span></h2>
+      <p class="rules-line" id="rules-line"></p>
+      <div id="rules-body"></div>
       <button class="btn" value="close">Got it</button>
     </form>
   </dialog>

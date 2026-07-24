@@ -8,8 +8,13 @@ const ROOM_TTL_MS = 30 * 60 * 1000;
 const SEAT_GRACE_MS = 60 * 1000;
 const ABANDON_MS = 30 * 1000;
 const LOBBY_LIMIT = 100;
+const SHOWCASE_LIMIT = 40;
 const MAX_SPECTATORS = 32;
 const MAX_MESSAGES_PER_SECOND = 40;
+const CHAT_WINDOW_MS = 5000;
+const MAX_CHAT_MESSAGES_PER_WINDOW = 8;
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
+const MAX_SIGNUPS_PER_WINDOW = 6;
 
 const cleanName = (value) =>
   (value || '').toString().replace(/[^\w \-]/g, '').trim().slice(0, 20) || 'guest';
@@ -19,6 +24,10 @@ const cleanRoom = (value) =>
   (value || '').toString().replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
 const cleanAccountId = (value) =>
   (value || '').toString().replace(/[^a-z0-9]/gi, '').slice(0, 32);
+// Chat is ephemeral and rendered with textContent client-side; we only strip control
+// characters and cap length here.
+const cleanChat = (value) =>
+  (value || '').toString().replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
 const newAccountId = () => {
   const bytes = new Uint8Array(10);
   crypto.getRandomValues(bytes);
@@ -51,6 +60,32 @@ const readJson = async (request, limit = 2048) => {
     return value && typeof value === 'object' ? value : null;
   } catch { return null; }
 };
+// Account minting is the one unauthenticated write that grows D1 without bound, so it is
+// throttled per source in a rolling window. The bucket is a salted, truncated hash of the
+// client IP — countable, but not reversible to an address without the deployment secret.
+// Only Cloudflare's edge can set cf-connecting-ip; a request without it is not throttled
+// because there is nothing trustworthy to attribute it to.
+async function signupAllowed(env, request, now) {
+  const ip = request.headers.get('cf-connecting-ip');
+  if (!ip) return true;
+  const bucket = (await sha256hex(`${env.ADMIN_KEY || 'janken'}:${ip}`)).slice(0, 32);
+  const row = await env.DB.prepare('SELECT count, window_start FROM signups WHERE ip_hash = ?1')
+    .bind(bucket).first();
+  if (row && now - row.window_start < SIGNUP_WINDOW_MS && row.count >= MAX_SIGNUPS_PER_WINDOW) {
+    return false;
+  }
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO signups (ip_hash, count, window_start) VALUES (?1, 1, ?2)
+       ON CONFLICT(ip_hash) DO UPDATE SET
+         count = CASE WHEN ?2 - signups.window_start >= ?3 THEN 1 ELSE signups.count + 1 END,
+         window_start = CASE WHEN ?2 - signups.window_start >= ?3 THEN ?2 ELSE signups.window_start END`,
+    ).bind(bucket, now, SIGNUP_WINDOW_MS),
+    env.DB.prepare('DELETE FROM signups WHERE window_start < ?1').bind(now - SIGNUP_WINDOW_MS),
+  ]);
+  return true;
+}
+
 const logError = (event, error, data = {}) => console.error(JSON.stringify({
   level: 'error',
   event,
@@ -61,20 +96,26 @@ const logError = (event, error, data = {}) => console.error(JSON.stringify({
 export class GameRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.game = null;
-    this.seats = { B: null, R: null };
-    this.names = { B: null, R: null };
-    this.disconnected = { B: null, R: null };
-    this.accounts = { B: null, R: null };
-    this.ratings = { B: null, R: null };
-    this.room = null;
-    this.expiresAt = 0;
+    this.resetRoom();
 
     ctx.blockConcurrencyWhile(async () => {
-      const saved = await ctx.storage.get('room');
+      const [saved, lobbyIndex] = await Promise.all([
+        ctx.storage.get('room'),
+        ctx.storage.get('lobbyIndex'),
+      ]);
+      if (lobbyIndex && typeof lobbyIndex === 'object') {
+        this.lobbyListed = !!lobbyIndex.listed;
+        this.lobbyFingerprint = lobbyIndex.fingerprint || null;
+      }
       if (!saved) return;
       this.game = saved.game;
       this.game.cfg = E.sanitizeCfg(this.game.cfg);
+      this.game.startPos = this.game.startPos || this.game.pos
+        || (this.game.moves?.length ? null : E.encodePos(this.game.board));
+      this.game.startOwners = this.game.startOwners || this.game.own
+        || (this.game.moves?.length ? null : E.encodeOwners(this.game.board));
+      this.game.startedAt = this.game.startedAt || Date.now();
+      this.game.publicId = this.game.publicId || this.game.matchId || crypto.randomUUID();
       this.seats = { B: null, R: null, ...(saved.seats || {}) };
       this.names = { B: null, R: null, ...(saved.names || {}) };
       this.disconnected = { B: null, R: null, ...(saved.disconnected || {}) };
@@ -83,6 +124,22 @@ export class GameRoom extends DurableObject {
       this.room = saved.room || null;
       this.expiresAt = saved.expiresAt || (Date.now() + ROOM_TTL_MS);
     });
+  }
+
+  // Every piece of per-room instance state in one place. A Durable Object instance
+  // outlives the room it hosted — storage.deleteAll() does not clear these fields — so
+  // expiry MUST reset all of them or the next occupants inherit the last ones' identity.
+  resetRoom() {
+    this.game = null;
+    this.seats = { B: null, R: null };
+    this.names = { B: null, R: null };
+    this.disconnected = { B: null, R: null };
+    this.accounts = { B: null, R: null };
+    this.ratings = { B: null, R: null };
+    this.room = null;
+    this.expiresAt = 0;
+    this.lobbyListed = null;
+    this.lobbyFingerprint = null;
   }
 
   lobby() {
@@ -142,14 +199,14 @@ export class GameRoom extends DurableObject {
     }
 
     this.room = cleanRoom(url.searchParams.get('room')) || this.room;
-    const token = cleanToken(url.searchParams.get('token')) || crypto.randomUUID().replace(/-/g, '');
+    const claimed = cleanToken(url.searchParams.get('token'));
     const name = cleanName(url.searchParams.get('name'));
     const now = Date.now();
     this.releaseExpiredSeats(now);
 
     if (!this.game) {
       let config = E.sanitizeCfg({});
-      let posBoard = null, pos = null;
+      let posBoard = null, pos = null, own = null;
       const raw = url.searchParams.get('cfg');
       if (raw && raw.length <= 4096) {
         try {
@@ -157,21 +214,35 @@ export class GameRoom extends DurableObject {
           config = E.sanitizeCfg(parsed);
           if (typeof parsed.pos === 'string') {
             posBoard = E.decodePos(parsed.pos, config.size);
-            if (posBoard) pos = parsed.pos;
+            if (posBoard) {
+              pos = parsed.pos;
+              if (typeof parsed.own === 'string') {
+                const withOwners = E.decodeOwners(parsed.own, posBoard);
+                if (withOwners) { posBoard = withOwners; own = parsed.own; }
+              }
+            }
           }
         } catch {
           // A malformed optional host config simply falls back to Standard.
         }
       }
       this.game = E.newGame(config, posBoard || undefined);
-      if (pos) this.game.pos = pos;
+      this.game.startedAt = now;
+      this.game.publicId = crypto.randomUUID();
+      if (pos) {
+        this.game.pos = pos;
+        this.game.own = own || E.encodeOwners(posBoard);
+      }
     }
 
-    let role = 'S';
-    if (this.seats.B === token) role = E.BLUE;
-    else if (this.seats.R === token) role = E.RED;
+    // Only a token that already holds a seat is honoured. A newly claimed seat always gets
+    // a server-minted capability, so a client can never pick a guessable one for itself.
+    let role = 'S', reclaimed = false;
+    if (claimed && this.seats.B === claimed) { role = E.BLUE; reclaimed = true; }
+    else if (claimed && this.seats.R === claimed) { role = E.RED; reclaimed = true; }
     else if (!this.seats.B) role = E.BLUE;
     else if (!this.seats.R) role = E.RED;
+    const token = reclaimed ? claimed : crypto.randomUUID().replace(/-/g, '');
 
     if (role !== 'S') {
       this.seats[role] = token;
@@ -255,9 +326,13 @@ export class GameRoom extends DurableObject {
         this.game.players = { B: this.accounts.B, R: this.accounts.R };
       }
       E.applyMove(this.game, move);
-      if (this.game.gameOver) await this.finishRated('board');
+      if (this.game.gameOver) {
+        this.game.endedAt = now;
+        await this.finishRated(this.game.endReason || 'board');
+      }
       this.touch();
       await this.persist();
+      if (this.game.gameOver) this.queueShowcase();
       await this.scheduleAlarm();
       await this.syncLobby();
       this.broadcast();
@@ -283,19 +358,73 @@ export class GameRoom extends DurableObject {
       }
     } else if (message.type === 'new') {
       if (!seated) return;
+      // A game in progress cannot be discarded — that would let a losing player walk away
+      // from a rated result for free. Finish it, or resign it.
+      if (!this.game.gameOver && this.game.moves.length > 0) {
+        return this.sendError(socket, 'finish or resign this game first');
+      }
       const config = attachment.role === E.BLUE && message.cfg ? E.sanitizeCfg(message.cfg) : this.game.cfg;
       // A challenge room keeps its custom position across rematches; Blue may send a
       // fresh one (or none, which restarts from the standard blocks).
-      const pos = typeof message.pos === 'string' ? message.pos
-        : (attachment.role === E.RED ? this.game.pos : null);
-      const posBoard = pos ? E.decodePos(pos, config.size) : null;
-      this.game = E.newGame(config, posBoard || undefined);
-      if (posBoard) this.game.pos = pos;
+      const pos = attachment.role === E.BLUE
+        ? (typeof message.pos === 'string' ? message.pos : null)
+        : this.game.pos;
+      const own = attachment.role === E.BLUE
+        ? (typeof message.own === 'string' ? message.own : null)
+        : this.game.own;
+      const pieceBoard = pos ? E.decodePos(pos, config.size) : null;
+      const ownedBoard = pieceBoard && own ? E.decodeOwners(own, pieceBoard) : null;
+      this.game = E.newGame(config, ownedBoard || pieceBoard || undefined);
+      this.game.startedAt = now;
+      this.game.publicId = crypto.randomUUID();
+      if (pieceBoard) {
+        this.game.pos = pos;
+        this.game.own = ownedBoard ? own : E.encodeOwners(pieceBoard);
+      }
       this.touch();
       await this.persist();
       await this.scheduleAlarm();
       await this.syncLobby();
       this.broadcast();
+    } else if (message.type === 'resign') {
+      if (!seated || !this.seats.B || !this.seats.R || this.game.gameOver) return;
+      this.game.gameOver = true;
+      this.game.winner = attachment.role === E.BLUE ? E.RED : E.BLUE;
+      this.game.endReason = 'resign';
+      this.game.endedAt = now;
+      await this.finishRated('resign', this.game.winner);
+      this.touch();
+      await this.persist();
+      this.queueShowcase();
+      await this.scheduleAlarm();
+      await this.syncLobby();
+      this.broadcast();
+    } else if (message.type === 'chat') {
+      // Ephemeral: broadcast to everyone present, never stored. Seated players only.
+      if (!seated) return;
+      if (!attachment.chatAt || now - attachment.chatAt >= CHAT_WINDOW_MS) {
+        attachment.chatAt = now;
+        attachment.chatCount = 1;
+      } else {
+        attachment.chatCount = (attachment.chatCount || 0) + 1;
+      }
+      socket.serializeAttachment(attachment);
+      if (attachment.chatCount > MAX_CHAT_MESSAGES_PER_WINDOW) {
+        return this.sendError(socket, 'chat rate exceeded');
+      }
+      const text = cleanChat(message.text);
+      if (!text) return;
+      const payload = JSON.stringify({
+        type: 'chat',
+        role: attachment.role,
+        name: this.names[attachment.role] || (attachment.role === E.BLUE ? 'Blue' : 'Red'),
+        text,
+        ts: now,
+      });
+      for (const other of this.ctx.getWebSockets()) {
+        if (other.readyState !== 1) continue;
+        try { other.send(payload); } catch { /* will close */ }
+      }
     } else if (message.type === 'sync') {
       try { socket.send(JSON.stringify({ type: 'state', state: this.stateMsg() })); } catch { /* already closed */ }
     }
@@ -329,12 +458,7 @@ export class GameRoom extends DurableObject {
         try { socket.send(payload); socket.close(4002, 'room expired'); } catch { /* already closed */ }
       }
       await this.ctx.storage.deleteAll();
-      this.game = null;
-      this.seats = { B: null, R: null };
-      this.names = { B: null, R: null };
-      this.disconnected = { B: null, R: null };
-      this.room = null;
-      this.expiresAt = 0;
+      this.resetRoom();
       return;
     }
 
@@ -347,8 +471,10 @@ export class GameRoom extends DurableObject {
           this.game.gameOver = true;
           this.game.winner = E.other(role);
           this.game.endReason = 'abandon';
+          this.game.endedAt = now;
           await this.finishRated('abandon', E.other(role));
           await this.persist();
+          this.queueShowcase();
           await this.syncLobby();
           this.broadcast();
           break;
@@ -385,6 +511,7 @@ export class GameRoom extends DurableObject {
       const ratingOf = Object.fromEntries(rows.results.map((r) => [r.id, r.rating]));
       if (!(players.B in ratingOf) || !(players.R in ratingOf)) {
         logError('rating_account_missing', 'account row vanished', { room: this.room, match: game.matchId });
+        game.ratingError = true;
         return;
       }
       const rb = ratingOf[players.B], rr = ratingOf[players.R];
@@ -411,7 +538,53 @@ export class GameRoom extends DurableObject {
       if (this.accounts.R === players.R) this.ratings.R = rr + dR;
     } catch (error) {
       logError('rating_record_failed', error, { room: this.room, match: game.matchId });
+      game.ratingError = true;   // the client says so rather than showing a silent no-op
     }
+  }
+
+  // A completed room contributes one compact replay to the public homepage feed.
+  // D1 is the right home for this bounded historical index; room coordination stays
+  // sharded one-Durable-Object-per-game. INSERT OR REPLACE makes retries harmless.
+  queueShowcase() {
+    const game = this.game;
+    if (!game?.gameOver || !game.moves?.length || !game.startPos || !game.startOwners) return;
+    const score = E.result(game);
+    const winner = game.winner || (score.B > score.R ? E.BLUE : score.R > score.B ? E.RED : null);
+    const payload = JSON.stringify({
+      id: game.publicId || game.matchId || crypto.randomUUID(),
+      cfg: E.sanitizeCfg(game.cfg),
+      startPos: game.startPos,
+      startOwners: game.startOwners,
+      moves: game.moves.slice(0, 500).map((move) => ({
+        c: move.c,
+        piece: move.piece,
+        from: move.from,
+        to: move.to,
+        capture: move.capture || null,
+      })),
+      names: {
+        B: cleanName(this.names.B || 'Blue'),
+        R: cleanName(this.names.R || 'Red'),
+      },
+      winner,
+      endReason: game.endReason || 'board',
+      playedAt: game.endedAt || Date.now(),
+      rated: !!game.rated,
+      variant: E.variantLabel(game.cfg),
+    });
+    if (payload.length > 64 * 1024) return;
+    const id = game.publicId || game.matchId;
+    const playedAt = game.endedAt || Date.now();
+    this.ctx.waitUntil(this.env.DB.batch([
+      this.env.DB.prepare(
+        `INSERT INTO showcases (id, payload, played_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, played_at = excluded.played_at`,
+      ).bind(id, payload, playedAt),
+      this.env.DB.prepare(
+        `DELETE FROM showcases WHERE id NOT IN
+         (SELECT id FROM showcases ORDER BY played_at DESC LIMIT ?1)`,
+      ).bind(SHOWCASE_LIMIT),
+    ]).catch((error) => logError('showcase_record_failed', error, { room: this.room, game: id })));
   }
 
   sendError(socket, message) {
@@ -422,6 +595,9 @@ export class GameRoom extends DurableObject {
     const game = this.game;
     return {
       board: game.board,
+      startPos: game.startPos || null,
+      startOwners: game.startOwners || null,
+      startedAt: game.startedAt || null,
       turn: game.turn,
       acts: game.acts || 0,
       moves: game.moves,
@@ -434,9 +610,11 @@ export class GameRoom extends DurableObject {
       online: { B: this.seatIsOnline(E.BLUE), R: this.seatIsOnline(E.RED) },
       rated: !!game.rated,
       pos: game.pos || null,
+      own: game.own || null,
       winner: game.winner || null,
       endReason: game.endReason || null,
       deltas: game.deltas || null,
+      ratingError: !!game.ratingError,
       ratings: this.ratings,
       accounts: this.accounts,
     };
@@ -473,16 +651,33 @@ export class GameRoom extends DurableObject {
         && !this.game.gameOver
         && this.game.moves.length === 0;
       if (isOpen) {
-        await this.lobby().add({
+        const entry = {
           room: this.room,
           host: this.names.B || 'guest',
           hostId: this.accounts.B,
           rating: this.accounts.B ? this.ratings.B : null,
           variant: E.variantLabel(this.game.cfg),
           cfg: this.game.cfg,
+        };
+        const fingerprint = JSON.stringify([
+          entry.host,
+          entry.hostId || null,
+          entry.rating ?? null,
+          entry.variant,
+          E.sanitizeCfg(entry.cfg),
+        ]);
+        if (this.lobbyListed === true && this.lobbyFingerprint === fingerprint) return;
+        await this.lobby().add({
+          ...entry,
         });
-      } else {
+        this.lobbyListed = true;
+        this.lobbyFingerprint = fingerprint;
+        await this.ctx.storage.put('lobbyIndex', { listed: true, fingerprint });
+      } else if (this.lobbyListed !== false) {
         await this.lobby().remove(this.room);
+        this.lobbyListed = false;
+        this.lobbyFingerprint = null;
+        await this.ctx.storage.put('lobbyIndex', { listed: false, fingerprint: null });
       }
     } catch (error) {
       logError('room_lobby_sync_failed', error, { room: this.room });
@@ -493,6 +688,7 @@ export class GameRoom extends DurableObject {
 export class Lobby extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    this.nextPruneAt = 0;
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS games (
@@ -532,7 +728,9 @@ export class Lobby extends DurableObject {
   }
 
   prune(now = Date.now()) {
+    if (now < this.nextPruneAt) return;
     this.ctx.storage.sql.exec('DELETE FROM games WHERE updated_at < ?', now - ROOM_TTL_MS);
+    this.nextPruneAt = now + 60_000;
   }
 
   async add(entry) {
@@ -661,10 +859,16 @@ export default {
         if (!body) return json({ error: 'bad request' }, { status: 400, headers: noStore });
 
         if (url.pathname === '/api/account') {
+          const now = Date.now();
+          if (!(await signupAllowed(env, request, now))) {
+            return json({ error: 'too many accounts from this connection — try again later' }, {
+              status: 429,
+              headers: { 'retry-after': String(SIGNUP_WINDOW_MS / 1000), ...noStore },
+            });
+          }
           const name = cleanName(body.name);
           const id = newAccountId();
           const secret = newSecret();
-          const now = Date.now();
           await env.DB.prepare('INSERT INTO accounts (id, secret_hash, name, created_at, seen_at) VALUES (?1, ?2, ?3, ?4, ?4)')
             .bind(id, await sha256hex(secret), name, now).run();
           return json({ id, secret, name, rating: START_RATING }, { headers: noStore });
@@ -720,6 +924,32 @@ export default {
            WHERE m.blue = ?1 OR m.red = ?1 ORDER BY m.played_at DESC LIMIT 20`,
         ).bind(id).all();
         return json({ account, matches: matches.results }, { headers: noStore });
+      }
+      if (url.pathname === '/api/showcase') {
+        if (request.method !== 'GET') {
+          return json({ error: 'method not allowed' }, {
+            status: 405,
+            headers: { allow: 'GET', 'cache-control': 'no-store' },
+          });
+        }
+        const cacheKey = new Request(`${url.origin}/api/showcase`, { method: 'GET' });
+        const cached = await caches.default.match(cacheKey);
+        if (cached) return cached;
+        const rows = await env.DB.prepare(
+          'SELECT payload FROM showcases ORDER BY played_at DESC LIMIT 4',
+        ).all();
+        const games = [];
+        for (const row of rows.results || []) {
+          try {
+            const game = JSON.parse(row.payload);
+            if (game && game.id && game.cfg && Array.isArray(game.moves)) games.push(game);
+          } catch { /* discard a malformed historical row */ }
+        }
+        const response = json({ games }, {
+          headers: { 'cache-control': 'public, max-age=10, s-maxage=30, stale-while-revalidate=120' },
+        });
+        ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+        return response;
       }
       if (url.pathname === '/api/lobby') {
         if (request.method !== 'GET') {

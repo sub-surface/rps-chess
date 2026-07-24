@@ -1,10 +1,11 @@
 // JANKEN client — homepage, local play (hot-seat / bot / bot-vs-bot), and online rooms.
 // All rules live in engine.js (shared with the server), so hints match server validation.
 import * as E from '/engine.js';
+import { exportJpgn } from '/notation.js';
 const { BLUE, RED, other } = E;
 
 // ── config + identity (persisted) ───────────────────────────────────────────
-const DEFAULTS = { size: 9, perType: 2, moveStyle: 'classic', capture: 'rps', territory: true, retread: false, trail: false, layout: 'rows', actionsPerTurn: 1, first: BLUE, coords: true, hints: true, sound: true, pieceStyle: 'line' };
+const DEFAULTS = { ...E.PRESETS.standard, coords: true, hints: true, sound: true, pieceStyle: 'line' };
 const PIECE_STYLES = ['line', 'solid', 'pixel', 'kanji'];
 const store = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
@@ -18,6 +19,22 @@ function storedObject(key) {
 }
 const savedCfg = storedObject('janken-cfg');
 const rulesCfg = E.sanitizeCfg(savedCfg);
+// Standard used the legacy "classic" R-king/P-rook/S-bishop mapping before
+// per-piece movement fields existed. Only migrate that exact old preset shape;
+// other legacy custom variants retain their original movement semantics.
+const legacyStandard = !['rockMove', 'paperMove', 'scissorsMove'].some((field) => field in savedCfg)
+  && savedCfg.moveStyle === 'classic'
+  && rulesCfg.size === 9
+  && rulesCfg.perType === 2
+  && rulesCfg.capture === 'rps'
+  && rulesCfg.territory
+  && !rulesCfg.trail
+  && rulesCfg.layout === 'rows'
+  && rulesCfg.actionsPerTurn === 1
+  && rulesCfg.first === BLUE;
+if (legacyStandard) {
+  Object.assign(rulesCfg, E.PRESETS.standard);
+}
 const cfg = {
   ...DEFAULTS,
   ...rulesCfg,
@@ -26,7 +43,16 @@ const cfg = {
   sound: savedCfg.sound !== false,
   pieceStyle: PIECE_STYLES.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : 'line',
 };
-const saveCfg = () => store.set('janken-cfg', JSON.stringify(cfg));
+// `cfg` is the live config the board plays under, so joining an online room overwrites its
+// rules. `ownRules` is the variant this player chose, and only it is ever persisted —
+// otherwise a visit to someone else's 13×13 game would quietly replace your saved preset.
+let ownRules = E.sanitizeCfg(cfg);
+const saveCfg = () => store.set('janken-cfg', JSON.stringify({
+  ...ownRules,
+  coords: cfg.coords, hints: cfg.hints, sound: cfg.sound, pieceStyle: cfg.pieceStyle,
+}));
+// Call after the player themselves changes the rules; plain saveCfg() is for view prefs.
+const adoptRules = () => { ownRules = E.sanitizeCfg(cfg); saveCfg(); };
 const randomGuest = () => {
   const bytes = new Uint8Array(3);
   crypto.getRandomValues(bytes);
@@ -103,14 +129,31 @@ function glyph(type, color, style) {
   return `<svg class="pc pc-${color}" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7">${LINE[type]}</svg>`;
 }
 const legendGlyph = (type) => glyph(type, 'B').replace('pc-B', 'pc');
-const MOVES_DESC = {
-  classic: [['rock', 'Rock', 'steps 1 — any way'], ['paper', 'Paper', 'slides — straight'], ['scissors', 'Scissors', 'slides — diagonal']],
-  kings: [['rock', 'Rock', 'steps 1 — any way'], ['paper', 'Paper', 'steps 1 — any way'], ['scissors', 'Scissors', 'steps 1 — any way']],
-  queens: [['rock', 'Rock', 'slides — any way'], ['paper', 'Paper', 'slides — any way'], ['scissors', 'Scissors', 'slides — any way']],
-};
+const PIECE_NAMES = { rock: 'Rock', paper: 'Paper', scissors: 'Scissors' };
+const moveDescription = (type, rules = cfg) => E.MOVEMENT_DESCRIPTIONS[E.movementFor(rules, type)];
 
 // ── state ────────────────────────────────────────────────────────────────────
-const state = { board: E.blocksBoard(cfg.size, cfg.perType, cfg.layout), turn: BLUE, acts: 0, selected: null, targets: [], lastMove: null, justMovedTo: null, moves: [], passStreak: 0, gameOver: false, dry: 0, thinking: false, cfg };
+const initialBoard = E.blocksBoard(cfg.size, cfg.perType, cfg.layout);
+const state = {
+  board: initialBoard,
+  startPos: E.encodePos(initialBoard),
+  startOwners: E.encodeOwners(initialBoard),
+  startedAt: Date.now(),
+  turn: cfg.first,
+  acts: 0,
+  selected: null,
+  targets: [],
+  lastMove: null,
+  justMovedTo: null,
+  moves: [],
+  passStreak: 0,
+  gameOver: false,
+  endReason: null,
+  winner: null,
+  dry: 0,
+  thinking: false,
+  cfg,
+};
 let positions = [], viewPly = 0;
 let mode = 'human';        // 'human' | 'bot' | 'botbot' | (online → net set)
 let net = null;
@@ -121,8 +164,42 @@ const BOTSIDE = RED;
 
 const liveIndex = () => positions.length - 1;
 const isLive = () => viewPly === liveIndex();
-const snap = () => JSON.stringify({ board: state.board, turn: state.turn, acts: state.acts, moves: state.moves, passStreak: state.passStreak, gameOver: state.gameOver, lastMove: state.lastMove, dry: state.dry });
-function loadLive(s) { const d = JSON.parse(s); Object.assign(state, { board: d.board, turn: d.turn, acts: d.acts, moves: d.moves, passStreak: d.passStreak, gameOver: d.gameOver, lastMove: d.lastMove, dry: d.dry, selected: null, targets: [], justMovedTo: null }); }
+const snap = () => JSON.stringify({
+  board: state.board,
+  startPos: state.startPos,
+  startOwners: state.startOwners,
+  startedAt: state.startedAt,
+  turn: state.turn,
+  acts: state.acts,
+  moves: state.moves,
+  passStreak: state.passStreak,
+  gameOver: state.gameOver,
+  endReason: state.endReason,
+  winner: state.winner,
+  lastMove: state.lastMove,
+  dry: state.dry,
+});
+function loadLive(s) {
+  const d = JSON.parse(s);
+  Object.assign(state, {
+    board: d.board,
+    startPos: d.startPos,
+    startOwners: d.startOwners,
+    startedAt: d.startedAt,
+    turn: d.turn,
+    acts: d.acts,
+    moves: d.moves,
+    passStreak: d.passStreak,
+    gameOver: d.gameOver,
+    endReason: d.endReason || null,
+    winner: d.winner || null,
+    lastMove: d.lastMove,
+    dry: d.dry,
+    selected: null,
+    targets: [],
+    justMovedTo: null,
+  });
+}
 
 function humanControls(color) {
   if (net) return net.connected && net.role === color;
@@ -215,7 +292,12 @@ function build(size) {
 const toBoard = (dr, dc, size) => flipped ? [size - 1 - dr, size - 1 - dc] : [dr, dc];
 
 // ── render ──────────────────────────────────────────────────────────────────
-function renderLegend() { $('legend').innerHTML = (MOVES_DESC[cfg.moveStyle] || MOVES_DESC.classic).map(([p, t, d]) => `<div class="lg"><span class="glyph">${legendGlyph(p)}</span><span class="lt">${t}</span><span class="lm">${d}</span></div>`).join(''); }
+function renderLegend() {
+  $('legend').innerHTML = ['rock', 'paper', 'scissors']
+    .map((type) => `<div class="lg" title="${PIECE_NAMES[type]} ${E.MOVEMENT_SENTENCES[E.movementFor(cfg, type)]}"><span class="glyph">${legendGlyph(type)}</span><span class="lt">${PIECE_NAMES[type]}</span><span class="lm">${moveDescription(type)}</span></div>`)
+    .join('');
+  renderRulesFlap();   // the rules on screen always match the rules in play
+}
 
 function render() {
   const size = curSize;
@@ -283,6 +365,10 @@ function renderHUD(board) {
   $('nav-next').disabled = scrub || viewPly >= liveIndex();
   $('nav-end').disabled = scrub || viewPly >= liveIndex();
   $('takeback').disabled = !!net || mode === 'botbot' || positions.length <= 1 || state.thinking;
+  // A started online game can only be finished or resigned, never discarded.
+  const liveOnline = !!net && !state.gameOver && state.moves.length > 0;
+  $('new-btn').disabled = liveOnline;
+  $('new-btn').title = liveOnline ? 'Finish or resign this game first' : '';
   $('ply').textContent = viewPly === 0 ? 'start' : `${viewPly} / ${liveIndex()}`;
 
   renderLog(); renderBanner(res);
@@ -322,8 +408,10 @@ function renderBanner(res) {
   const unit = res.metric === 'squares' ? '' : ' pieces';
   const lines = [];
   if (net && state.endReason === 'abandon') lines.push(`${side === BLUE ? 'Red' : 'Blue'} left the game`);
+  else if (net && state.endReason === 'resign') lines.push(`${side === BLUE ? 'Red' : 'Blue'} resigned`);
   lines.push(`Blue ${res.B} · Red ${res.R}${unit}`);
   if (net && state.deltas) lines.push(`rating ${fmtDelta(state.deltas.B)} / ${fmtDelta(state.deltas.R)}`);
+  else if (net && state.rated && state.ratingError) lines.push('rating could not be recorded');
   el.hidden = false;
   const analyse = net ? '' : '<button class="linklike" id="analyse-btn">analyse this position ▸</button>';
   el.innerHTML = `<div class="card ${win}"><b class="${cls}">${winner}</b><p>${lines.join('<br>')}</p><button class="btn" id="again-btn">${net ? 'Rematch' : 'New game'}</button>${analyse}</div>`;
@@ -331,16 +419,24 @@ function renderBanner(res) {
   if (!net) $('analyse-btn').onclick = () => enterEdit(E.cloneBoard(state.board));
 }
 
-// ── interaction ─────────────────────────────────────────────────────────────
+// ── interaction (click-to-move and drag-and-drop share one commit path) ──────
+function commitPlay(fr, fc, tr, tc) {
+  if (net) { sendNet({ type: 'move', from: [fr, fc], to: [tr, tc] }); state.selected = null; state.targets = []; render(); }
+  else doMove({ fr, fc, tr, tc });
+}
+let suppressClick = false;
+function suppressTrailingClick() {
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 0);
+}
 boardEl.addEventListener('click', (e) => {
+  if (suppressClick) { suppressClick = false; return; }   // a drag already handled this
   const b = e.target.closest('.sq'); if (!b) return;
   const [r, c] = toBoard(+b.dataset.dr, +b.dataset.dc, curSize);
   if (editing) return editClick(r, c);
   if (!canPlay()) return;
   if (state.selected && state.targets.some(t => t[0] === r && t[1] === c)) {
-    const m = { fr: state.selected.r, fc: state.selected.c, tr: r, tc: c };
-    if (net) { sendNet({ type: 'move', from: [m.fr, m.fc], to: [m.tr, m.tc] }); state.selected = null; state.targets = []; render(); }
-    else doMove(m);
+    commitPlay(state.selected.r, state.selected.c, r, c);
     return;
   }
   const p = state.board[r][c].piece;
@@ -348,9 +444,81 @@ boardEl.addEventListener('click', (e) => {
   else { state.selected = null; state.targets = []; }
   render();
 });
+
+// Drag-and-drop: a click that moves past a threshold lifts the piece; the trailing
+// native click is suppressed. Works in play and in the analysis board's move tool.
+let drag = null;
+const DRAG_MIN = 4;
+function draggableAt(r, c) {
+  if (editing) return tool === 'move' && !!editBoard[r][c].piece;
+  return canPlay() && !!(state.board[r][c].piece && state.board[r][c].piece.color === state.turn);
+}
+function ghostFor(piece, sqEl) {
+  const rect = sqEl.getBoundingClientRect();
+  const g = document.createElement('div');
+  g.className = 'drag-ghost';
+  g.style.width = rect.width + 'px'; g.style.height = rect.height + 'px';
+  g.innerHTML = glyph(piece.type, piece.color);
+  document.body.appendChild(g);
+  return g;
+}
+boardEl.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  suppressClick = false;
+  const sqEl = e.target.closest('.sq'); if (!sqEl) return;
+  const [r, c] = toBoard(+sqEl.dataset.dr, +sqEl.dataset.dc, curSize);
+  if (!draggableAt(r, c)) return;
+  const piece = (editing ? editBoard : state.board)[r][c].piece;
+  drag = { r, c, sqEl, piece, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, active: false, ghost: null };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  if (!drag.active) {
+    if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_MIN) return;
+    drag.active = true;
+    if (editing) { edSel = { r: drag.r, c: drag.c }; edTargets = E.legalDest(editBoard, drag.r, drag.c, E.sanitizeCfg(cfg)); }
+    else { state.selected = { r: drag.r, c: drag.c }; state.targets = E.legalDest(state.board, drag.r, drag.c, cfg); }
+    render();
+    const pcw = drag.sqEl.querySelector('.pcw'); if (pcw) pcw.style.opacity = '.25';
+    drag.ghost = ghostFor(drag.piece, drag.sqEl);
+    try { boardEl.setPointerCapture(drag.pointerId); } catch { /* older browsers */ }
+  }
+  drag.ghost.style.left = e.clientX + 'px';
+  drag.ghost.style.top = e.clientY + 'px';
+  e.preventDefault();
+});
+window.addEventListener('pointerup', (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  const d = drag; drag = null;
+  if (d.ghost) d.ghost.remove();
+  const pcw = d.sqEl.querySelector('.pcw'); if (pcw) pcw.style.opacity = '';
+  try { boardEl.releasePointerCapture(d.pointerId); } catch { /* ignore */ }
+  if (!d.active) return;   // it was a click; let the click handler select
+  suppressTrailingClick();
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  const sqEl = hit && hit.closest ? hit.closest('.sq') : null;
+  if (!sqEl || !boardEl.contains(sqEl)) return render();
+  const [r, c] = toBoard(+sqEl.dataset.dr, +sqEl.dataset.dc, curSize);
+  if (editing) {
+    if (edSel && edTargets.some(t => t[0] === r && t[1] === c)) { analysisMove(edSel.r, edSel.c, r, c); edSel = null; edTargets = []; }
+    render();
+  } else if (state.selected && state.targets.some(t => t[0] === r && t[1] === c)) {
+    commitPlay(state.selected.r, state.selected.c, r, c);
+  } else render();
+});
+window.addEventListener('pointercancel', (e) => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  if (drag.ghost) drag.ghost.remove();
+  const pcw = drag.sqEl.querySelector('.pcw'); if (pcw) pcw.style.opacity = '';
+  drag = null; render();
+});
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]') || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
-  if (e.key === 'Escape') { if (editing) return cancelEdit(); state.selected = null; state.targets = []; render(); return; }
+  if (e.key === 'Escape') {
+    if (!$('rules-flap').hidden) return toggleRulesFlap(false);
+    if (editing) return cancelEdit();
+    state.selected = null; state.targets = []; render(); return;
+  }
   if ((e.key === 'f' || e.key === 'F') && document.body.dataset.screen === 'game') {
     flipped = !flipped; store.set('janken-flip', flipped ? '1' : '0'); render(); drawAnnos(); return;
   }
@@ -444,11 +612,42 @@ $('board-grip').addEventListener('dblclick', () => {
 // ── game lifecycle ──────────────────────────────────────────────────────────
 function freshLocal(board) {
   const gm = E.newGame(cfg, board);
-  Object.assign(state, { board: gm.board, turn: gm.turn, acts: gm.acts, moves: gm.moves, passStreak: gm.passStreak, gameOver: gm.gameOver, lastMove: gm.lastMove, dry: gm.dry, selected: null, targets: [], justMovedTo: null, thinking: false, rated: false, winner: null, endReason: null, deltas: null });
+  gm.startedAt = Date.now();
+  Object.assign(state, {
+    board: gm.board,
+    startPos: gm.startPos,
+    startOwners: gm.startOwners,
+    startedAt: gm.startedAt,
+    turn: gm.turn,
+    acts: gm.acts,
+    moves: gm.moves,
+    passStreak: gm.passStreak,
+    gameOver: gm.gameOver,
+    lastMove: gm.lastMove,
+    dry: gm.dry,
+    selected: null,
+    targets: [],
+    justMovedTo: null,
+    thinking: false,
+    rated: false,
+    pos: board ? gm.startPos : null,
+    own: board ? gm.startOwners : null,
+    winner: null,
+    endReason: gm.endReason,
+    deltas: null,
+  });
 }
 function newGame() {
   gen++;
-  if (net) { sendNet({ type: 'new', cfg, ...(state.pos ? { pos: state.pos } : {}) }); return; }
+  if (net) {
+    sendNet({
+      type: 'new',
+      cfg,
+      ...(state.pos ? { pos: state.pos } : {}),
+      ...(state.own ? { own: state.own } : {}),
+    });
+    return;
+  }
   if (curSize !== cfg.size) build(cfg.size);
   freshLocal();
   positions = [snap()]; viewPly = 0;
@@ -459,7 +658,7 @@ function startLocal(m) { leaveOnline(); gen++; mode = m; $('online').hidden = tr
 // ── online ───────────────────────────────────────────────────────────────────
 const genRoom = () => { const a = new Uint8Array(9); crypto.getRandomValues(a); return [...a].map(b => (b % 36).toString(36)).join(''); };
 function startOnline(room, opts = {}) {
-  leaveOnline(); gen++; mode = 'online'; lastServerMoves = -1;
+  leaveOnline(); gen++; mode = 'online'; lastServerMoves = -1; resetChat();
   const session = {
     ws: null,
     room,
@@ -476,6 +675,7 @@ function startOnline(room, opts = {}) {
     socketGeneration: 0,
     hostConfig: !!opts.host,
     pos: opts.pos || null,
+    own: opts.own || null,
     error: '',
   };
   net = session;
@@ -499,7 +699,11 @@ function connectOnline(session) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const params = new URLSearchParams({ room: session.room, name });
   if (session.token) params.set('token', session.token);
-  else if (session.hostConfig) params.set('cfg', btoa(JSON.stringify({ ...E.sanitizeCfg(cfg), ...(session.pos ? { pos: session.pos } : {}) })));
+  else if (session.hostConfig) params.set('cfg', btoa(JSON.stringify({
+    ...E.sanitizeCfg(cfg),
+    ...(session.pos ? { pos: session.pos } : {}),
+    ...(session.own ? { own: session.own } : {}),
+  })));
   const ws = new WebSocket(`${proto}://${location.host}/ws?${params.toString()}`);
   session.ws = ws;
   const current = () => net === session && !session.stopped && session.socketGeneration === socketGeneration;
@@ -577,21 +781,90 @@ function onNet(session, message) {
     session.connected = false;
     session.status = 'expired';
     updateOnlineUI();
+  } else if (message.type === 'chat') {
+    addChat(message);
   }
 }
+
+// ── in-game chat (ephemeral — kept only in memory, cleared with the room) ─────
+let chatLog = [];
+function resetChat() { chatLog = []; renderChat(); }
+function renderChat() {
+  const box = $('chat-log'); if (!box) return;
+  box.innerHTML = '';
+  if (!chatLog.length) {
+    const empty = document.createElement('div'); empty.className = 'chat-empty';
+    empty.textContent = 'Say hello — messages stay in this tab for this game only.';
+    box.appendChild(empty);
+    return;
+  }
+  for (const m of chatLog.slice(-120)) {
+    const line = document.createElement('div');
+    line.className = 'chat-line ' + (m.role === BLUE ? 'b' : m.role === RED ? 'r' : 's');
+    const who = document.createElement('span'); who.className = 'who'; who.textContent = m.name || (m.role === BLUE ? 'Blue' : m.role === RED ? 'Red' : 'Spectator');
+    const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = m.text;
+    line.append(who, msg);
+    box.appendChild(line);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+function addChat(m) {
+  if (!m || typeof m.text !== 'string') return;
+  chatLog.push({ role: m.role, name: m.name, text: m.text });
+  if (chatLog.length > 200) chatLog = chatLog.slice(-200);
+  renderChat();
+  if (document.activeElement !== $('chat-input')) blip(320, 0.05, 0.03);   // soft ping, honours the sound pref
+}
+$('chat-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('chat-input');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  if (sendNet({ type: 'chat', text })) input.value = '';
+});
+$('resign-btn').onclick = () => {
+  if (!net || state.gameOver) return;
+  if (!window.confirm('Resign this game? Your opponent wins.')) return;
+  sendNet({ type: 'resign' });
+};
 let lastServerMoves = -1;
 function applyServerState(s) {
   if (!s || !s.cfg || !Array.isArray(s.board)) return;
+  const rematch = (state.startedAt && s.startedAt && state.startedAt !== s.startedAt)
+    || (state.gameOver && !s.gameOver && (!s.moves || s.moves.length === 0));
+  if (rematch) resetChat();
   Object.assign(cfg, E.sanitizeCfg(s.cfg));
   if (curSize !== cfg.size) build(cfg.size);
   const moves = Array.isArray(s.moves) ? s.moves : [];
   if (lastServerMoves >= 0 && moves.length > lastServerMoves) {
     if (s.gameOver) soundEnd();
-    else if (moves[moves.length - 1].t.includes('×')) soundCap();
+    else if ((moves[moves.length - 1].capture || '') || (moves[moves.length - 1].t || '').includes('×')) soundCap();
     else soundMove();
   }
   lastServerMoves = moves.length;
-  Object.assign(state, { board: s.board, turn: s.turn, acts: s.acts || 0, moves, gameOver: !!s.gameOver, lastMove: s.lastMove || null, passStreak: 0, dry: 0, thinking: false, selected: null, targets: [], rated: !!s.rated, pos: s.pos || null, winner: s.winner || null, endReason: s.endReason || null, deltas: s.deltas || null });
+  Object.assign(state, {
+    board: s.board,
+    startPos: s.startPos || s.pos || null,
+    startOwners: s.startOwners || s.own || null,
+    startedAt: s.startedAt || state.startedAt || Date.now(),
+    turn: s.turn,
+    acts: s.acts || 0,
+    moves,
+    gameOver: !!s.gameOver,
+    lastMove: s.lastMove || null,
+    passStreak: 0,
+    dry: 0,
+    thinking: false,
+    selected: null,
+    targets: [],
+    rated: !!s.rated,
+    pos: s.pos || null,
+    own: s.own || null,
+    winner: s.winner || null,
+    endReason: s.endReason || null,
+    deltas: s.deltas || null,
+    ratingError: !!s.ratingError,
+  });
   net.names = s.names || {}; net.seats = s.seats || {}; net.online = s.online || {};
   net.ratings = s.ratings || {}; net.accounts = s.accounts || {};
   net.error = '';
@@ -615,6 +888,10 @@ function updateOnlineUI() {
   $('orole-text').textContent = label;
   $('rtag').hidden = !state.rated;
   $('oshare').value = location.origin + '/#r=' + net.room;
+  const seated = net.role === 'B' || net.role === 'R';
+  $('chat').hidden = false;                              // spectators can read along
+  $('chat-form').hidden = !seated;                      // but only players type
+  $('resign-btn').hidden = !(seated && net.seats.B && net.seats.R && !state.gameOver);
   const blue = $('pl-b').parentElement, red = $('pl-r').parentElement;
   blue.classList.toggle('offline', !!net.seats.B && net.online.B === false);
   red.classList.toggle('offline', !!net.seats.R && net.online.R === false);
@@ -633,6 +910,7 @@ function leaveOnline() {
   gen++;
   const session = net;
   net = null;
+  resetChat();
   if (!session) return;
   session.stopped = true;
   if (session.timer) clearTimeout(session.timer);
@@ -708,7 +986,7 @@ function bothSidesPresent() {
 }
 function playFromEdit(nextMode) {
   if (!bothSidesPresent()) return;
-  cfg.first = $('ed-first').value; saveCfg();
+  cfg.first = $('ed-first').value; adoptRules();
   editing = false; edSel = null; edTargets = [];
   $('editpanel').hidden = true; $('panel').hidden = false;
   mode = nextMode;
@@ -721,11 +999,12 @@ $('ed-start').onclick = () => playFromEdit('human');
 $('ed-bot').onclick = () => playFromEdit('bot');
 $('ed-chal').onclick = () => {
   if (!bothSidesPresent()) return;
-  cfg.first = $('ed-first').value; saveCfg();
+  cfg.first = $('ed-first').value; adoptRules();
   const pos = E.encodePos(editBoard);
+  const own = E.encodeOwners(editBoard);
   editing = false; edSel = null; edTargets = [];
   $('editpanel').hidden = true; $('panel').hidden = false;
-  startOnline(genRoom(), { host: true, pos });
+  startOnline(genRoom(), { host: true, pos, own });
 };
 $('ed-copy').onclick = async () => {
   try {
@@ -745,11 +1024,60 @@ $('ed-mirror').onclick = () => {
 
 // ── screens / homepage ────────────────────────────────────────────────────────
 let previewPiece = 'rock';
-function previewGlyph(type, x, y, size) {
-  return glyph(type, BLUE).replace('<svg ', `<svg x="${x}" y="${y}" width="${size}" height="${size}" `);
+function previewGlyph(type, color, x, y, size) {
+  return glyph(type, color).replace('<svg ', `<svg x="${x}" y="${y}" width="${size}" height="${size}" `);
 }
-function renderVariantPreview() {
-  const safe = E.sanitizeCfg(cfg);
+function previewStart(rules) {
+  let seed = rules.size * 1009 + rules.perType * 97;
+  const random = () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
+  return E.blocksBoard(rules.size, rules.perType, rules.layout, random);
+}
+// ── rules, rendered from the live config ────────────────────────────────────
+// One renderer feeds both the board-side flap and the how-to-play dialog, so the rules a
+// player reads are always derived from the variant in front of them.
+function renderRulesInto(bodyEl, lineEl, titleEl, rules) {
+  const safe = E.sanitizeCfg(rules);
+  const preset = E.presetOf(safe);
+  if (titleEl) titleEl.textContent = E.presetLabel(preset);
+  if (lineEl) lineEl.textContent = E.variantLabel(safe);
+  bodyEl.innerHTML = '';
+  for (const { h, p } of E.rulesSummary(safe)) {
+    const heading = document.createElement('h3'); heading.textContent = h;
+    const text = document.createElement('p'); text.textContent = p;
+    bodyEl.append(heading, text);
+  }
+}
+function openRulesDialog() {
+  store.set('janken-seen', '1');
+  $('rules-link').classList.remove('attention');
+  renderRulesInto($('rules-body'), $('rules-line'), $('rules-variant'), cfg);
+  $('rules').showModal();
+}
+function renderRulesFlap() {
+  if ($('rules-flap').hidden) return;
+  renderRulesInto($('rf-body'), $('rf-line'), $('rf-title'), cfg);
+}
+function toggleRulesFlap(force) {
+  const flap = $('rules-flap');
+  const open = force === undefined ? flap.hidden : force;
+  flap.hidden = !open;
+  $('rules-tab').setAttribute('aria-expanded', String(open));
+  if (open) { store.set('janken-seen', '1'); $('rules-tab').classList.remove('attention'); renderRulesFlap(); }
+}
+$('rules-tab').onclick = () => toggleRulesFlap();
+$('rf-close').onclick = () => toggleRulesFlap(false);
+$('rules-link').onclick = openRulesDialog;
+
+// `rules` defaults to the live config; hovering a preset chip passes that preset instead,
+// so the whole stage previews a variant before you commit to it.
+function renderVariantPreview(rules = cfg, presetKey = null) {
+  const safe = E.sanitizeCfg(rules);
+  const shown = presetKey || (customising ? 'custom' : E.presetOf(safe));
+  $('preset-name').textContent = E.presetLabel(shown);
+  $('preset-tagline').textContent = E.PRESET_INFO[shown]?.tagline || '';
   const size = safe.size;
   const board = E.emptyBoard(size);
   const origin = Math.floor(size / 2);
@@ -760,11 +1088,15 @@ function renderVariantPreview() {
   const cell = span / size;
   const center = (index) => pad + (index + 0.5) * cell;
   const ox = center(origin), oy = center(origin);
+  const movement = E.movementFor(safe, previewPiece);
+  const movementPattern = E.pattern(previewPiece, safe);
   const farthest = new Map();
   for (const [row, col] of targets) {
     const dr = Math.sign(row - origin), dc = Math.sign(col - origin);
     const distance = Math.max(Math.abs(row - origin), Math.abs(col - origin));
-    const key = `${dr}:${dc}`;
+    const key = movementPattern.slide || movement === 'longking'
+      ? `${dr}:${dc}`
+      : `${row}:${col}`;
     if (!farthest.has(key) || farthest.get(key).distance < distance) {
       farthest.set(key, { row, col, distance });
     }
@@ -788,6 +1120,25 @@ function renderVariantPreview() {
     `<circle class="pv-target" cx="${center(col)}" cy="${center(row)}" r="${Math.max(1.7, Math.min(3.4, cell * 0.11))}"/>`,
   );
   const iconSize = Math.max(13, cell * 0.78);
+  const formationOwners = [];
+  const formationPieces = [];
+  const start = previewStart(safe);
+  for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) {
+    const cellState = start[row][col];
+    if (cellState.owner) {
+      formationOwners.push(`<rect class="pv-own-${cellState.owner}" x="${pad + col * cell}" y="${pad + row * cell}" width="${cell}" height="${cell}"/>`);
+    }
+    if (cellState.piece && (row !== origin || col !== origin)) {
+      const small = Math.max(8, cell * 0.56);
+      formationPieces.push(previewGlyph(
+        cellState.piece.type,
+        cellState.piece.color,
+        center(col) - small / 2,
+        center(row) - small / 2,
+        small,
+      ));
+    }
+  }
   $('preview-board').innerHTML = `
     <defs>
       <pattern id="preview-checks" x="${pad}" y="${pad}" width="${cell * 2}" height="${cell * 2}" patternUnits="userSpaceOnUse">
@@ -798,29 +1149,58 @@ function renderVariantPreview() {
       <marker id="preview-arrow" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto"><path class="pv-arrowhead" d="M0 0 L8 4 L0 8 Z"/></marker>
     </defs>
     <rect x="${pad}" y="${pad}" width="${span}" height="${span}" fill="url(#preview-checks)"/>
+    <g class="pv-ownership">${formationOwners.join('')}</g>
     <path class="pv-grid" d="${gridLines.join(' ')}"/>
+    <g class="pv-formation">${formationPieces.join('')}</g>
     ${arrows.join('')}${dots.join('')}
     <circle class="pv-origin" cx="${ox}" cy="${oy}" r="${Math.max(7, cell * 0.42)}"/>
-    ${previewGlyph(previewPiece, ox - iconSize / 2, oy - iconSize / 2, iconSize)}
+    ${previewGlyph(previewPiece, BLUE, ox - iconSize / 2, oy - iconSize / 2, iconSize)}
   `;
   for (const tab of $('preview-tabs').children) {
     tab.setAttribute('aria-pressed', String(tab.dataset.previewPiece === previewPiece));
   }
-  const [, pieceName, movement] = (MOVES_DESC[safe.moveStyle] || MOVES_DESC.classic)
-    .find(([type]) => type === previewPiece);
-  $('preview-description').textContent = `${pieceName} ${movement}; ${targets.length} legal destination${targets.length === 1 ? '' : 's'} from the centre.`;
+  $('preview-description').textContent = `${PIECE_NAMES[previewPiece]} moves as a ${E.MOVEMENT_LABELS[movement].toLowerCase()}: ${moveDescription(previewPiece, safe)}. ${targets.length} legal destination${targets.length === 1 ? '' : 's'} from the centre.`;
+  $('preview-map').innerHTML = ['rock', 'paper', 'scissors'].map((type) => {
+    const move = E.movementFor(safe, type);
+    const title = `${PIECE_NAMES[type]} ${E.MOVEMENT_SENTENCES[move]}`;
+    return `<button type="button" data-preview-piece="${type}" class="${type === previewPiece ? 'on' : ''}" title="${title}">`
+      + `<span class="pm-glyph">${legendGlyph(type)}</span><span class="pm-move">${E.MOVEMENT_LABELS[move]}</span>`
+      + `<span class="pm-desc">${E.MOVEMENT_DESCRIPTIONS[move]}</span></button>`;
+  }).join('');
+  for (const button of $('preview-map').children) {
+    button.onclick = () => { previewPiece = button.dataset.previewPiece; renderVariantPreview(); };
+  }
   const capture = safe.capture === 'rps' ? 'RPS captures' : 'capture any piece';
   const goal = safe.territory ? (safe.retread ? 'territory + re-tread' : 'new territory only') : 'elimination';
-  const extras = (safe.trail ? ' · ink trail' : '') + (safe.layout !== 'rows' ? ` · ${safe.layout} start` : '');
-  $('preview-facts').textContent = `${safe.size}×${safe.size} · ${safe.perType} / type · ${safe.actionsPerTurn} action${safe.actionsPerTurn === 1 ? '' : 's'} · ${capture} · ${goal}${extras}`;
+  const facts = [
+    `${safe.size}×${safe.size}`,
+    `${safe.perType} / type`,
+    `${'●'.repeat(safe.actionsPerTurn)} ${safe.actionsPerTurn} action${safe.actionsPerTurn === 1 ? '' : 's'}`,
+    `${safe.first === BLUE ? 'Blue' : 'Red'} first`,
+    capture,
+    goal,
+    `${safe.layout} start`,
+  ];
+  if (safe.trail) facts.push('ink trail');
+  $('preview-facts').innerHTML = facts.map((fact) => `<span>${fact}</span>`).join('');
 }
 for (const tab of $('preview-tabs').children) {
   tab.onclick = () => { previewPiece = tab.dataset.previewPiece; renderVariantPreview(); };
 }
 
 let lobbyTimer = null, lobbyRequest = null, lobbyFailures = 0;
+let showcaseStarted = false;
+function ensureShowcase() {
+  if (showcaseStarted) return;
+  showcaseStarted = true;
+  const load = () => import('/showcase.js')
+    .then(({ initShowcase }) => initShowcase())
+    .catch(() => { showcaseStarted = false; });
+  if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 1200 });
+  else setTimeout(load, 80);
+}
 function showGame() { document.body.dataset.screen = 'game'; currentProfile = null; $('home').hidden = true; $('game').hidden = false; $('profilepage').hidden = true; stopLobbyPoll(); }
-function showHome() { gen++; leaveOnline(); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); }
+function showHome() { gen++; leaveOnline(); toggleRulesFlap(false); Object.assign(cfg, ownRules); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); ensureShowcase(); }
 
 // ── profile screen ───────────────────────────────────────────────────────────
 function statEl(value, label) {
@@ -907,7 +1287,7 @@ function buildAcctBox() {
     const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'btn sm'; copy.textContent = 'Copy';
     copy.onclick = async () => { try { await navigator.clipboard.writeText(code.value); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1200); } catch { } };
     const row = document.createElement('div'); row.className = 'acct-row'; row.append(code, copy);
-    hint.textContent = 'Your transfer code — paste it on another device to keep your rating. Keep it private.';
+    hint.textContent = 'Change your username anytime in the “you are” field on Home; rated profiles update automatically. The transfer code moves your rating to another device — keep it private.';
     box.append(row, hint);
   } else {
     const paste = document.createElement('input');
@@ -927,16 +1307,38 @@ function buildAcctBox() {
       } catch { restore.textContent = 'Invalid'; setTimeout(() => restore.textContent = 'Restore', 1400); }
     };
     const row = document.createElement('div'); row.className = 'acct-row'; row.append(paste, restore);
-    hint.textContent = 'No account yet — "get rated" on the home screen creates one, or restore an existing code.';
+    hint.textContent = 'Your “you are” name is editable anytime. “Get rated” creates a persistent profile, or restore one with its transfer code.';
     box.append(row, hint);
   }
 }
+
+function buildMovementSelectors() {
+  const descriptions = {
+    king: '1 square, any way',
+    rook: 'slide straight',
+    bishop: 'slide diagonal',
+    knight: 'L-shaped jump',
+    queen: 'slide any way',
+    cross: '1 square straight',
+    longking: 'king + 2-square jump',
+  };
+  for (const type of ['rock', 'paper', 'scissors']) {
+    const select = $(`s-move-${type}`);
+    select.innerHTML = E.MOVEMENT_TYPES
+      .map((move) => `<option value="${move}">${E.MOVEMENT_LABELS[move]} — ${descriptions[move]}</option>`)
+      .join('');
+  }
+}
+buildMovementSelectors();
 
 function fillHome() {
   $('s-size').value = cfg.size; $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
   $('s-per').value = cfg.perType; $('s-per-v').textContent = cfg.perType;
   $('s-acts').value = cfg.actionsPerTurn; $('s-acts-v').textContent = cfg.actionsPerTurn;
-  $('s-move').value = cfg.moveStyle; $('s-cap').value = cfg.capture;
+  $('s-move-rock').value = E.movementFor(cfg, 'rock');
+  $('s-move-paper').value = E.movementFor(cfg, 'paper');
+  $('s-move-scissors').value = E.movementFor(cfg, 'scissors');
+  $('s-cap').value = cfg.capture;
   $('s-terr').value = cfg.territory ? 'territory' : 'elimination';
   $('s-retread').checked = cfg.retread; $('s-trail').checked = cfg.trail;
   $('s-layout').value = cfg.layout; $('s-first').value = cfg.first;
@@ -949,11 +1351,15 @@ function fillHome() {
 }
 function readHome() {
   cfg.size = +$('s-size').value; cfg.perType = +$('s-per').value; cfg.actionsPerTurn = +$('s-acts').value;
-  cfg.moveStyle = $('s-move').value; cfg.capture = $('s-cap').value; cfg.layout = $('s-layout').value;
+  cfg.rockMove = $('s-move-rock').value;
+  cfg.paperMove = $('s-move-paper').value;
+  cfg.scissorsMove = $('s-move-scissors').value;
+  cfg.capture = $('s-cap').value; cfg.layout = $('s-layout').value;
   cfg.territory = $('s-terr').value === 'territory'; cfg.retread = $('s-retread').checked && cfg.territory;
   cfg.trail = $('s-trail').checked && cfg.territory;
   cfg.first = $('s-first').value; cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked;
-  saveCfg(); updateVariantLine(); markPreset(); renderVariantPreview();
+  Object.assign(cfg, E.sanitizeCfg(cfg));
+  adoptRules(); updateVariantLine(); markPreset(); renderVariantPreview();
 }
 function updateVariantLine() { $('variant-line').textContent = E.variantLabel(E.sanitizeCfg(cfg)); }
 // Explicitly chosen via the Custom tab; keeps Custom active even while the config
@@ -967,7 +1373,14 @@ function markPreset() {
 $('s-size').oninput = () => { $('s-size-v').textContent = `${$('s-size').value}×${$('s-size').value}`; readHome(); };
 $('s-per').oninput = () => { $('s-per-v').textContent = $('s-per').value; readHome(); };
 $('s-acts').oninput = () => { $('s-acts-v').textContent = $('s-acts').value; readHome(); };
-for (const id of ['s-move', 's-cap', 's-first', 's-retread', 's-trail', 's-layout']) $(id).onchange = readHome;
+for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors', 's-cap', 's-first', 's-retread', 's-trail', 's-layout']) $(id).onchange = readHome;
+$('s-move-rotate').onclick = () => {
+  const rock = $('s-move-rock').value;
+  $('s-move-rock').value = $('s-move-scissors').value;
+  $('s-move-scissors').value = $('s-move-paper').value;
+  $('s-move-paper').value = rock;
+  readHome();
+};
 // View preferences live in the Preferences dialog so they can change mid-game too.
 for (const id of ['s-coords', 's-hints', 's-sound']) $(id).onchange = () => {
   cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked; saveCfg();
@@ -983,18 +1396,37 @@ $('name-input').oninput = () => {
     renameTimer = setTimeout(() => api('/api/account/name', { ...account, name }).catch(() => { }), 800);
   }
 };
-for (const ch of document.querySelectorAll('#presets .chip')) ch.onclick = () => {
-  const p = ch.dataset.preset;
-  if (p !== 'custom' && E.PRESETS[p]) {
+function choosePreset(key) {
+  if (key !== 'custom' && E.PRESETS[key]) {
     customising = false;
-    Object.assign(cfg, E.PRESETS[p]); saveCfg(); fillHome();
+    Object.assign(cfg, E.sanitizeCfg(E.PRESETS[key])); adoptRules(); fillHome();
     $('config-details').open = false;
   } else {
     customising = true;
-    markPreset();
+    markPreset(); renderVariantPreview();
     $('config-details').open = true;
   }
-};
+}
+// The variant list is generated from the engine's preset library, so adding a variant is a
+// one-file change. Hover or focus previews a variant on the whole stage without selecting it.
+function buildPresets() {
+  const box = $('presets'); box.innerHTML = '';
+  for (const key of E.PRESET_KEYS) {
+    const chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'chip'; chip.dataset.preset = key;
+    chip.textContent = E.PRESET_INFO[key].label;
+    chip.title = E.PRESET_INFO[key].tagline;
+    chip.onclick = () => choosePreset(key);
+    if (key !== 'custom') {
+      const peek = () => renderVariantPreview(E.PRESETS[key], key);
+      const back = () => renderVariantPreview();
+      chip.onpointerenter = peek; chip.onfocus = peek;
+      chip.onpointerleave = back; chip.onblur = back;
+    }
+    box.appendChild(chip);
+  }
+}
+buildPresets();
 
 for (const b of document.querySelectorAll('.play [data-mode]')) b.onclick = () => {
   readHome();
@@ -1115,17 +1547,48 @@ $('nav-prev').onclick = () => nav(viewPly - 1);
 $('nav-next').onclick = () => nav(viewPly + 1);
 $('nav-start').onclick = () => nav(0);
 $('nav-end').onclick = () => nav(liveIndex());
-$('help-btn').onclick = () => {
-  $('help-btn').classList.remove('attention');
-  store.set('janken-seen', '1');
-  $('rules').showModal();
-};
 $('flip-btn').onclick = () => { flipped = !flipped; store.set('janken-flip', flipped ? '1' : '0'); render(); drawAnnos(); };
 $('copy-btn').onclick = async () => {
-  const rows = []; let cur = null;
-  for (const m of state.moves) { if (m.c === BLUE) { cur = [rows.length + 1, m.t, '']; rows.push(cur); } else { if (!cur) { cur = [rows.length + 1, '', '']; rows.push(cur); } cur[2] = m.t; } }
-  const text = `JANKEN ${E.variantLabel(cfg)}\n` + rows.map(r => `${r[0]}. ${r[1]}${r[2] ? '   ' + r[2] : ''}`).join('\n');
-  try { await navigator.clipboard.writeText(text); const b = $('copy-btn'); b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy', 1200); } catch { }
+  const text = exportJpgn(state, {
+    event: net ? (state.rated ? 'JANKEN Rated Game' : 'JANKEN Online Game') : 'JANKEN Local Game',
+    site: location.origin + '/',
+    room: net?.room,
+    names: net?.names,
+    ratings: net?.ratings,
+  });
+  try {
+    await navigator.clipboard.writeText(text);
+    const b = $('copy-btn'); b.textContent = 'JPGN copied';
+    setTimeout(() => { b.textContent = 'Copy JPGN'; $('export-menu').open = false; }, 900);
+  } catch { }
+};
+$('gif-btn').onclick = async () => {
+  const button = $('gif-btn');
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = 'Rendering…';
+  try {
+    // GIF code is loaded only on demand; it adds no parsing cost to the homepage.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const { exportGameGif } = await import('/gif.js');
+    const blob = exportGameGif(state);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.href = url;
+    link.download = `janken-${stamp}.gif`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    button.textContent = 'GIF downloaded';
+    setTimeout(() => {
+      button.textContent = 'Download GIF';
+      button.disabled = false;
+      $('export-menu').open = false;
+    }, 1000);
+  } catch {
+    button.textContent = 'Could not export';
+    setTimeout(() => { button.textContent = 'Download GIF'; button.disabled = false; }, 1400);
+  }
 };
 $('ocopy').onclick = async () => { try { await navigator.clipboard.writeText($('oshare').value); const b = $('ocopy'); b.textContent = 'copied'; setTimeout(() => b.textContent = 'copy link', 1200); } catch { } };
 
@@ -1182,4 +1645,7 @@ const hashProfile = (location.hash.match(/u=([a-z0-9]+)/i) || [])[1];
 if (hashRoom) { fillHome(); renderAccountUI(); startOnline(hashRoom); }
 else if (hashProfile) { fillHome(); renderAccountUI(); showProfile(hashProfile); }
 else showHome();
-if (!store.get('janken-seen')) $('help-btn').classList.add('attention');
+if (!store.get('janken-seen')) {
+  $('rules-link').classList.add('attention');
+  $('rules-tab').classList.add('attention');
+}

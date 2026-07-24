@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "check:syntax": "node --check public/engine.js && node --check public/game.js && node --check src/worker.js",
+    "check:syntax": "node --check public/engine.js && node --check public/notation.js && node --check public/gif.js && node --check public/showcase.js && node --check public/game.js && node --check src/worker.js",
     "test": "vitest run",
     "verify": "npm run check:syntax && npm test",
     "deploy:dry": "npm run verify && wrangler deploy --dry-run",
