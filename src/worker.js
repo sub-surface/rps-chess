@@ -29,6 +29,20 @@ const sha256hex = async (value) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 };
+// Constant-time secret compare: hash both to fixed 32 bytes first, so neither the
+// length nor an early byte mismatch leaks through comparison timing.
+const safeEqual = async (a, b) => {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const va = new Uint8Array(ha), vb = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
+};
 const readJson = async (request, limit = 2048) => {
   const text = await request.text();
   if (text.length > limit) return null;
@@ -567,6 +581,56 @@ export class Lobby extends DurableObject {
   }
 }
 
+// Application-level metrics for the admin page: everything derivable from D1 plus the
+// open-game index. Infrastructure metrics (requests, CPU, errors) live in the CF dashboard.
+async function adminStats(env) {
+  const now = Date.now();
+  const DAY = 86400000;
+  const one = async (sql, ...binds) => (await env.DB.prepare(sql).bind(...binds).first()) || {};
+  const many = async (sql, ...binds) => (await env.DB.prepare(sql).bind(...binds).all()).results || [];
+
+  const accounts = await one('SELECT COUNT(*) AS total, AVG(rating) AS avgRating, MAX(rating) AS maxRating FROM accounts');
+  const new24 = (await one('SELECT COUNT(*) AS n FROM accounts WHERE created_at > ?1', now - DAY)).n;
+  const new7 = (await one('SELECT COUNT(*) AS n FROM accounts WHERE created_at > ?1', now - 7 * DAY)).n;
+  const active24 = (await one('SELECT COUNT(*) AS n FROM accounts WHERE seen_at > ?1', now - DAY)).n;
+  const active7 = (await one('SELECT COUNT(*) AS n FROM accounts WHERE seen_at > ?1', now - 7 * DAY)).n;
+
+  const matches = await one('SELECT COUNT(*) AS total, SUM(CASE WHEN reason = \'abandon\' THEN 1 ELSE 0 END) AS abandoned, SUM(CASE WHEN winner IS NULL THEN 1 ELSE 0 END) AS draws FROM matches');
+  const matches24 = (await one('SELECT COUNT(*) AS n FROM matches WHERE played_at > ?1', now - DAY)).n;
+  const matches7 = (await one('SELECT COUNT(*) AS n FROM matches WHERE played_at > ?1', now - 7 * DAY)).n;
+
+  const top = await many('SELECT id, name, rating, peak, games, wins, losses, draws, seen_at FROM accounts WHERE games > 0 ORDER BY rating DESC LIMIT 15');
+  const newest = await many('SELECT id, name, rating, games, created_at, seen_at FROM accounts ORDER BY created_at DESC LIMIT 15');
+  const recent = await many(
+    `SELECT m.id, m.winner, m.reason, m.variant, m.delta_b, m.delta_r, m.rating_b, m.rating_r, m.played_at,
+            ab.name AS blueName, ar.name AS redName, m.blue AS blueId, m.red AS redId
+     FROM matches m JOIN accounts ab ON ab.id = m.blue JOIN accounts ar ON ar.id = m.red
+     ORDER BY m.played_at DESC LIMIT 25`,
+  );
+
+  let openGames = [];
+  try { openGames = await env.LOBBY.getByName('global').list(); } catch { /* lobby optional */ }
+
+  return {
+    now,
+    users: {
+      total: accounts.total || 0,
+      new24, new7, active24, active7,
+      avgRating: accounts.avgRating ? Math.round(accounts.avgRating) : null,
+      maxRating: accounts.maxRating ? Math.round(accounts.maxRating) : null,
+    },
+    games: {
+      total: matches.total || 0,
+      abandoned: matches.abandoned || 0,
+      draws: matches.draws || 0,
+      last24: matches24, last7: matches7,
+      openNow: openGames.length,
+    },
+    top, newest, recent,
+    openGames: openGames.map((g) => ({ room: g.room, host: g.host, rating: g.rating, variant: g.variant, ts: g.ts })),
+  };
+}
+
 const json = (value, init = {}) => {
   const headers = new Headers(init.headers);
   if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=0, s-maxage=3, stale-while-revalidate=6');
@@ -621,6 +685,22 @@ export default {
           return json({ ok: true, name }, { headers: noStore });
         }
         return json({ error: 'not found' }, { status: 404, headers: noStore });
+      }
+      if (url.pathname === '/api/admin/stats') {
+        const noStore = { 'cache-control': 'no-store' };
+        if (request.method !== 'POST') {
+          return json({ error: 'method not allowed' }, { status: 405, headers: { allow: 'POST', ...noStore } });
+        }
+        const origin = request.headers.get('Origin');
+        if (origin && origin !== url.origin) return json({ error: 'forbidden origin' }, { status: 403, headers: noStore });
+        const body = await readJson(request);
+        const key = body && typeof body.key === 'string' ? body.key : '';
+        if (!(await safeEqual(key, env.ADMIN_KEY))) {
+          await new Promise((resolve) => setTimeout(resolve, 400));   // throttle brute force
+          return json({ error: 'unauthorized' }, { status: 401, headers: noStore });
+        }
+        const stats = await adminStats(env);
+        return json({ stats }, { headers: noStore });
       }
       if (url.pathname === '/api/profile') {
         const noStore = { 'cache-control': 'no-store' };

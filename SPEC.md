@@ -161,6 +161,14 @@ unguessable id plus a secret whose SHA-256 hash is stored. Endpoints (all `no-st
 - `POST /api/account/name` `{id, secret, name}` — rename.
 - `GET /api/profile?id=` → `{account, matches}` — public stats plus the 20 most recent rated games.
 
+### Admin
+
+`GET /admin` is an unlinked, `noindex` dashboard. `POST /api/admin/stats {key}` returns
+application metrics (user/game counts, top-rated, newest, recent matches, open games) when `key`
+matches the `ADMIN_KEY` Worker secret, compared in constant time; failures throttle. The key lives
+only in the browser's `sessionStorage`. Infrastructure metrics (requests, CPU, errors, D1/DO
+usage) are not stored here — they live in the Cloudflare dashboard, linked from the page.
+
 A seated player binds an account by sending `auth` over the socket after `welcome`. When **both**
 seats are bound at the first move, the game snapshots as **rated** with a fresh `matchId`. On game
 over (or 30-second disconnect abandonment, adjudicated by alarm while the opponent is present),

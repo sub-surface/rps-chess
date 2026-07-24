@@ -259,6 +259,34 @@ describe('accounts and ratings', () => {
   });
 });
 
+describe('admin stats', () => {
+  const post = (key) => exports.default.fetch('https://example.com/api/admin/stats', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(key === undefined ? {} : { key }),
+  });
+
+  it('rejects a missing or wrong key and serves stats for the right one', async () => {
+    expect((await post()).status).toBe(401);
+    expect((await post('nope')).status).toBe(401);
+
+    const ok = await post('test-admin-key');
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('cache-control')).toBe('no-store');
+    const { stats } = await ok.json();
+    expect(stats.users).toHaveProperty('total');
+    expect(stats.games).toHaveProperty('openNow');
+    expect(Array.isArray(stats.top)).toBe(true);
+    expect(Array.isArray(stats.recent)).toBe(true);
+    expect(Array.isArray(stats.openGames)).toBe(true);
+  });
+
+  it('rejects non-POST methods', async () => {
+    const res = await exports.default.fetch('https://example.com/api/admin/stats');
+    expect(res.status).toBe(405);
+  });
+});
+
 describe('Worker routes', () => {
   it('rejects lobby mutations and cross-origin browser sockets', async () => {
     const method = await exports.default.fetch('https://example.com/api/lobby', { method: 'POST' });

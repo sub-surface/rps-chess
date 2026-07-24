@@ -41,12 +41,25 @@ The zero-build vanilla-JS client is served by a Cloudflare Worker. Online play u
   server validation use one implementation.
 
 ```text
-public/      index.html · style.css · game.js · engine.js · favicon.svg · _headers
+public/      index.html · style.css · game.js · engine.js · admin.html · admin.js · favicon.svg · _headers
 src/         worker.js (Worker + GameRoom + Lobby Durable Objects) · elo.js
 migrations/  D1 schema (wrangler d1 migrations apply rps-chess [--local|--remote])
 scripts/     version.mjs · assert-clean.mjs
 test/        engine, Elo, and Worker/Durable Object regression tests
 ```
+
+### Admin dashboard
+
+`/admin` is an unlinked, `noindex` page showing live user and game metrics from D1. It's gated by
+an `ADMIN_KEY` Worker secret (constant-time compared server-side, held only in `sessionStorage`):
+
+```sh
+wrangler secret put ADMIN_KEY          # production — paste a long random value
+echo 'ADMIN_KEY=some-dev-key' > .dev.vars   # local `wrangler dev` (gitignored)
+```
+
+Infrastructure metrics (requests, CPU, errors, D1/DO usage) live in the Cloudflare dashboard,
+linked at the bottom of the page.
 
 ## Develop and verify
 

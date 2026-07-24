@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JANKEN — admin</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .adm { flex: 1; width: 100%; max-width: 1040px; margin: 0 auto; padding: 26px 22px; display: flex; flex-direction: column; gap: 26px; }
+    .adm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .adm-top h1 { margin: 0; font-size: 15px; letter-spacing: .22em; font-weight: 650; }
+    .adm-top h1 em { font-style: normal; color: var(--muted); font-size: 11px; letter-spacing: .16em; margin-left: 8px; }
+    .adm-meta { display: flex; align-items: center; gap: 14px; color: var(--muted); font: 11px ui-monospace, monospace; }
+    .adm-login { max-width: 340px; margin: 8vh auto; display: flex; flex-direction: column; gap: 14px; }
+    .adm-login h1 { margin: 0; font-size: 15px; letter-spacing: .22em; font-weight: 650; }
+    .adm-login p { margin: 0; color: var(--muted); font-size: 12.5px; }
+    .adm-login .row { display: flex; gap: 8px; }
+    .adm-login input { flex: 1; font: inherit; font-size: 13px; color: var(--text); background: var(--surface-2); border: 0; padding: 10px 12px; }
+    .adm-err { color: var(--red); font-size: 12px; min-height: 15px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .tile { background: var(--bg); padding: 15px 16px; display: flex; flex-direction: column; gap: 5px; }
+    .tile b { font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1; }
+    .tile.accent b { color: var(--accent); }
+    .tile span { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+    .tile small { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .panel-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    .panel-h h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+    .panel-h .count { font: 11px ui-monospace, monospace; color: var(--muted); }
+    table.adm-t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.adm-t th { text-align: left; font-weight: 600; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+    table.adm-t td { padding: 7px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    table.adm-t td.name { font-variant-numeric: normal; font-weight: 600; }
+    table.adm-t tr:hover td { background: var(--surface-2); }
+    table.adm-t .num { text-align: right; }
+    table.adm-t a { color: var(--text); text-decoration: none; }
+    table.adm-t a:hover { text-decoration: underline; }
+    .res { font-weight: 700; }
+    .res.w { color: var(--accent); } .res.l { color: var(--red); } .res.d { color: var(--muted); }
+    .pos { color: #3fb950; } .neg { color: var(--red); }
+    .tag { font: 10px ui-monospace, monospace; color: var(--muted); }
+    .tag.aband { color: var(--red); }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+    .wrap-scroll { overflow-x: auto; }
+    .adm-links { display: flex; gap: 8px 16px; flex-wrap: wrap; font-size: 12px; }
+    .adm-links a { color: var(--accent); text-decoration: none; }
+    .adm-links a:hover { text-decoration: underline; }
+    .muted { color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-screen="admin">
+  <main class="adm" id="dash" hidden>
+    <div class="adm-top">
+      <h1>JANKEN <em>admin</em></h1>
+      <div class="adm-meta">
+        <span id="stamp">—</span>
+        <button id="refresh" class="tbtn" title="Refresh now">refresh ⟳</button>
+        <button id="auto" class="tbtn" title="Toggle auto-refresh">auto: on</button>
+        <button id="logout" class="tbtn">log out</button>
+      </div>
+    </div>
+
+    <section>
+      <div class="panel-h"><h2>Users</h2></div>
+      <div class="tiles" id="user-tiles"></div>
+    </section>
+
+    <section>
+      <div class="panel-h"><h2>Rated games</h2></div>
+      <div class="tiles" id="game-tiles"></div>
+    </section>
+
+    <div class="cols">
+      <section>
+        <div class="panel-h"><h2>Top rated</h2><span class="count" id="top-count"></span></div>
+        <div class="wrap-scroll"><table class="adm-t" id="top-t"></table></div>
+      </section>
+      <section>
+        <div class="panel-h"><h2>Newest accounts</h2><span class="count" id="new-count"></span></div>
+        <div class="wrap-scroll"><table class="adm-t" id="new-t"></table></div>
+      </section>
+    </div>
+
+    <section>
+      <div class="panel-h"><h2>Recent rated games</h2><span class="count" id="recent-count"></span></div>
+      <div class="wrap-scroll"><table class="adm-t" id="recent-t"></table></div>
+    </section>
+
+    <section>
+      <div class="panel-h"><h2>Open games now</h2><span class="count" id="open-count"></span></div>
+      <div class="wrap-scroll"><table class="adm-t" id="open-t"></table></div>
+    </section>
+
+    <section>
+      <div class="panel-h"><h2>Infrastructure metrics — Cloudflare dashboard</h2></div>
+      <p class="muted">Requests, errors, CPU time, sub-request counts, D1 query volume and storage, and Durable Object usage aren't in this database — Cloudflare records them. Open:</p>
+      <div class="adm-links" id="cf-links"></div>
+    </section>
+  </main>
+
+  <main class="adm-login" id="login">
+    <h1>JANKEN <em style="font-style:normal;color:var(--muted);font-size:11px;letter-spacing:.16em;">admin</em></h1>
+    <p>Enter the admin key to view live site metrics.</p>
+    <form id="login-form">
+      <div class="row">
+        <input id="key" type="password" placeholder="admin key" autocomplete="current-password" autofocus />
+        <button class="btn" type="submit">Enter</button>
+      </div>
+    </form>
+    <div class="adm-err" id="login-err"></div>
+  </main>
+
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>
