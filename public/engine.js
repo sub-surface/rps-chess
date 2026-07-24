@@ -6,6 +6,7 @@
 //   rockMove/paperMove/      movement archetype assigned to each RPS piece
 //   scissorsMove
 //   capture                  'rps' (only what you beat) | 'chess' (always)
+//                            | 'checkers' (leap an adjacent enemy)
 //   territory                true = paint squares & race for area; false = elimination
 //   retread                  (territory only) may stop on already-claimed squares
 //   trail                    (territory only) sliders ink unclaimed squares they pass over
@@ -307,6 +308,27 @@ export function result(game) {
 
 const canCap = (att, def, capture) => capture === 'chess' ? true : BEATS[att.type] === def.type;
 
+// Resolve the piece removed by a move without mutating the board. Most captures land
+// on their target. Checkers captures instead make an exact two-square orthogonal leap
+// onto an empty square and remove the intervening enemy.
+export function captureTarget(board, m, cfg) {
+  const moving = board[m.fr]?.[m.fc]?.piece;
+  const landing = board[m.tr]?.[m.tc];
+  if (!moving || !landing) return null;
+  if (cfg.capture === 'checkers') {
+    const dr = m.tr - m.fr, dc = m.tc - m.fc;
+    const isLeap = (Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0);
+    if (!isLeap || landing.piece) return null;
+    const row = m.fr + dr / 2, col = m.fc + dc / 2;
+    const piece = board[row][col].piece;
+    return piece && piece.color !== moving.color ? { row, col, piece } : null;
+  }
+  const piece = landing.piece;
+  return piece && piece.color !== moving.color && canCap(moving, piece, cfg.capture)
+    ? { row: m.tr, col: m.tc, piece }
+    : null;
+}
+
 // Landing rule: with territory & no re-tread you may only stop on an UNCLAIMED empty
 // square (or capture) — sliders glide over painted squares. Otherwise any empty square
 // is a valid stop (classic chess movement). Pieces always block a slide.
@@ -316,6 +338,20 @@ export function legalDest(board, r, c, cfg) {
   const S = board.length, inB = (a, b) => a >= 0 && a < S && b >= 0 && b < S, out = [];
   const pat = pattern(p.type, cfg);
   const freeLand = cfg.retread || !cfg.territory;
+  if (cfg.capture === 'checkers') {
+    for (const [dr, dc] of pat.dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (!inB(nr, nc)) continue;
+      const isLeap = (Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0);
+      if (isLeap) {
+        if (captureTarget(board, { fr: r, fc: c, tr: nr, tc: nc }, cfg)) out.push([nr, nc]);
+        continue;
+      }
+      const cell = board[nr][nc];
+      if (!cell.piece && (freeLand || cell.owner === null)) out.push([nr, nc]);
+    }
+    return out;
+  }
   const kind = (nr, nc) => {
     const cell = board[nr][nc];
     if (cell.piece) return (cell.piece.color !== p.color && canCap(p, cell.piece, cfg.capture)) ? 'cap' : 'block';
@@ -352,7 +388,7 @@ export function capturesPossible(board, cfg) {
   const types = { [BLUE]: new Set(), [RED]: new Set() };
   for (const row of board) for (const cell of row) if (cell.piece) types[cell.piece.color].add(cell.piece.type);
   if (!types[BLUE].size || !types[RED].size) return false;
-  if (cfg.capture === 'chess') return true;
+  if (cfg.capture === 'chess' || cfg.capture === 'checkers') return true;
   for (const type of types[BLUE]) if (types[RED].has(BEATS[type])) return true;
   for (const type of types[RED]) if (types[BLUE].has(BEATS[type])) return true;
   return false;
@@ -423,10 +459,14 @@ export function resolveTurn(game) {
 export function applyMove(game, m) {
   const cfg = game.cfg, b = game.board, p = b[m.fr][m.fc].piece;
   if (cfg.threefold) seedRepetitions(game);
-  const captured = b[m.tr][m.tc].piece;
+  const target = captureTarget(b, m, cfg);
+  const captured = target?.piece || null;
   const cap = !!captured;
   let claimedNeutral = cfg.territory && !cap && b[m.tr][m.tc].owner === null;
   b[m.fr][m.fc].piece = null;
+  if (target && (target.row !== m.tr || target.col !== m.tc)) {
+    b[target.row][target.col].piece = null;
+  }
   if (cfg.territory && cfg.trail && pattern(p.type, cfg).slide) {
     // Ink trail: a slide paints the unclaimed squares it glides over (never repaints).
     const dr = Math.sign(m.tr - m.fr), dc = Math.sign(m.tc - m.fc);
@@ -531,6 +571,11 @@ export const PRESETS = {
     moveStyle: 'custom', capture: 'rps', territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
+  checkers: {
+    size: 8, perType: 2, rockMove: 'longking', paperMove: 'longking', scissorsMove: 'longking',
+    moveStyle: 'custom', capture: 'checkers', territory: false, retread: false, trail: false, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+  },
   painters: {
     size: 9, perType: 2, rockMove: 'queen', paperMove: 'queen', scissorsMove: 'queen',
     moveStyle: 'queens', capture: 'rps', territory: true, retread: false, trail: true, enclosure: false,
@@ -564,6 +609,7 @@ export const PRESET_INFO = {
   siege: { label: 'Siege', tagline: 'A corner stand-off with no stepping back — only fresh ground counts.' },
   expanse: { label: 'Expanse', tagline: '13×13 with four of each. A long, patient campaign.' },
   kings: { label: "King's field", tagline: 'Rook, knight, bishop. No painting — take the last piece standing.' },
+  checkers: { label: 'Checkers', tagline: 'Step one square, or leap over an enemy to take it. Every piece is a long king.' },
   melee: { label: 'Melee', tagline: 'Close territory loops to swallow whole regions. First past half wins.' },
   custom: { label: 'Custom', tagline: 'Your rules. Every dial below is yours to turn.' },
 };
@@ -594,7 +640,10 @@ export function movementLabel(cfg) {
 // Short human summary, e.g. "9×9 · all kings · RPS · territory+".
 export function variantLabel(cfg) {
   const safe = sanitizeCfg(cfg);
-  const parts = [`${safe.size}×${safe.size}`, movementLabel(safe), safe.capture === 'rps' ? 'RPS' : 'chess-capture'];
+  const capture = safe.capture === 'rps'
+    ? 'RPS'
+    : safe.capture === 'checkers' ? 'checkers-capture' : 'chess-capture';
+  const parts = [`${safe.size}×${safe.size}`, movementLabel(safe), capture];
   parts.push(safe.territory ? (safe.retread ? 'territory+' : 'territory') : 'elimination');
   if (safe.trail) parts.push('ink');
   if (safe.enclosure) parts.push('enclosure');
@@ -630,12 +679,18 @@ export function rulesSummary(cfg) {
       ? `Every piece ${MOVEMENT_SENTENCES[moves[0]]}.`
       : `${moves.map((move, i) => `${PIECE_WORDS[['rock', 'paper', 'scissors'][i]]} ${MOVEMENT_SENTENCES[move]}`).join('; ')}.`)
       + (slides ? ' Slides stop at the first piece in the way.' : '')
-      + (jumps ? ' Jumps ignore whatever they pass over.' : ''),
+      + (jumps
+        ? safe.capture === 'checkers'
+          ? ' A two-square leap is legal only when it captures the enemy in between.'
+          : ' Jumps ignore whatever they pass over.'
+        : ''),
   }, {
     h: 'Capturing',
     p: safe.capture === 'rps'
       ? 'Take only what you beat — rock takes scissors, scissors takes paper, paper takes rock. Anything else blocks you.'
-      : 'Take any enemy piece. The RPS cycle is off.',
+      : safe.capture === 'checkers'
+        ? 'Leap exactly two squares straight over an adjacent enemy onto an empty square to take it. Ordinary moves cannot capture.'
+        : 'Take any enemy piece. The RPS cycle is off.',
   }];
   if (safe.territory) {
     out.push({
@@ -683,9 +738,12 @@ export function sanitizeCfg(raw) {
   // Territory is opt-in: an absent flag means Standard, which does not paint.
   const territory = !!raw.territory;
   const legacy = LEGACY_MOVES[raw.moveStyle] || LEGACY_MOVES.kings;
-  const rockMove = one(raw.rockMove, MOVEMENT_TYPES, legacy.rock);
-  const paperMove = one(raw.paperMove, MOVEMENT_TYPES, legacy.paper);
-  const scissorsMove = one(raw.scissorsMove, MOVEMENT_TYPES, legacy.scissors);
+  const capture = one(raw.capture, ['rps', 'chess', 'checkers'], 'rps');
+  // Checkers capture is a child of the long-king movement set: imported configs,
+  // network rooms and custom games all receive a usable leap, not a dead rule.
+  const rockMove = capture === 'checkers' ? 'longking' : one(raw.rockMove, MOVEMENT_TYPES, legacy.rock);
+  const paperMove = capture === 'checkers' ? 'longking' : one(raw.paperMove, MOVEMENT_TYPES, legacy.paper);
+  const scissorsMove = capture === 'checkers' ? 'longking' : one(raw.scissorsMove, MOVEMENT_TYPES, legacy.scissors);
   const moveStyle = rockMove === 'king' && paperMove === 'king' && scissorsMove === 'king'
     ? 'kings'
     : rockMove === 'queen' && paperMove === 'queen' && scissorsMove === 'queen'
@@ -700,7 +758,7 @@ export function sanitizeCfg(raw) {
     paperMove,
     scissorsMove,
     moveStyle,
-    capture: one(raw.capture, ['rps', 'chess'], 'rps'),
+    capture,
     territory,
     retread: territory && raw.retread !== false,
     trail: territory && !!raw.trail,

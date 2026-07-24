@@ -106,7 +106,7 @@ perType=1..4
 rockMove=king|rook|bishop|knight|queen|cross|longking
 paperMove=king|rook|bishop|knight|queen|cross|longking
 scissorsMove=king|rook|bishop|knight|queen|cross|longking
-capture=rps|chess
+capture=rps|chess|checkers
 territory=0|1
 retread=0|1
 trail=0|1
@@ -130,7 +130,10 @@ Movement meanings:
 | `longking` | A king step, or an exact two-square orthogonal jump. |
 
 Sliding pieces are `rook`, `bishop`, and `queen`. Only sliders paint intermediate
-squares when `trail=1`; jumps never paint or inspect their intervening square.
+squares when `trail=1`; jumps never paint their intervening square. With
+`capture=checkers`, all movement fields sanitize to `longking`, ordinary moves cannot
+capture, and an exact two-square orthogonal jump must pass over and remove an adjacent
+enemy while landing on an empty square. Other jumps ignore the intervening square.
 
 A reader must pass decoded values through the same bounds and enum validation as
 the rules engine. `retread`, `trail`, and `enclosure` are false when `territory=0`.
@@ -180,7 +183,8 @@ Each action is a prefix/move pair:
 - `action` starts at 1 for each side’s turn;
 - `piece` is `R`, `P`, or `S`;
 - squares use files `a`–`m` and ranks `1`–`13`;
-- `-` denotes a non-capture and `x` a capture.
+- `-` denotes a non-capture and `x` a capture. For checkers capture, `x` marks removal
+  of the jumped piece even though the destination is empty.
 
 ```text
 1.B1 Rb6-c6 1.R1 Sh6-g5 2.B1 Pc5-c7

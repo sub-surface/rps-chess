@@ -22,8 +22,10 @@ Each RPS piece independently receives one movement archetype:
 - **long king**: a king step or an exact two-square orthogonal jump.
 
 Sliding pieces are blocked by pieces, but may pass over empty painted squares.
-Knight and long-king jumps ignore the intervening square. Only rook, bishop, and queen are
-sliders, so only those archetypes can paint intermediate squares with ink trails.
+Knight jumps and ordinary long-king jumps ignore the intervening square. With checkers capture,
+the long king's two-square jump instead requires and removes an adjacent enemy. Only rook,
+bishop, and queen are sliders, so only those archetypes can paint intermediate squares with
+ink trails.
 
 Legacy `moveStyle=classic|kings|queens` configs remain readable and expand to explicit
 per-piece movement fields at the trust boundary.
@@ -33,6 +35,10 @@ per-piece movement fields at the trust boundary.
 - **rps** (default): a piece may capture only what it beats — rock > scissors > paper > rock.
   A non-capturable enemy blocks movement.
 - **chess**: any enemy piece may be captured.
+- **checkers**: ordinary moves cannot capture. An exact two-square orthogonal leap over an
+  adjacent enemy onto an empty square removes the jumped piece, regardless of its RPS type.
+  Sanitization makes all three movement assignments `longking`, so the capture rule is always
+  usable. Captures are optional rather than forced, and a turn does not chain extra leaps.
 
 ### Goal (`territory`)
 
@@ -88,6 +94,7 @@ round-trips to its own key, since a duplicate ruleset would silently report the 
 | **Siege** | Corner stand-off, territory without re-tread |
 | **Expanse** | 13×13, four per type, territory with re-tread |
 | **King's field** | Rock rook / Paper knight / Scissors bishop, elimination |
+| **Checkers** | 8×8, all Long kings, leap captures, elimination |
 | **Melee** | All kings, RPS capture, territory with re-tread and enclosure; first past half wins |
 
 Overriding any rules field produces **Custom**. Adding a variant is a one-file change: a
@@ -102,7 +109,7 @@ is Standard. `retread`, `trail`, and `enclosure` are forced off whenever `territ
 ```text
 size 6..13 · perType 1..4
 rockMove|paperMove|scissorsMove king|rook|bishop|knight|queen|cross|longking
-capture rps|chess
+capture rps|chess|checkers
 territory bool · retread bool · trail bool · enclosure bool · layout rows|corners|scattered
 threefold bool (default true) · actionsPerTurn 1..3 · first B|R
 ```
@@ -111,6 +118,11 @@ Every named variant sets `threefold=true`. The parameters UI exposes it as a top
 turning it off makes the ruleset Custom. New games count their initial state as occurrence one.
 Persisted rooms created before tracking existed seed their current state as occurrence one rather
 than inventing history that was never stored.
+
+The parameters UI also offers movement macros for all kings, all Long kings,
+rook/knight/bishop, and all queens. They only fill the three canonical movement fields; choosing
+one does not introduce another config field. Selecting checkers capture applies the all-Long-king
+macro, while changing away from that movement set returns capture to RPS.
 
 Client-only preferences are `pieceStyle` (the IDs exported by `public/pieces.js`), `coords`,
 `hints`, theme, board flip, and guest name. The fourteen SVG families are colour-aware and remain

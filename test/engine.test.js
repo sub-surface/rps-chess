@@ -46,6 +46,17 @@ describe('shared rules engine', () => {
       paperMove: 'rook',
       scissorsMove: 'bishop',
     });
+    expect(E.sanitizeCfg({
+      capture: 'checkers',
+      rockMove: 'queen',
+      paperMove: 'rook',
+      scissorsMove: 'knight',
+    })).toMatchObject({
+      capture: 'checkers',
+      rockMove: 'longking',
+      paperMove: 'longking',
+      scissorsMove: 'longking',
+    });
   });
 
   it('paints an ink trail over unclaimed squares only', () => {
@@ -362,6 +373,31 @@ describe('shared rules engine', () => {
     expect(game.acts).toBe(0);
   });
 
+  it('captures checkers-style by leaping an adjacent enemy', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
+    const board = E.emptyBoard(6);
+    board[4][2].piece = { type: 'rock', color: E.BLUE };
+    board[3][2].piece = { type: 'paper', color: E.RED };
+    board[3][3].piece = { type: 'scissors', color: E.RED };
+    board[0][5].piece = { type: 'rock', color: E.RED };
+
+    const destinations = E.legalDest(board, 4, 2, cfg);
+    expect(destinations).toContainEqual([2, 2]);     // enemy between, empty landing
+    expect(destinations).not.toContainEqual([4, 4]); // no free two-square jumps
+    expect(destinations).not.toContainEqual([3, 3]); // ordinary landing captures are disabled
+    expect(E.captureTarget(board, { fr: 4, fc: 2, tr: 2, tc: 2 }, cfg)).toMatchObject({
+      row: 3,
+      col: 2,
+      piece: { type: 'paper', color: E.RED },
+    });
+
+    const game = E.newGame(cfg, board);
+    expect(E.applyMove(game, { fr: 4, fc: 2, tr: 2, tc: 2 })).toBe(true);
+    expect(game.board[3][2].piece).toBeNull();
+    expect(game.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(game.moves.at(-1)).toMatchObject({ piece: 'rock', capture: 'paper' });
+  });
+
   it('ends the moment either player has no move, scoring by territory', () => {
     // Red has a single rock boxed in by painted (non-re-treadable) squares; Blue is mobile.
     const cfg = E.sanitizeCfg({ size: 6, moveStyle: 'classic', capture: 'rps', territory: true, retread: false, first: E.BLUE });
@@ -401,11 +437,13 @@ describe('shared rules engine', () => {
       { size: 9, rockMove: 'knight', paperMove: 'queen', scissorsMove: 'cross', capture: 'rps', territory: true, trail: true, actionsPerTurn: 1 },
       { size: 7, rockMove: 'longking', paperMove: 'rook', scissorsMove: 'king', capture: 'rps', territory: true, layout: 'scattered', actionsPerTurn: 1 },
       { size: 8, rockMove: 'bishop', paperMove: 'knight', scissorsMove: 'queen', capture: 'rps', territory: true, layout: 'corners', trail: true, actionsPerTurn: 2 },
+      E.PRESETS.checkers,
       E.PRESETS.melee,
     ];
 
     for (const raw of variants) {
-      for (let run = 0; run < 12; run++) {
+      const runs = raw === E.PRESETS.checkers ? 2 : 12;
+      for (let run = 0; run < runs; run++) {
         const game = E.newGame(E.sanitizeCfg({ ...raw, perType: 2, first: run % 2 ? E.RED : E.BLUE }));
         let moves = 0;
         while (!game.gameOver && moves < 5000) {
@@ -427,7 +465,7 @@ describe('preset library', () => {
       expect(E.presetOf(E.sanitizeCfg(preset)), `${key} is not uniquely recognisable`).toBe(key);
       expect(preset.threefold, `${key} must enable threefold by default`).toBe(true);
     }
-    expect(Object.keys(E.PRESETS).length).toBeGreaterThanOrEqual(10);
+    expect(Object.keys(E.PRESETS).length).toBeGreaterThanOrEqual(11);
   });
 
   it('describes every preset and orders them for the picker', () => {
@@ -447,6 +485,14 @@ describe('preset library', () => {
       capture: 'rps',
       territory: true,
       enclosure: true,
+    });
+    expect(E.PRESETS.checkers).toMatchObject({
+      size: 8,
+      rockMove: 'longking',
+      paperMove: 'longking',
+      scissorsMove: 'longking',
+      capture: 'checkers',
+      territory: false,
     });
   });
 
@@ -495,6 +541,10 @@ describe('rules summary', () => {
     expect(text(E.PRESETS.skirmish)).toContain('1 rock, 1 paper and 1 scissors');
     // A shared archetype is stated once; mixed assignments are spelled out per piece.
     expect(text(E.PRESETS.cavalry)).toContain('Every piece jumps in an L');
+    const checkers = text(E.PRESETS.checkers);
+    expect(checkers).toContain('Leap exactly two squares straight');
+    expect(checkers).toContain('Ordinary moves cannot capture');
+    expect(checkers).toContain('only when it captures the enemy in between');
     const mixed = text(E.PRESETS.kings);
     expect(mixed).toContain('Rock slides in a straight line');
     expect(mixed).toContain('Scissors slides diagonally');
@@ -524,6 +574,7 @@ describe('rules summary', () => {
 
     // Chess capture always leaves a capture available while both sides have pieces.
     expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'chess' }))).toBe(true);
+    expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'checkers' }))).toBe(true);
     // A full Standard opening is never captureless.
     expect(E.capturesPossible(E.blocksBoard(9, 2, 'rows'), cfg)).toBe(true);
   });

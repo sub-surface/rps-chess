@@ -59,6 +59,24 @@ describe('JANKEN Portable Game Notation', () => {
     });
   });
 
+  it('exports and replays a jumped checkers capture', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
+    const board = E.emptyBoard(6);
+    board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    board[0][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    const game = E.newGame(cfg, board);
+    E.applyMove(game, { fr: 4, fc: 2, tr: 2, tc: 2 });
+
+    const text = exportJpgn(game);
+    expect(text).toContain('capture=checkers');
+    expect(text).toContain('Rc2xc4');
+    const replayed = replayJpgn(text).game;
+    expect(replayed.board[3][2].piece).toBeNull();
+    expect(replayed.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(() => replayJpgn(text.replace('Rc2xc4', 'Rc2-c4'))).toThrow(/capture marker/i);
+  });
+
   it('keeps every piece letter correct across all three actions in a turn', () => {
     const cfg = E.sanitizeCfg({
       ...E.PRESETS.triple,

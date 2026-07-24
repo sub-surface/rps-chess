@@ -209,9 +209,11 @@ function botPick(color) {
   let best = [], bv = -Infinity;
   for (const m of moves) {
     const b = E.cloneBoard(state.board);
-    const cap = !!b[m.tr][m.tc].piece, p = b[m.fr][m.fc].piece;
+    const target = E.captureTarget(b, m, cfg);
+    const cap = !!target, p = b[m.fr][m.fc].piece;
     b[m.fr][m.fc].piece = null;
-    if (cfg.territory && cfg.trail) {
+    if (target) b[target.row][target.col].piece = null;
+    if (cfg.territory && cfg.trail && E.pattern(p.type, cfg).slide) {
       const dr = Math.sign(m.tr - m.fr), dc = Math.sign(m.tc - m.fc);
       for (let r = m.fr + dr, c = m.fc + dc; r !== m.tr || c !== m.tc; r += dr, c += dc) {
         if (b[r][c].owner === null) b[r][c].owner = color;
@@ -1082,9 +1084,11 @@ function cancelEdit() { editing = false; edSel = null; edTargets = []; $('editpa
 // Sandbox move: legality follows the current rules, but either side may move at any time.
 function analysisMove(fr, fc, tr, tc) {
   const safe = E.sanitizeCfg(cfg), b = editBoard, p = b[fr][fc].piece;
-  const cap = !!b[tr][tc].piece;
+  const target = E.captureTarget(b, { fr, fc, tr, tc }, safe);
+  const cap = !!target;
   b[fr][fc].piece = null;
-  if (safe.territory && safe.trail) {
+  if (target) b[target.row][target.col].piece = null;
+  if (safe.territory && safe.trail && E.pattern(p.type, safe).slide) {
     const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
     for (let r = fr + dr, c = fc + dc; r !== tr || c !== tc; r += dr, c += dc) {
       if (b[r][c].owner === null) b[r][c].owner = p.color;
@@ -1305,7 +1309,9 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
   for (const button of $('preview-map').children) {
     button.onclick = () => { previewPiece = button.dataset.previewPiece; renderVariantPreview(); };
   }
-  const capture = safe.capture === 'rps' ? 'RPS captures' : 'capture any piece';
+  const capture = safe.capture === 'rps'
+    ? 'RPS captures'
+    : safe.capture === 'checkers' ? 'leap captures' : 'capture any piece';
   const goal = safe.enclosure
     ? 'enclosure · first past half'
     : safe.territory
@@ -1478,6 +1484,23 @@ function buildMovementSelectors() {
 }
 buildMovementSelectors();
 
+const MOVEMENT_PRESETS = {
+  kings: ['king', 'king', 'king'],
+  longkings: ['longking', 'longking', 'longking'],
+  field: ['rook', 'knight', 'bishop'],
+  queens: ['queen', 'queen', 'queen'],
+};
+const movementPresetOf = (rules) => {
+  const moves = ['rock', 'paper', 'scissors'].map((type) => E.movementFor(rules, type));
+  return Object.entries(MOVEMENT_PRESETS)
+    .find(([, preset]) => preset.every((move, index) => move === moves[index]))?.[0] || 'custom';
+};
+function setMovementInputs(moves) {
+  ['rock', 'paper', 'scissors'].forEach((type, index) => {
+    $(`s-move-${type}`).value = moves[index];
+  });
+}
+
 function fillHome() {
   $('s-size').value = cfg.size; $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
   $('s-per').value = cfg.perType; $('s-per-v').textContent = cfg.perType;
@@ -1485,6 +1508,7 @@ function fillHome() {
   $('s-move-rock').value = E.movementFor(cfg, 'rock');
   $('s-move-paper').value = E.movementFor(cfg, 'paper');
   $('s-move-scissors').value = E.movementFor(cfg, 'scissors');
+  $('s-move-preset').value = movementPresetOf(cfg);
   $('s-cap').value = cfg.capture;
   $('s-threefold').checked = cfg.threefold;
   $('s-terr').value = cfg.territory ? 'territory' : 'elimination';
@@ -1510,6 +1534,7 @@ function readHome() {
   cfg.enclosure = $('s-enclosure').checked && cfg.territory;
   cfg.first = $('s-first').value; cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked;
   Object.assign(cfg, E.sanitizeCfg(cfg));
+  $('s-move-preset').value = movementPresetOf(cfg);
   adoptRules(); updateVariantLine(); markPreset(); renderVariantPreview();
 }
 function updateVariantLine() {
@@ -1529,7 +1554,33 @@ function markPreset() {
 $('s-size').oninput = () => { $('s-size-v').textContent = `${$('s-size').value}×${$('s-size').value}`; readHome(); };
 $('s-per').oninput = () => { $('s-per-v').textContent = $('s-per').value; readHome(); };
 $('s-acts').oninput = () => { $('s-acts-v').textContent = $('s-acts').value; readHome(); };
-for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors', 's-cap', 's-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout']) $(id).onchange = readHome;
+for (const id of ['s-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout']) $(id).onchange = readHome;
+for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors']) $(id).onchange = () => {
+  if ($('s-cap').value === 'checkers' && movementPresetOf({
+    rockMove: $('s-move-rock').value,
+    paperMove: $('s-move-paper').value,
+    scissorsMove: $('s-move-scissors').value,
+  }) !== 'longkings') {
+    $('s-cap').value = 'rps';
+  }
+  readHome();
+};
+$('s-move-preset').onchange = () => {
+  const preset = MOVEMENT_PRESETS[$('s-move-preset').value];
+  if (!preset) return;
+  setMovementInputs(preset);
+  if ($('s-cap').value === 'checkers' && $('s-move-preset').value !== 'longkings') {
+    $('s-cap').value = 'rps';
+  }
+  readHome();
+};
+$('s-cap').onchange = () => {
+  if ($('s-cap').value === 'checkers') {
+    setMovementInputs(MOVEMENT_PRESETS.longkings);
+    $('s-move-preset').value = 'longkings';
+  }
+  readHome();
+};
 $('s-move-rotate').onclick = () => {
   const rock = $('s-move-rock').value;
   $('s-move-rock').value = $('s-move-scissors').value;

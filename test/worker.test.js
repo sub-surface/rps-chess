@@ -128,6 +128,41 @@ describe('GameRoom Durable Object', () => {
     spectator.socket.close(1000, 'done');
   });
 
+  it('validates jumped checkers captures in the authoritative room', async () => {
+    const room = 'checkers-jump';
+    const board = E.emptyBoard(6);
+    board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
+    board[0][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    const cfg = {
+      ...E.PRESETS.checkers,
+      size: 6,
+      perType: 1,
+      pos: E.encodePos(board),
+      own: E.encodeOwners(board),
+    };
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', cfg });
+    const guest = await connect(stub, room, { name: 'Guest' });
+    const updated = nextMessage(guest.socket, (message) =>
+      message.type === 'state' && message.state.moves.length === 1);
+
+    host.socket.send(JSON.stringify({ type: 'move', from: [4, 2], to: [2, 2] }));
+    const state = (await updated).state;
+    expect(state.cfg).toMatchObject({
+      capture: 'checkers',
+      rockMove: 'longking',
+      paperMove: 'longking',
+      scissorsMove: 'longking',
+    });
+    expect(state.board[3][2].piece).toBeNull();
+    expect(state.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
+    expect(state.moves[0]).toMatchObject({ piece: 'rock', capture: 'paper' });
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
   it('adjudicates threefold repetition from authoritative room state', async () => {
     const room = 'threefold-room';
     const board = E.emptyBoard(6);

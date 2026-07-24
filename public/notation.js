@@ -277,14 +277,14 @@ export function replayJpgn(text) {
     if (!piece || piece.type !== recorded.piece || piece.color !== recorded.color) {
       throw new Error('JPGN source piece does not match the board');
     }
-    const isCapture = !!game.board[recorded.to[0]][recorded.to[1]].piece;
-    if (isCapture !== recorded.capture) throw new Error('JPGN capture marker does not match the board');
     const move = {
       fr: recorded.from[0],
       fc: recorded.from[1],
       tr: recorded.to[0],
       tc: recorded.to[1],
     };
+    const isCapture = !!E.captureTarget(game.board, move, game.cfg);
+    if (isCapture !== recorded.capture) throw new Error('JPGN capture marker does not match the board');
     if (!E.isLegal(game.board, move, game.turn, game.cfg)) throw new Error('JPGN contains an illegal move');
     E.applyMove(game, move);
     previous = recorded.color;

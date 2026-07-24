@@ -26,7 +26,7 @@ function botGame(rawCfg, seed, title) {
     // pay for a search tree: captures, fresh territory, then centralisation.
     const ranked = moves.map((move) => {
       const target = game.board[move.tr][move.tc];
-      const capture = target.piece ? 100 : 0;
+      const capture = E.captureTarget(game.board, move, cfg) ? 100 : 0;
       const territory = cfg.territory && target.owner === null ? 16 : 0;
       const centre = (cfg.size - 1) / 2;
       const central = cfg.size - (Math.abs(move.tr - centre) + Math.abs(move.tc - centre));

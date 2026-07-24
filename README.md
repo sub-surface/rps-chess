@@ -12,6 +12,8 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   more — whoever has more pieces standing wins.
 - **RPS capture** (default): you may only take a piece you beat — rock > scissors > paper > rock.
   A piece you cannot take blocks you instead.
+- **Checkers capture**: every piece becomes a Long king. Step one square normally, or leap
+  exactly two squares straight over an adjacent enemy onto an empty square to remove it.
 - **Territory** is an opt-in mode used by Painters, Siege and friends: landing paints a square
   permanently, and most squares wins once the board is claimed.
 - **Melee** adds enclosure to territory: close a loop around an orthogonally connected region
@@ -41,14 +43,16 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
 - Online games include rate-limited, ephemeral player chat (spectators may read) and resignation.
   Spectators can use the move log, arrow keys, or board controls to review any earlier position
   without losing their place when another live move arrives.
-- **Ten named variants**, each a real combination rather than a slider preset — Standard,
+- **Eleven named variants**, each a real combination rather than a slider preset — Standard,
   Skirmish (6×6, one of each), Triple step (3 actions/turn), Cavalry (all knights), Painters
   (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
-  (13×13, four of each), King's field (rook/knight/bishop, elimination), and Melee (all kings,
-  RPS captures, territory enclosure) — plus **Custom**. See `SPEC.md` §1.
+  (13×13, four of each), King's field (rook/knight/bishop, elimination), Checkers (Long kings
+  with leap captures), and Melee (all kings, RPS captures, territory enclosure) — plus
+  **Custom**. See `SPEC.md` §1.
 - Everything the presets are built from is still yours to set: board size, pieces/type, up to
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
-  `queen`, `cross`, or `long king`) per RPS piece, chess capture, elimination, ink trails,
+  `queen`, `cross`, or `long king`) per RPS piece, one-click movement sets (all kings, all Long
+  kings, rook/knight/bishop, or all queens), RPS/chess/checkers capture, elimination, ink trails,
   enclosure captures, threefold repetition, rows/corners/scattered layouts, and custom starting
   positions.
 - **Contextual rules everywhere**: a `rules` tab on the board's left edge slides out the whole

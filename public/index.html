@@ -115,15 +115,23 @@
               </div>
               <fieldset class="movement-picker">
                 <legend>Movement</legend>
+                <label class="movement-preset"><span>Quick set</span><select id="s-move-preset">
+                  <option value="custom" disabled>Custom mapping</option>
+                  <option value="kings">All kings</option>
+                  <option value="longkings">All kings + 2-square jump</option>
+                  <option value="field">Rook / knight / bishop</option>
+                  <option value="queens">All queens</option>
+                </select></label>
                 <label class="movement-row"><span class="movement-piece rock">R</span><span>Rock</span><select id="s-move-rock"></select></label>
                 <label class="movement-row"><span class="movement-piece paper">P</span><span>Paper</span><select id="s-move-paper"></select></label>
                 <label class="movement-row"><span class="movement-piece scissors">S</span><span>Scissors</span><select id="s-move-scissors"></select></label>
                 <button type="button" class="linklike movement-rotate" id="s-move-rotate" title="Rotate the three assigned movement types">rotate mapping ↻</button>
               </fieldset>
-              <label class="frow" title="RPS keeps piece identity meaningful: what you cannot take, blocks you."><span>Capturing</span>
+              <label class="frow" title="RPS captures by type. Chess lands on any enemy. Checkers uses the Long king leap and removes the enemy in between."><span>Capturing</span>
                 <select id="s-cap">
                   <option value="rps">RPS — you only take what you beat</option>
                   <option value="chess">Chess — capture anything</option>
+                  <option value="checkers">Checkers — leap an enemy (sets Long kings)</option>
                 </select>
               </label>
               <label class="frow" title="Paint the most squares, or wipe out the enemy army."><span>Goal</span>

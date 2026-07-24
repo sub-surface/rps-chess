@@ -186,6 +186,9 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .movement-picker { min-width: 0; margin: 4px 0; padding: 8px 0; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .movement-picker legend { float: left; width: 100%; margin: 0 0 4px; color: var(--muted); font-size: 13.5px; }
 .movement-picker legend + * { clear: both; }
+.movement-preset { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 0 7px; font-size: 12.5px; }
+.movement-preset > span { color: var(--muted); }
+.movement-preset select { min-width: 0; max-width: 230px; }
 .movement-row { display: grid; grid-template-columns: 22px 62px minmax(0, 1fr); align-items: center; gap: 8px; padding: 3px 0; font-size: 12.5px; }
 .movement-row select { width: 100%; padding: 6px 8px; }
 .movement-piece {
