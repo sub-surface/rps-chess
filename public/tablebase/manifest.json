@@ -1,0 +1,1020 @@
+{
+  "size": 3,
+  "placements": 207775,
+  "states": 415550,
+  "variants": [
+    {
+      "id": "king",
+      "label": "King",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "king",
+        "paperMove": "king",
+        "scissorsMove": "king",
+        "moveStyle": "kings",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all kings · RPS · elimination",
+      "bytes": 86508,
+      "edges": 2681520,
+      "edgesUpToThreePieces": 101040,
+      "terminals": 3422,
+      "maxDtm": 18,
+      "wdl": {
+        "W": 199014,
+        "D": 142274,
+        "L": 74262
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 864,
+          "D": 432,
+          "L": 864
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 7056,
+          "D": 6048,
+          "L": 7056
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 35664,
+          "D": 29760,
+          "L": 25296
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 86592,
+          "D": 58608,
+          "L": 36240
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 68784,
+          "D": 47424,
+          "L": 4752
+        }
+      ],
+      "lineups": [
+        [
+          0,
+          1,
+          -1,
+          -1,
+          1,
+          0
+        ],
+        [
+          -1,
+          0,
+          -1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          -1,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          1,
+          0,
+          -1,
+          -1
+        ],
+        [
+          -1,
+          -1,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          -1,
+          1,
+          1,
+          -1,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "rook",
+      "label": "Rook",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "rook",
+        "paperMove": "rook",
+        "scissorsMove": "rook",
+        "moveStyle": "custom",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all rooks · RPS · elimination",
+      "bytes": 149685,
+      "edges": 1967112,
+      "edgesUpToThreePieces": 82392,
+      "terminals": 4862,
+      "maxDtm": 28,
+      "wdl": {
+        "W": 156798,
+        "D": 193610,
+        "L": 65142
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 648,
+          "D": 1080,
+          "L": 432
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 5472,
+          "D": 10656,
+          "L": 4032
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 27504,
+          "D": 44304,
+          "L": 18912
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 76608,
+          "D": 71280,
+          "L": 33552
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 46512,
+          "D": 66288,
+          "L": 8160
+        }
+      ],
+      "lineups": [
+        [
+          0,
+          0,
+          0,
+          -1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          -1,
+          0
+        ],
+        [
+          -1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          -1,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "bishop",
+      "label": "Bishop",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "bishop",
+        "paperMove": "bishop",
+        "scissorsMove": "bishop",
+        "moveStyle": "custom",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all bishops · RPS · elimination",
+      "bytes": 44429,
+      "edges": 1148976,
+      "edgesUpToThreePieces": 44496,
+      "terminals": 24494,
+      "maxDtm": 10,
+      "wdl": {
+        "W": 73518,
+        "D": 278618,
+        "L": 63414
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 528,
+          "D": 1152,
+          "L": 480
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 4968,
+          "D": 10488,
+          "L": 4704
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 17040,
+          "D": 58368,
+          "L": 15312
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 32112,
+          "D": 121632,
+          "L": 27696
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 18816,
+          "D": 86976,
+          "L": 15168
+        }
+      ],
+      "lineups": [
+        [
+          0,
+          -1,
+          1,
+          -1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          -1,
+          0,
+          -1,
+          1
+        ],
+        [
+          -1,
+          1,
+          0,
+          1,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          -1,
+          0,
+          -1,
+          1
+        ],
+        [
+          -1,
+          1,
+          0,
+          1,
+          0,
+          -1
+        ],
+        [
+          0,
+          -1,
+          1,
+          -1,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "knight",
+      "label": "Knight",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "knight",
+        "paperMove": "knight",
+        "scissorsMove": "knight",
+        "moveStyle": "custom",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all knights · RPS · elimination",
+      "bytes": 126957,
+      "edges": 1034880,
+      "edgesUpToThreePieces": 36480,
+      "terminals": 23294,
+      "maxDtm": 19,
+      "wdl": {
+        "W": 131910,
+        "D": 180722,
+        "L": 102918
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 528,
+          "D": 1200,
+          "L": 432
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 4800,
+          "D": 11328,
+          "L": 4032
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 23616,
+          "D": 47136,
+          "L": 19968
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 60768,
+          "D": 69696,
+          "L": 50976
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 42144,
+          "D": 51360,
+          "L": 27456
+        }
+      ],
+      "lineups": [
+        [
+          0,
+          1,
+          -1,
+          1,
+          0,
+          0
+        ],
+        [
+          -1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          -1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          -1
+        ],
+        [
+          1,
+          -1,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          -1,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "queen",
+      "label": "Queen",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "queen",
+        "paperMove": "queen",
+        "scissorsMove": "queen",
+        "moveStyle": "queens",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all queens · RPS · elimination",
+      "bytes": 95966,
+      "edges": 3166032,
+      "edgesUpToThreePieces": 130512,
+      "terminals": 3422,
+      "maxDtm": 20,
+      "wdl": {
+        "W": 189510,
+        "D": 167042,
+        "L": 58998
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 864,
+          "D": 432,
+          "L": 864
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 7056,
+          "D": 6048,
+          "L": 7056
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 36144,
+          "D": 31392,
+          "L": 23184
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 88800,
+          "D": 65520,
+          "L": 27120
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 56592,
+          "D": 63648,
+          "L": 720
+        }
+      ],
+      "lineups": [
+        [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "cross",
+      "label": "Cross",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "cross",
+        "paperMove": "cross",
+        "scissorsMove": "cross",
+        "moveStyle": "custom",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all crosses · RPS · elimination",
+      "bytes": 161429,
+      "edges": 1604736,
+      "edgesUpToThreePieces": 60384,
+      "terminals": 4862,
+      "maxDtm": 30,
+      "wdl": {
+        "W": 176262,
+        "D": 145418,
+        "L": 93870
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 672,
+          "D": 864,
+          "L": 624
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 7008,
+          "D": 6696,
+          "L": 6456
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 34560,
+          "D": 28656,
+          "L": 27504
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 79152,
+          "D": 56496,
+          "L": 45792
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 54816,
+          "D": 52704,
+          "L": 13440
+        }
+      ],
+      "lineups": [
+        [
+          1,
+          1,
+          0,
+          -1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          -1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          -1,
+          0
+        ],
+        [
+          -1,
+          0,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          -1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "longking",
+      "label": "Long king",
+      "cfg": {
+        "size": 3,
+        "perType": 1,
+        "rockMove": "longking",
+        "paperMove": "longking",
+        "scissorsMove": "longking",
+        "moveStyle": "custom",
+        "capture": "rps",
+        "territory": false,
+        "retread": false,
+        "trail": false,
+        "enclosure": false,
+        "threefold": true,
+        "layout": "rows",
+        "actionsPerTurn": 1,
+        "first": "B"
+      },
+      "rules": "3×3 · all long kings · RPS · elimination",
+      "bytes": 75504,
+      "edges": 3485976,
+      "edgesUpToThreePieces": 131352,
+      "terminals": 3422,
+      "maxDtm": 17,
+      "wdl": {
+        "W": 184998,
+        "D": 174866,
+        "L": 55686
+      },
+      "start": {
+        "value": 0,
+        "dtm": 0
+      },
+      "fairStarts": {
+        "count": 192,
+        "W": 0,
+        "D": 192,
+        "L": 0
+      },
+      "layers": [
+        {
+          "m": 0,
+          "states": 2,
+          "W": 0,
+          "D": 2,
+          "L": 0
+        },
+        {
+          "m": 1,
+          "states": 108,
+          "W": 54,
+          "D": 0,
+          "L": 54
+        },
+        {
+          "m": 2,
+          "states": 2160,
+          "W": 864,
+          "D": 432,
+          "L": 864
+        },
+        {
+          "m": 3,
+          "states": 20160,
+          "W": 7056,
+          "D": 6048,
+          "L": 7056
+        },
+        {
+          "m": 4,
+          "states": 90720,
+          "W": 35808,
+          "D": 32064,
+          "L": 22848
+        },
+        {
+          "m": 5,
+          "states": 181440,
+          "W": 87840,
+          "D": 70176,
+          "L": 23424
+        },
+        {
+          "m": 6,
+          "states": 120960,
+          "W": 53376,
+          "D": 66144,
+          "L": 1440
+        }
+      ],
+      "lineups": [
+        [
+          0,
+          0,
+          0,
+          -1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          -1,
+          0
+        ],
+        [
+          -1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          -1,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "permutations": [
+    "RPS",
+    "RSP",
+    "PRS",
+    "PSR",
+    "SRP",
+    "SPR"
+  ],
+  "startLineup": [
+    0,
+    5
+  ]
+}

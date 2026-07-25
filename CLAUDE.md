@@ -17,6 +17,7 @@ npm run verify         # node --check on every module + full vitest suite  ← t
 npm test               # vitest only (boots workerd; first run is slow)
 npm run test:smoke     # Chromium through a local wrangler dev server
 npm run deploy:dry     # verify + wrangler bundle, no upload, no DB writes
+npm run tablebase      # re-solve the 3x3 board into public/tablebase/ (~2 min, all 7 variants)
 npm run d1:migrate:local   # apply migrations to the local D1
 npm run d1:migrate     # applies to PRODUCTION D1 (--remote)
 npm run deploy         # verify → assert-clean → version stamp → d1:migrate → upload
@@ -31,6 +32,8 @@ npm run tail           # live production logs
 | Path | Responsibility |
 | --- | --- |
 | `public/engine.js` | Pure rules. **Single source of truth**, imported by browser *and* Worker. |
+| `public/tablebase.js` | 3×3 tablebase addressing and artifact decoding. Shared with the generator. |
+| `public/tablebase/` | Generated: one solved `.tb` per movement archetype, plus `manifest.json`. |
 | `public/notation.js` | JPGN writer, parser, and strict legality-checked replayer. |
 | `public/gif.js` | Dependency-free indexed GIF encoder + deterministic board renderer. |
 | `public/showcase.js` | Lazy replay theatre (recent games, bot variations). |
@@ -42,6 +45,7 @@ npm run tail           # live production logs
 | `src/worker.js` | Worker routes + `GameRoom` and `Lobby` Durable Objects. |
 | `src/elo.js` | `eloDelta`, `START_RATING`. K=32, draws 0.5. |
 | `migrations/` | D1 schema, applied by `deploy` before upload. |
+| `scripts/tablebase.mjs` | Solves the 3×3 board with `engine.js` and writes `public/tablebase/`. |
 | `scripts/version.mjs` | Stamps `public/version.json` (git SHA shown in the footer). |
 | `scripts/assert-clean.mjs` | Refuses to deploy an uncommitted application tree. |
 | `test/` | engine, notation, gif, pieces, elo, worker/DO suites. |

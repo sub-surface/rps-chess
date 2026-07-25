@@ -16,7 +16,8 @@
     "d1:migrate:local": "wrangler d1 migrations apply rps-chess --local",
     "deploy": "npm run verify && node scripts/assert-clean.mjs && node scripts/version.mjs && npm run d1:migrate && wrangler deploy",
     "tail": "wrangler tail rps-chess",
-    "preview": "wrangler dev --remote"
+    "preview": "wrangler dev --remote",
+    "tablebase": "node scripts/tablebase.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",

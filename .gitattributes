@@ -1,0 +1,3 @@
+# Solved tablebases are gzip payloads. Any end-of-line conversion would corrupt them
+# beyond recovery, and the corruption would only surface as wrong analysis in the browser.
+*.tb binary
