@@ -1,0 +1,432 @@
+{
+  "method": {
+    "schema": "b1",
+    "seed": 2058479086,
+    "positions": 100,
+    "truthPositions": 400,
+    "referenceNodes": 25000,
+    "tuneBudget": 1200,
+    "rungs": [
+      100,
+      400,
+      1600,
+      6400
+    ],
+    "matchGames": 12,
+    "note": "Regret is in units of one average piece: how much worse the move played was than the best move available, judged by the reference for that row. On the 3×3 the reference is the solved table and the grade is exact. On every larger board it is the same search given 25000 nodes, so those rows are a lower bound on the real error: mistakes the reference cannot see are not counted against anybody."
+  },
+  "truth": {
+    "variant": "king",
+    "rules": "3×3 · all kings · RPS · elimination",
+    "sampled": 400,
+    "positions": 78,
+    "randomBest": 0.3258,
+    "randomHolds": 0.4478,
+    "meanLegal": 6.78,
+    "rows": [
+      {
+        "nodes": 100,
+        "graded": 78,
+        "best": 0.9231,
+        "bestLo": 0.8422,
+        "bestHi": 0.9643,
+        "blunder": 0.0128,
+        "blunderLo": 0.0023,
+        "blunderHi": 0.0691,
+        "regret": 0.0064,
+        "meanDepth": 2.03
+      },
+      {
+        "nodes": 400,
+        "graded": 78,
+        "best": 0.9744,
+        "bestLo": 0.9112,
+        "bestHi": 0.9929,
+        "blunder": 0,
+        "blunderLo": 0,
+        "blunderHi": 0.0469,
+        "regret": 0,
+        "meanDepth": 3.38
+      },
+      {
+        "nodes": 1600,
+        "graded": 78,
+        "best": 0.9744,
+        "bestLo": 0.9112,
+        "bestHi": 0.9929,
+        "blunder": 0,
+        "blunderLo": 0,
+        "blunderHi": 0.0469,
+        "regret": 0,
+        "meanDepth": 5.1
+      },
+      {
+        "nodes": 6400,
+        "graded": 78,
+        "best": 1,
+        "bestLo": 0.9531,
+        "bestHi": 1,
+        "blunder": 0,
+        "blunderLo": 0,
+        "blunderHi": 0.0469,
+        "regret": 0,
+        "meanDepth": 6.88
+      }
+    ]
+  },
+  "ladder": [
+    {
+      "size": 3,
+      "nodes": 100,
+      "sampled": 100,
+      "graded": 27,
+      "branching": 5.92,
+      "regret": 0,
+      "regretLo": 0,
+      "regretHi": 0,
+      "best": 1,
+      "blunder": 0,
+      "meanDepth": 2.11
+    },
+    {
+      "size": 3,
+      "nodes": 400,
+      "sampled": 100,
+      "graded": 27,
+      "branching": 5.92,
+      "regret": 0,
+      "regretLo": 0,
+      "regretHi": 0,
+      "best": 1,
+      "blunder": 0,
+      "meanDepth": 3.67
+    },
+    {
+      "size": 3,
+      "nodes": 1600,
+      "sampled": 100,
+      "graded": 27,
+      "branching": 5.92,
+      "regret": 0,
+      "regretLo": 0,
+      "regretHi": 0,
+      "best": 1,
+      "blunder": 0,
+      "meanDepth": 5.7
+    },
+    {
+      "size": 3,
+      "nodes": 6400,
+      "sampled": 100,
+      "graded": 27,
+      "branching": 5.92,
+      "regret": 0,
+      "regretLo": 0,
+      "regretHi": 0,
+      "best": 1,
+      "blunder": 0,
+      "meanDepth": 7.85
+    },
+    {
+      "size": 5,
+      "nodes": 100,
+      "sampled": 100,
+      "graded": 53,
+      "branching": 13.09,
+      "regret": 0.4069,
+      "regretLo": 0.1185,
+      "regretHi": 0.6953,
+      "best": 0.5472,
+      "blunder": 0.1887,
+      "meanDepth": 1.28
+    },
+    {
+      "size": 5,
+      "nodes": 400,
+      "sampled": 100,
+      "graded": 53,
+      "branching": 13.09,
+      "regret": 0.3767,
+      "regretLo": 0.0894,
+      "regretHi": 0.664,
+      "best": 0.566,
+      "blunder": 0.1509,
+      "meanDepth": 2.17
+    },
+    {
+      "size": 5,
+      "nodes": 1600,
+      "sampled": 100,
+      "graded": 53,
+      "branching": 13.09,
+      "regret": 0.2893,
+      "regretLo": 0.0363,
+      "regretHi": 0.5423,
+      "best": 0.6792,
+      "blunder": 0.1132,
+      "meanDepth": 3.28
+    },
+    {
+      "size": 5,
+      "nodes": 6400,
+      "sampled": 100,
+      "graded": 53,
+      "branching": 13.09,
+      "regret": 0.2606,
+      "regretLo": 0.0075,
+      "regretHi": 0.5138,
+      "best": 0.8302,
+      "blunder": 0.0943,
+      "meanDepth": 4.34
+    },
+    {
+      "size": 7,
+      "nodes": 100,
+      "sampled": 100,
+      "graded": 45,
+      "branching": 27.36,
+      "regret": 0.2657,
+      "regretLo": 0.1516,
+      "regretHi": 0.3798,
+      "best": 0.3333,
+      "blunder": 0.2889,
+      "meanDepth": 0.98
+    },
+    {
+      "size": 7,
+      "nodes": 400,
+      "sampled": 100,
+      "graded": 45,
+      "branching": 27.36,
+      "regret": 0.1869,
+      "regretLo": 0.0849,
+      "regretHi": 0.2889,
+      "best": 0.5778,
+      "blunder": 0.2,
+      "meanDepth": 1.91
+    },
+    {
+      "size": 7,
+      "nodes": 1600,
+      "sampled": 100,
+      "graded": 45,
+      "branching": 27.36,
+      "regret": 0.1474,
+      "regretLo": 0.0552,
+      "regretHi": 0.2396,
+      "best": 0.6667,
+      "blunder": 0.1556,
+      "meanDepth": 2.16
+    },
+    {
+      "size": 7,
+      "nodes": 6400,
+      "sampled": 100,
+      "graded": 45,
+      "branching": 27.36,
+      "regret": 0.0689,
+      "regretLo": 0.001,
+      "regretHi": 0.1367,
+      "best": 0.8222,
+      "blunder": 0.0667,
+      "meanDepth": 3.22
+    },
+    {
+      "size": 9,
+      "nodes": 100,
+      "sampled": 100,
+      "graded": 55,
+      "branching": 30.64,
+      "regret": 0.191,
+      "regretLo": 0.0984,
+      "regretHi": 0.2836,
+      "best": 0.4364,
+      "blunder": 0.1818,
+      "meanDepth": 1
+    },
+    {
+      "size": 9,
+      "nodes": 400,
+      "sampled": 100,
+      "graded": 55,
+      "branching": 30.64,
+      "regret": 0.1237,
+      "regretLo": 0.0474,
+      "regretHi": 0.2,
+      "best": 0.5455,
+      "blunder": 0.1273,
+      "meanDepth": 1.85
+    },
+    {
+      "size": 9,
+      "nodes": 1600,
+      "sampled": 100,
+      "graded": 55,
+      "branching": 30.64,
+      "regret": 0.0636,
+      "regretLo": 0.0082,
+      "regretHi": 0.1189,
+      "best": 0.6182,
+      "blunder": 0.0545,
+      "meanDepth": 2.22
+    },
+    {
+      "size": 9,
+      "nodes": 6400,
+      "sampled": 100,
+      "graded": 55,
+      "branching": 30.64,
+      "regret": 0.04,
+      "regretLo": -0.0094,
+      "regretHi": 0.0895,
+      "best": 0.8,
+      "blunder": 0.0364,
+      "meanDepth": 3.33
+    }
+  ],
+  "duels": [
+    {
+      "size": 3,
+      "strong": 1600,
+      "weak": 100,
+      "games": 12,
+      "wins": 0,
+      "draws": 12,
+      "losses": 0,
+      "score": 0.5,
+      "decisive": 0,
+      "decisiveLo": 0,
+      "decisiveHi": 0,
+      "meanPlies": 26
+    },
+    {
+      "size": 5,
+      "strong": 1600,
+      "weak": 100,
+      "games": 12,
+      "wins": 6,
+      "draws": 6,
+      "losses": 0,
+      "score": 0.75,
+      "decisive": 1,
+      "decisiveLo": 0.6097,
+      "decisiveHi": 1,
+      "meanPlies": 33
+    },
+    {
+      "size": 7,
+      "strong": 1600,
+      "weak": 100,
+      "games": 12,
+      "wins": 8,
+      "draws": 4,
+      "losses": 0,
+      "score": 0.8333,
+      "decisive": 1,
+      "decisiveLo": 0.6756,
+      "decisiveHi": 1,
+      "meanPlies": 71
+    },
+    {
+      "size": 9,
+      "strong": 1600,
+      "weak": 100,
+      "games": 12,
+      "wins": 10,
+      "draws": 2,
+      "losses": 0,
+      "score": 0.9167,
+      "decisive": 1,
+      "decisiveLo": 0.7225,
+      "decisiveHi": 1,
+      "meanPlies": 94
+    }
+  ],
+  "tuning": [
+    {
+      "variant": "standard",
+      "label": "Standard",
+      "fingerprint": "b1|9|2|king|king|king|rps|0|0|0|0|0|1|rows|1|B",
+      "accepted": false,
+      "weights": null,
+      "priors": {
+        "material": 100,
+        "area": 0,
+        "mobility": 1.2,
+        "center": 2.5,
+        "prey": 0.35
+      },
+      "regret": 0.0449,
+      "match": null,
+      "steps": []
+    },
+    {
+      "variant": "painters",
+      "label": "Painters",
+      "fingerprint": "b1|9|2|queen|queen|queen|rps|0|1|0|1|0|1|rows|1|B",
+      "accepted": true,
+      "weights": {
+        "material": 12.8,
+        "area": 1.6,
+        "mobility": 0.24,
+        "center": 0.4,
+        "prey": 0.35
+      },
+      "priors": {
+        "material": 8,
+        "area": 1,
+        "mobility": 0.15,
+        "center": 0.4,
+        "prey": 0.35
+      },
+      "regret": 0.2027,
+      "match": {
+        "games": 12,
+        "wins": 6,
+        "draws": 2,
+        "losses": 4,
+        "score": 0.5833333333333334,
+        "meanPlies": 28
+      },
+      "steps": [
+        "material 8→12.8 regret 0.246→0.232",
+        "area 1→1.6 regret 0.232→0.206",
+        "mobility 0.15→0.24 regret 0.206→0.203"
+      ]
+    },
+    {
+      "variant": "kings",
+      "label": "King's field",
+      "fingerprint": "b1|9|2|rook|knight|bishop|rps|0|0|0|0|0|1|rows|1|B",
+      "accepted": false,
+      "weights": null,
+      "priors": {
+        "material": 100,
+        "area": 0,
+        "mobility": 1.2,
+        "center": 2.5,
+        "prey": 0.35
+      },
+      "regret": 0.009,
+      "match": null,
+      "steps": []
+    },
+    {
+      "variant": "azel",
+      "label": "Azel's wall",
+      "fingerprint": "b1|5|2|king|king|king|rps|0|0|0|0|0|1|azel|1|B",
+      "accepted": false,
+      "weights": null,
+      "priors": {
+        "material": 160,
+        "area": 0,
+        "mobility": 1.2,
+        "center": 2.5,
+        "prey": 0.35
+      },
+      "regret": 0.1369,
+      "match": null,
+      "steps": []
+    }
+  ]
+}

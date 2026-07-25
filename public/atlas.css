@@ -449,7 +449,7 @@ a.mini { text-decoration: none; display: inline-block; }
 .ht-sq.win { background: color-mix(in srgb, var(--win) calc(var(--k) * 80%), var(--surface-2)); }
 .ht-sq.loss { background: color-mix(in srgb, var(--loss) calc(var(--k) * 80%), var(--surface-2)); }
 
-/* ── 12 the ladder ──────────────────────────────────── */
+/* ── 13 the ladder ──────────────────────────────────── */
 .ladder { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .rung { display: grid; grid-template-columns: 48px minmax(0, 1fr) 66px 74px; gap: 10px; align-items: center; }
 .rg-label { color: var(--muted); font-size: 10.5px; }
@@ -472,7 +472,46 @@ a.mini { text-decoration: none; display: inline-block; }
 .ladder-table td sup { font-size: 8px; }
 .ladder-table tr.solved td { color: var(--win); }
 
-/* ── 13 measured play ───────────────────────────────── */
+/* ── 12 the value of the move ───────────────────────── */
+/* One stacked bar a variant: how often the side to move is irrelevant, helped, or trapped. */
+.tempo-key { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 10px; color: var(--muted); font-size: 10.5px; }
+.tempo-key span { display: inline-flex; align-items: center; gap: 6px; }
+.tempo-swatch { width: 16px; height: 8px; display: inline-block; }
+.tempo-swatch.settled { background: var(--surface-2); border: 1px solid var(--line); }
+.tempo-swatch.asset { background: var(--win); opacity: .75; }
+.tempo-swatch.burden { background: var(--loss); opacity: .8; }
+.tempo-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.tempo-row { display: grid; grid-template-columns: 74px minmax(120px, 1fr) 46px minmax(0, 1.1fr); gap: 12px; align-items: center; }
+.tempo-row.on .tempo-name { color: var(--win); }
+.tempo-name { font-size: 11px; }
+.tempo-figure { font-size: 11px; text-align: right; }
+.tempo-meta { color: var(--muted); font-size: 9.5px; }
+.tempo-bar { display: flex; height: 14px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.tempo-seg { display: block; width: var(--w); }
+.tempo-seg.asset { background: var(--win); opacity: .75; }
+.tempo-seg.burden { background: var(--loss); opacity: .8; }
+/* The zugzwang share is a fraction of a percent, so it is given a floor: a slice too thin to
+   see would report "none" for something the table says exists. */
+.tempo-seg.burden { min-width: 2px; }
+
+/* ── 16 what search is worth ────────────────────────── */
+.srch-rows { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 0; }
+.srch-row { display: grid; grid-template-columns: 62px minmax(120px, 1fr) 48px minmax(0, 1.1fr); gap: 12px; align-items: center; }
+.srch-label { color: var(--muted); font-size: 10.5px; }
+.srch-value { font-size: 11px; text-align: right; }
+.srch-meta { color: var(--muted); font-size: 9.5px; }
+.srch-track { position: relative; height: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.srch-fill { position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--win); opacity: .7; }
+/* Mistakes are drawn from the right, against their own scale: at these rates a share of the same
+   axis would be invisible, and invisible is not the same as none. */
+.srch-bad { position: absolute; top: 0; bottom: 0; right: 0; width: var(--w); background: var(--loss); opacity: .85; }
+.srch-ladder { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.srch-size { display: grid; grid-template-columns: 62px 160px minmax(0, 1fr); gap: 12px; align-items: end; }
+.srch-bars { display: flex; align-items: flex-end; gap: 4px; height: 56px; }
+.srch-bar { flex: 1; min-height: 1px; height: var(--h); background: var(--draw); opacity: .55; }
+.srch-size:hover .srch-bar { opacity: .8; }
+
+/* ── 14 measured play ───────────────────────────────── */
 .runs { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 16px; }
 .run { display: grid; grid-template-columns: 92px minmax(120px, 1fr) 48px minmax(0, 1.2fr); gap: 12px; align-items: center; }
 .run-name { font-size: 11px; }
@@ -492,7 +531,7 @@ a.mini { text-decoration: none; display: inline-block; }
 .len-bar { flex: 1; min-height: 1px; height: var(--h); background: var(--win); opacity: .7; }
 .len-axis { display: flex; justify-content: space-between; color: var(--muted); font: 8.5px/1 ui-monospace, monospace; width: 150px; }
 
-/* ── 14 the blocking law ────────────────────────────── */
+/* ── 15 the blocking law ────────────────────────────── */
 .bl-chart { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .bl-row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 44px 96px; gap: 10px; align-items: center; }
 .bl-label { color: var(--muted); font-size: 10.5px; }

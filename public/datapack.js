@@ -70,6 +70,10 @@ Everything the atlas at https://rps.subsurfaces.net/atlas cites, in the form it 
 - \`manifest.json\` — every solved variant: its exact rules config, win/draw/loss totals, material
   layers, terminal and edge counts, longest forced win, and the verdict of its starting position.
 - \`<variant>.tb\` — the solved table, gzipped. One byte per turn-state.
+- \`lab.json\` — the boards nobody will solve: exact state-space arithmetic up to 13x13, plus a
+  committed seeded self-play run with a 95% interval on every rate.
+- \`bots.json\` — how well the site's bot plays, graded against the tables here on the 3x3 and
+  against a far deeper search above it. Regret is in units of one average piece.
 - \`*.csv\` — the aggregates behind each chart on the page, one file per chart.
 
 ## Reading a .tb

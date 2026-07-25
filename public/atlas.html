@@ -67,8 +67,10 @@
       <a href="#reach">reach</a>
       <a href="#simplex">material</a>
       <a href="#squares">squares</a>
+      <a href="#tempo">tempo</a>
       <a href="#beyond">5×5 · 9×9</a>
       <a href="#measured">measured</a>
+      <a href="#search">search</a>
       <a href="#method">method</a>
     </nav>
 
@@ -148,7 +150,9 @@
             JANKEN deals armies with 180° rotational symmetry, so Red's pieces always sit on the
             antipodes of Blue's. On a 3×3 board that permits exactly <b>192</b> starting
             positions — and under perfect play every single one of them is a draw, in all seven
-            movement archetypes. There is no first-move advantage here, and no zugzwang either.
+            movement archetypes. There is no first-move advantage in any of them. That is a fact
+            about the openings and not about the game: section 12 counts the positions where having
+            the move decides everything, and the ones where it is a liability.
           </p>
           <div class="gallery" id="fair-gallery"></div>
           <p class="note">
@@ -336,8 +340,36 @@
           <p class="note" id="heat-note"></p>
         </section>
 
+        <section class="atlas-section" id="tempo" data-csv="tempo" data-lens="tempo">
+          <p class="eyebrow">12 — the value of the move</p>
+          <h2>What it is worth to be the one who moves</h2>
+          <p class="lede">
+            Every placement sits in the table twice, once with each side to move, and the two
+            entries need not agree. Comparing them measures the move itself. Where the entries
+            differ in the mover's favour, having the move is an asset; where they differ against
+            it, the mover is in zugzwang and would rather pass — which JANKEN does not allow.
+            Chess treats zugzwang as an endgame curiosity. On nine squares it can simply be
+            counted, for every archetype at once, and the count says something about the pieces.
+          </p>
+          <div class="tempo-key">
+            <span><i class="tempo-swatch settled"></i>the mover makes no difference</span>
+            <span><i class="tempo-swatch asset"></i>the mover gains</span>
+            <span><i class="tempo-swatch burden"></i>the mover loses</span>
+          </div>
+          <div class="tempo-rows" id="tempo-rows"></div>
+          <div class="btn-row">
+            <button type="button" class="mini" id="tempo-win">a position where the move wins outright</button>
+            <button type="button" class="mini" id="tempo-zug">a position where the move is a liability</button>
+          </div>
+          <p class="note">
+            Load either one and then flip Blue/Red above the board. Nothing on the board changes;
+            the verdict does. That difference is the whole of what a tempo is worth.
+          </p>
+          <p class="note" id="tempo-note"></p>
+        </section>
+
         <section class="atlas-section" id="beyond" data-csv="ladder" data-lens="beyond">
-          <p class="eyebrow">12 — beyond the pocket board</p>
+          <p class="eyebrow">13 — beyond the pocket board</p>
           <h2>5×5, 9×9, and what solving them would cost</h2>
           <p class="lede">
             The 3×3 is not the game people play. 5×5 and 9×9 are, and neither will ever be solved
@@ -352,7 +384,7 @@
         </section>
 
         <section class="atlas-section" id="measured" data-csv="measured" data-lens="measured">
-          <p class="eyebrow">13 — measured play</p>
+          <p class="eyebrow">14 — measured play</p>
           <h2>What we can know without solving</h2>
           <p class="lede">
             No oracle exists above 3×3, so these are measurements: seeded self-play under the
@@ -376,7 +408,7 @@
         </section>
 
         <section class="atlas-section" id="blocking" data-csv="blocking" data-lens="blocking">
-          <p class="eyebrow">14 — the blocking law</p>
+          <p class="eyebrow">15 — the blocking law</p>
           <h2>Two thirds of every contact is a wall</h2>
           <p class="lede">
             This is the difference from chess, stated as arithmetic. A piece meeting an enemy can
@@ -388,8 +420,32 @@
           <p class="note" id="block-note"></p>
         </section>
 
+        <section class="atlas-section" id="search" data-csv="search" data-lens="search">
+          <p class="eyebrow">16 — what search is worth</p>
+          <h2>How much thinking this game needs</h2>
+          <p class="lede">
+            The bot that plays you on the front page is the same program at every level; only its
+            budget changes. That makes it a measuring instrument: give it a fixed number of
+            positions to look at, ask it for a move, and mark the move. On this board the marking
+            is exact, because the table knows the answer. On every larger board the marker is the
+            same search given a far bigger budget — a better opinion, not the truth, and labelled
+            as such.
+          </p>
+          <h3>Against the truth, on the one board that has one</h3>
+          <div class="srch-rows" id="truth-rows"></div>
+          <p class="note" id="truth-note"></p>
+          <h3>Against a deeper search, on the boards people actually play</h3>
+          <p class="lede">
+            Regret is the honest unit here: how much worse the move played was than the best one
+            available, in units of one average piece. Zero means the budget was already enough.
+          </p>
+          <div class="srch-ladder" id="srch-ladder"></div>
+          <p class="note" id="srch-note"></p>
+          <p class="note" id="srch-tuning"></p>
+        </section>
+
         <section class="atlas-section" id="method">
-          <p class="eyebrow">15 — method</p>
+          <p class="eyebrow">17 — method</p>
           <h2>How this was built, and what it does not claim</h2>
           <p class="lede">
             Six labelled pieces, each captured or on one of nine squares, give

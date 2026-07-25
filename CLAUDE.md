@@ -19,6 +19,7 @@ npm run test:smoke     # Chromium through a local wrangler dev server
 npm run deploy:dry     # verify + wrangler bundle, no upload, no DB writes
 npm run tablebase      # re-solve the 3x3 board into public/tablebase/ (~2 min, all 7 variants)
 npm run lab            # re-measure public/atlas/lab.json (~30 s, deterministic)
+npm run tune           # grade + tune the bot → bot-tuning.js, atlas/bots.json (~11 min, deterministic)
 npm run d1:migrate:local   # apply migrations to the local D1
 npm run d1:migrate     # applies to PRODUCTION D1 (--remote)
 npm run deploy         # verify → assert-clean → version stamp → d1:migrate → upload
@@ -35,6 +36,9 @@ npm run tail           # live production logs
 | `public/engine.js` | Pure rules. **Single source of truth**, imported by browser *and* Worker. |
 | `public/tablebase.js` | 3×3 addressing, symmetry, decoding, **the runtime oracle** (`oracleFor`, `probe`, `movesFrom`, `rankMoves`, `topMoves`) **and the puzzle picker** (`findPuzzle`, `dailyPuzzle`). Shared with the generator, the atlas, the analysis panel, the home page and the perfect bot. |
 | `public/tablebase/` | Generated: one solved `.tb` per movement archetype, plus `manifest.json`. |
+| `public/bot.js` | The opponent, for every ruleset. Weights derived from the config; alpha-beta + quiescence searching **through `engine.js`'s own `applyMove()`**. Shared by the client, the tests and the tuner. |
+| `public/bot-tuning.js` | Generated: measured weight overrides keyed by a ruleset fingerprint. Fails soft — an entry that matches nothing is ignored. |
+| `public/atlas/bots.json` | Generated: the search-vs-truth ladder the atlas prints. |
 | `public/datapack.js` | Lazy store-only zip writer + `FORMAT.md` text for the atlas data pack. |
 | `public/lab.js` | Exact state-space counting (BigInt) and seeded self-play. Shared by `scripts/lab.mjs` and the atlas, so a published figure and a live one are one implementation. |
 | `public/atlas/lab.json` | Generated: the size ladder and the committed self-play run. |
@@ -54,6 +58,7 @@ npm run tail           # live production logs
 | `migrations/` | D1 schema, applied by `deploy` before upload. |
 | `scripts/tablebase.mjs` | Solves the 3×3 board with `engine.js` and writes `public/tablebase/`, including forward reachability from the 192 deals. |
 | `scripts/lab.mjs` | Writes `public/atlas/lab.json` from `lab.js`. Deterministic, no timestamps. |
+| `scripts/tune.mjs` | Grades the bot against the tablebase (exact) and a deep search (measured), tunes per variant, writes `bot-tuning.js` and `atlas/bots.json`. Deterministic. |
 | `scripts/version.mjs` | Stamps `public/version.json` (git SHA shown in the footer). |
 | `scripts/assert-clean.mjs` | Refuses to deploy an uncommitted application tree. |
 | `test/` | engine, notation, gif, pieces, elo, worker/DO suites. |
@@ -101,7 +106,9 @@ refactor.
     recounts the small material layers against `engine.js` and fails on stale artifacts. The same
     applies to `public/atlas/lab.json`: a rules change moves the measurements, so rerun `npm run
     lab` too. Both generators are deterministic, so a run that changes the file without a rules
-    change is a drift worth investigating rather than noise to commit.
+    change is a drift worth investigating rather than noise to commit. `public/atlas/bots.json`
+    measures the bot *under* those rules, so a rules change or an evaluation change dates it as
+    well — `npm run tune`, and budget eleven minutes.
 12. **Comments explain why.** The codebase's comments carry reasoning that isn't recoverable from
     the code (why elimination ends on `capturesPossible()` and not "nothing en prise"; why the
     lobby fingerprints its metadata). Match that register — skip the ones that restate the line.
@@ -122,7 +129,17 @@ refactor.
 17. **`perType` does not always describe the board.** `layout=azel` deals a fixed 2/1/3, so prose,
     previews, JPGN and any future layout ask `startingMaterial(cfg)` rather than assuming three
     equal piles. `sanitizeCfg()` reads `layout` before `size` because that layout has a minimum board.
-18. **`gif.js` stays DOM-free.** Theme is a palette index choice and piece artwork arrives as the
+18. **Nothing outside `engine.js` applies a move.** The bot searches on a real game object and
+    calls `applyMove()` for every node it visits, which is why painting, enclosure, capture
+    obligations and multi-action turns need no bot-side support at all. A hand-rolled "simulate
+    this move" in the client is the bug this replaced — it is how a bot ends up playing a game
+    nobody else is playing.
+19. **Tuning is an optimisation, never a rule.** `bot-tuning.js` is looked up by a fingerprint of
+    the exact ruleset, so a stale entry is *ignored* rather than honoured, and a variant nobody has
+    measured plays on weights `bot.js` derives from the rules. This is deliberately the opposite of
+    invariant 11: a solved table describes the rules and must be regenerated with them; a tuned
+    weight is only an opinion about how to play them, and the bot must never need one.
+20. **`gif.js` stays DOM-free.** Theme is a palette index choice and piece artwork arrives as the
     optional `drawPiece` hook — never an import of `pieces.js`, never a canvas. The hook is never
     the asserted path: determinism is tested against the geometric renderer.
 
@@ -168,8 +185,12 @@ migration.
 
 ## Testing
 
-- `test/engine.test.js`, `notation`, `gif`, `pieces`, `elo` are pure and fast. Build positions with
-  `E.emptyBoard(n)` and assign cells directly rather than playing into a shape.
+- `test/engine.test.js`, `notation`, `gif`, `pieces`, `elo`, `bot` are pure and fast. Build
+  positions with `E.emptyBoard(n)` and assign cells directly rather than playing into a shape.
+- `test/bot.test.js` searches with an explicit **node** budget and `ms: Infinity`, never a clock:
+  a test whose answer depends on how fast the machine is will fail on somebody else's laptop. Its
+  last block plays every preset for ten plies and re-checks each move with `isLegal()`, which is
+  the test that would catch the bot growing a second opinion about the rules.
 - `test/worker.test.js` runs inside `workerd` via `@cloudflare/vitest-pool-workers` against real DO
   stubs: `env.ROOM.getByName(...)`, `runInDurableObject`, `runDurableObjectAlarm`. Reuse the
   `connect()` and `nextMessage()` helpers at the top of that file.

@@ -203,6 +203,32 @@ const CSV_SOURCES = {
     }));
     return { name: `janken-3x3-${state.variant}-squares.csv`, header: ['piece', 'square', 'states', 'blue_win', 'blue_draw', 'blue_loss'], rows };
   },
+  tempo: () => {
+    const rows = manifest.variants.map((variant) => ({ variant, data: tempoData(variant.id) }))
+      .filter((entry) => entry.data);
+    if (!rows.length) return null;
+    return {
+      name: 'janken-3x3-tempo.csv',
+      header: ['variant', 'rules', 'live_placements', 'result_independent_of_mover',
+        'mover_gains', 'mover_loses', 'whoever_moves_wins', 'whoever_moves_loses'],
+      rows: rows.map(({ variant, data }) => [variant.id, variant.rules, data.live, data.settled,
+        data.asset, data.burden, data.wins, data.loses]),
+    };
+  },
+  // Two judges, one column, and a `reference` field saying which judged each row — the exact one
+  // on the board that is solved, a deep search everywhere else.
+  search: () => (bots ? {
+    name: 'janken-search-strength.csv',
+    header: ['board', 'reference', 'nodes', 'positions', 'branching', 'regret_pieces',
+      'regret_lo', 'regret_hi', 'best_move_rate', 'blunder_rate', 'mean_depth'],
+    rows: [
+      ...(bots.truth?.rows || []).map((row) => ['3x3', 'tablebase', row.nodes, row.graded, '',
+        '', '', '', row.best, row.blunder, row.meanDepth]),
+      ...bots.ladder.map((row) => [`${row.size}x${row.size}`, `search:${bots.method.referenceNodes}`,
+        row.nodes, row.graded, row.branching, row.regret, row.regretLo, row.regretHi,
+        row.best, row.blunder, row.meanDepth]),
+    ],
+  } : null),
   // The two lab sections are about every board size, not about one solved variant, so their
   // exports are named for the game rather than for the archetype on show.
   ladder: () => (lab ? {
@@ -273,6 +299,7 @@ async function downloadDataPack(button) {
       members.push({ name: `${variant.id}.tb`, bytes: new Uint8Array(await response.arrayBuffer()) });
     }
     if (lab) members.push({ name: 'lab.json', bytes: new TextEncoder().encode(`${JSON.stringify(lab, null, 2)}\n`) });
+    if (bots) members.push({ name: 'bots.json', bytes: new TextEncoder().encode(`${JSON.stringify(bots, null, 2)}\n`) });
     for (const [key, source] of Object.entries(CSV_SOURCES)) {
       if (key === 'moves') continue;                 // position-specific, not an aggregate
       const data = source();
@@ -684,6 +711,7 @@ async function selectVariant(id) {
   // time the archetype has been looked at through them.
   if (simplexCache.has(id) || $('simplex-grid').childElementCount) renderSimplex();
   if (heatCache.has(id) || $('heatgrid').childElementCount) renderHeatmap();
+  if (tempoCache.size) renderTempo();
 }
 
 let crossLoading = null;
@@ -712,6 +740,7 @@ function loadAllTables() {
       if (tables.has(variant.id)) continue;
       try { await loadTable(variant.id); } catch { /* a missing variant just stays blank */ }
       renderCrossCheck();
+      renderTempo();                  // one more table is one more row in the tempo census
     }
     renderDeepest();
   })();
@@ -1293,11 +1322,144 @@ function renderHeatmap() {
     + `${PIECE_WORD[type].toLowerCase()} on ${square((at / TB.SIZE) | 0, at % TB.SIZE)}, and the `
     + `spread across the whole board is ${(100 * (Math.max(...edges) - Math.min(...edges))).toFixed(0)} `
     + `points. A value map this small is complete rather than estimated`
-    + (nine ? `: the same picture on a 9×9 needs the table from section 12, which is ${HUMAN_TIME(nine.solveSeconds)} of solving.` : '.');
+    + (nine ? `: the same picture on a 9×9 needs the table from section 13, which is ${HUMAN_TIME(nine.solveSeconds)} of solving.` : '.');
 }
 const PIECE_WORD = { rock: 'Rock', paper: 'Paper', scissors: 'Scissors' };
 
-// ── 12 beyond the pocket board ───────────────────────────────────────────────
+// ── 12 the value of the move ─────────────────────────────────────────────────
+// Every placement is in the table twice, once with each side to move, and the two entries need
+// not agree. Comparing them answers something no evaluation function can be asked: is having to
+// move an advantage or a liability? Read from Blue's side, a placement where Blue does better
+// with the move than without it is one where *whoever* has the move does better — the same
+// comparison, seen from either chair. When it runs the other way the side to move would rather
+// pass, which is zugzwang, and the game offers no way to.
+//
+// The population is stated rather than assumed: placements where both sides still hold a piece
+// and the types present still allow some capture. Everything else is a finished game, and a
+// finished game has the same result whoever is nominally to move.
+const tempoCache = new Map();
+
+// Whether a capture is still possible for a given pair of surviving type sets. Sixty-four
+// answers, each one asked of the engine, so the RPS cycle is never restated here.
+function aliveGrid(id) {
+  const cfg = E.sanitizeCfg(variantOf(id).cfg);
+  const grid = [];
+  for (let blueMask = 0; blueMask < 8; blueMask++) {
+    grid.push([]);
+    for (let redMask = 0; redMask < 8; redMask++) {
+      const board = E.emptyBoard(TB.SIZE);
+      TYPES.forEach((type, i) => {
+        if (blueMask & (1 << i)) board[0][i].piece = { type, color: E.BLUE };
+        if (redMask & (1 << i)) board[2][i].piece = { type, color: E.RED };
+      });
+      grid[blueMask].push(E.capturesPossible(board, cfg));
+    }
+  }
+  return grid;
+}
+
+function tempoData(id) {
+  if (tempoCache.has(id)) return tempoCache.get(id);
+  const table = tables.get(id);
+  if (!table) return null;
+  const { blue, red } = census();
+  const alive = aliveGrid(id);
+  const out = { live: 0, settled: 0, asset: 0, burden: 0, wins: 0, loses: 0, sampleWin: -1, sampleZug: -1 };
+  for (let p = 0; p < TB.PLACEMENTS; p++) {
+    if (!alive[blue[p]][red[p]]) continue;
+    out.live++;
+    const withBlue = TB.valueOf(table[p * 2]);
+    const withRed = -TB.valueOf(table[p * 2 + 1]);              // stated from Blue's side either way
+    if (withBlue === withRed) { out.settled++; continue; }
+    if (withBlue > withRed) {
+      out.asset++;
+      if (withBlue === 1 && withRed === -1) {
+        out.wins++;
+        if (out.sampleWin < 0 || p % 1009 === 0) out.sampleWin = p;
+      }
+    } else {
+      out.burden++;
+      if (out.sampleZug < 0 || p % 1009 === 0) out.sampleZug = p;
+      // The whole point, lost purely for being the one who has to move. It has never yet been
+      // seen on this board, which is a finding rather than a formality.
+      if (withBlue === -1 && withRed === 1) out.loses++;
+    }
+  }
+  tempoCache.set(id, out);
+  return out;
+}
+
+function renderTempo() {
+  const rows = manifest.variants.map((variant) => ({ variant, data: tempoData(variant.id) }))
+    .filter((row) => row.data);
+  if (!rows.length) return;
+  $('tempo-rows').innerHTML = rows.map(({ variant, data }) => {
+    const share = (count) => `${(100 * count / data.live).toFixed(1)}%`;
+    const on = variant.id === state.variant ? ' on' : '';
+    return `<div class="tempo-row${on}">
+      <span class="tempo-name">${variant.label}</span>
+      <span class="tempo-bar" title="${nf.format(data.live)} live positions — settled ${share(data.settled)}, the move helps ${share(data.asset)}, the move hurts ${share(data.burden)}">
+        <span class="tempo-seg settled" style="--w:${share(data.settled)}"></span>
+        <span class="tempo-seg asset" style="--w:${share(data.asset)}"></span>
+        <span class="tempo-seg burden" style="--w:${share(data.burden)}"></span>
+      </span>
+      <span class="tempo-figure mono">${share(data.asset)}</span>
+      <span class="tempo-meta mono">${nf.format(data.wins)} where the move wins outright · ${data.burden
+        ? `${nf.format(data.burden)} zugzwang` : 'no zugzwang at all'}</span>
+    </div>`;
+  }).join('');
+
+  const here = rows.find((row) => row.variant.id === state.variant) || rows[0];
+  const free = rows.filter((row) => !row.data.burden).map((row) => row.variant.label.toLowerCase());
+  const worst = rows.slice().sort((a, b) => b.data.burden - a.data.burden)[0];
+  const outright = rows.reduce((sum, row) => sum + row.data.loses, 0);
+  const matters = (row) => (row.data.asset + row.data.burden) / row.data.live;
+  const spread = rows.slice().sort((a, b) => matters(a) - matters(b));
+  const [least, most] = [spread[0], spread[spread.length - 1]];
+  $('tempo-note').textContent = `${nf.format(here.data.live)} placements a variant are still a game, `
+    + `and how often the side to move matters is a property of the piece, not of the board: `
+    + `${pct(matters(most))} under ${most.variant.label.toLowerCase()} rules, `
+    + `${pct(matters(least))} under ${least.variant.label.toLowerCase()}. A piece that cannot reach `
+    + `much cannot use a tempo, so most of its positions are decided before anybody moves. `
+    + (free.length
+      ? `Zugzwang is where it gets interesting. Under ${free.join(', ')} there is not one position `
+        + `in the entire table where the mover would rather pass — every one of those archetypes can `
+        + `step to any adjacent square, so there is always a way to mark time. `
+      : '')
+    + (worst?.data.burden
+      ? `The pieces that cannot mark time can be trapped by their own turn: `
+        + `${nf.format(worst.data.burden)} positions under ${worst.variant.label.toLowerCase()} `
+        + `(${pct(worst.data.burden / worst.data.live)}), where a jump must leave the neighbourhood `
+        + `whether that helps or not. `
+      : '')
+    + `And in all seven archetypes, the number of positions where having the move costs the whole `
+    + `point — a win turned into a loss by nothing but the obligation to play — is ${outright}. `
+    + `The move here can be worth everything, and is never worth less than nothing.`;
+
+  const zug = $('tempo-zug');
+  const zugRow = rows.filter((row) => row.data.burden)
+    .sort((a, b) => b.data.burden - a.data.burden)[0];
+  zug.disabled = !zugRow;
+  if (zugRow) {
+    zug.textContent = zugRow.variant.id === state.variant
+      ? 'a position where the move is a liability'
+      : `a zugzwang, under ${zugRow.variant.label.toLowerCase()} rules`;
+    zug.onclick = async () => {
+      if (zugRow.variant.id !== state.variant) await selectVariant(zugRow.variant.id);
+      setPosition(TB.boardOf(TB.positionsFromKey(keys[zugRow.data.sampleZug])), E.BLUE);
+    };
+  }
+  const win = $('tempo-win');
+  const winRow = here.data.sampleWin >= 0 ? here
+    : rows.slice().sort((a, b) => b.data.wins - a.data.wins)[0];
+  win.disabled = !winRow || winRow.data.sampleWin < 0;
+  win.onclick = async () => {
+    if (winRow.variant.id !== state.variant) await selectVariant(winRow.variant.id);
+    setPosition(TB.boardOf(TB.positionsFromKey(keys[winRow.data.sampleWin])), E.BLUE);
+  };
+}
+
+// ── 13 beyond the pocket board ───────────────────────────────────────────────
 let lab = null;
 // Decimal units, from an exact decimal string: these numbers pass 2^53 four sizes in, so the
 // magnitude comes from the digit count rather than from a float that has already lost it.
@@ -1356,7 +1518,7 @@ function renderLadder() {
     + `A star marks a branching factor interpolated between measured sizes rather than measured.`;
 }
 
-// ── 13 measured play ─────────────────────────────────────────────────────────
+// ── 14 measured play ─────────────────────────────────────────────────────────
 let liveRuns = new Map();                                   // size|policy → extra games run here
 const runKey = (run) => `${run.size}|${run.policy}`;
 const runsShown = () => (lab?.play || []).map((run) => L.mergeSummaries(run, liveRuns.get(runKey(run)) || null));
@@ -1429,7 +1591,7 @@ async function runMoreGames(button) {
   button.disabled = false;
 }
 
-// ── 14 the blocking law ──────────────────────────────────────────────────────
+// ── 15 the blocking law ──────────────────────────────────────────────────────
 function renderBlocking() {
   if (!lab) return;
   const ceiling = lab.blocking.ceiling;
@@ -1449,6 +1611,93 @@ function renderBlocking() {
     + `empty board of that size — 3 in a corner, 5 on an edge, 8 inside. Beside them is the share of `
     + `adjacent enemies that were actually takeable across ${nf.format(measured.reduce((sum, run) => sum + run.games, 0))} `
     + `random games: ${pct(mean)}, against a predicted one in three. Contact in this game is mostly wall.`;
+}
+
+// ── 16 what search is worth ──────────────────────────────────────────────────
+// The bot graded against the only two judges available: on the 3×3 the solved table, where a
+// mistake is a fact; on every larger board the same search given twenty-five thousand nodes,
+// where a mistake is an opinion. Both rows report *regret* — how much worse the move played was
+// than the best one — so the exact row and the measured rows can sit in one column while being
+// labelled for what they are. Written by `npm run tune`; nothing here is computed on the page,
+// because a browser cannot play a thousand graded games while you scroll.
+let bots = null;
+
+function renderTruth() {
+  if (!bots?.truth) return;
+  const truth = bots.truth;
+  const top = Math.max(...truth.rows.map((row) => row.blunder), 0.02);
+  $('truth-rows').innerHTML = truth.rows.map((row) => `<div class="srch-row">
+      <span class="srch-label mono">${nf.format(row.nodes)}</span>
+      <span class="srch-track" title="${pct(row.best)} best move, threw the game away ${pct(row.blunder)}">
+        <span class="srch-fill" style="--w:${(100 * row.best).toFixed(2)}%"></span>
+        <span class="srch-bad" style="--w:${(100 * row.blunder / top).toFixed(2)}%"></span>
+      </span>
+      <span class="srch-value mono">${pct(row.best)}</span>
+      <span class="srch-meta mono">${row.blunder ? `${pct(row.blunder)} thrown away` : 'nothing thrown away'} · depth ${row.meanDepth}</span>
+    </div>`).join('');
+  $('truth-note').textContent = `Graded on ${nf.format(truth.positions)} solved positions that `
+    + `contained a mistake to make — of ${nf.format(truth.sampled)} sampled from self-play, the rest `
+    + `offered no way to go wrong and are not worth marking. A mover choosing at random finds the `
+    + `best move ${pct(truth.randomBest)} of the time and holds the result ${pct(truth.randomHolds)} `
+    + `of the time, which is the floor these rows should be read against. `
+    + (truth.rows.some((row) => !row.blunder)
+      ? `From ${nf.format(truth.rows.find((row) => !row.blunder).nodes)} nodes upward the bot stops `
+        + `throwing games away entirely — on this board, and only on this board, the search is done.`
+      : '');
+}
+
+function renderSearchLadder() {
+  if (!bots?.ladder?.length) return;
+  const sizes = [...new Set(bots.ladder.map((row) => row.size))];
+  $('srch-ladder').innerHTML = sizes.map((size) => {
+    const rows = bots.ladder.filter((row) => row.size === size);
+    const duel = (bots.duels || []).find((entry) => entry.size === size);
+    // Each row is scaled to its own worst bar, because the rows are not on a common scale: the
+    // judge is a fixed budget and is closer to perfect on a small board than on a large one.
+    const worst = Math.max(...rows.map((row) => row.regret), 0.01);
+    return `<div class="srch-size">
+      <span class="srch-label mono">${size}×${size}</span>
+      <span class="srch-bars">${rows.map((row) => `<span class="srch-bar"
+        style="--h:${(100 * Math.max(row.regret, 0) / worst).toFixed(2)}%"
+        title="${nf.format(row.nodes)} nodes — regret ${row.regret.toFixed(3)} of a piece (95% CI ${row.regretLo.toFixed(3)}–${row.regretHi.toFixed(3)}), best move ${pct(row.best)}, over ${row.graded} positions"></span>`).join('')}</span>
+      <span class="srch-meta mono">b=${rows[0].branching} · regret ${rows[0].regret.toFixed(2)}→${rows[rows.length - 1].regret.toFixed(2)}${duel
+        ? ` · ${nf.format(duel.strong)} v ${nf.format(duel.weak)} nodes: ${duel.wins}–${duel.draws}–${duel.losses}`
+        : ''}</span>
+    </div>`;
+  }).join('');
+  const flat = (bots.duels || []).filter((duel) => duel.wins === 0 && duel.losses === 0);
+  const bites = (bots.duels || []).find((duel) => duel.wins > duel.losses);
+  $('srch-note').textContent = `Each group is one board size, its bars the ${bots.method.rungs.join(', ')} `
+    + `node budgets in order. Read a row left to right and not against its neighbours: the judge is `
+    + `a fixed budget, so it is nearer to perfect on a small board than on a large one, and the `
+    + `rows are not on one scale. What is comparable is beside them, where the two budgets played `
+    + `each other. `
+    + (flat.length
+      ? `On ${flat.map((duel) => `${duel.size}×${duel.size}`).join(' and ')}, sixteen times the search `
+        + `won nothing at all: every game drawn, which is what a solved, drawn board looks like from `
+        + `the inside. `
+      : '')
+    + (bites
+      ? `From ${bites.size}×${bites.size} upward it starts to pay: ${bites.wins} wins and `
+        + `${bites.losses} losses over ${bites.games} games. `
+      : '')
+    + `Above 3×3 the judge is a ${nf.format(bots.method.referenceNodes)}-node search rather than the `
+    + `truth, so those regrets are a floor: a mistake the reference cannot see is a mistake nobody `
+    + `is charged for.`;
+}
+
+function renderTuning() {
+  const rows = (bots?.tuning || []).filter((entry) => entry.accepted);
+  const note = $('srch-tuning');
+  if (!bots?.tuning?.length) return;
+  note.textContent = rows.length
+    ? `Measuring is also how the bot is fitted to a variant: ${rows.map((entry) => entry.label).join(', ')} `
+      + `${rows.length === 1 ? 'carries' : 'carry'} a weight vector that graded better than the one `
+      + `derived from the rules and then held its own over the board. Every other ruleset — including `
+      + `any you invent in the parameters menu — plays on weights worked out from the rules themselves.`
+    : `Measuring is also how the bot would be fitted to a variant, and this run found nothing worth `
+      + `keeping: on every ruleset tested, the weights derived from the rules graded as well as any `
+      + `nearby vector. That is the intended outcome — a derivation that needs no correction.`;
 }
 
 // ── static panels ────────────────────────────────────────────────────────────
@@ -1602,6 +1851,19 @@ function wireControls() {
 // The lab data is a second, smaller artifact beside the tablebase: exact arithmetic for boards
 // nobody will solve, plus a seeded self-play run. It is not needed to read a position, so it
 // loads after the page is usable and its sections simply stay quiet until it lands.
+// How well the bot plays, measured offline. A third small artifact beside the tables and the lab,
+// and like the lab it is optional: the sections that need it stay quiet until it lands.
+async function loadBots() {
+  try {
+    const response = await fetch('/atlas/bots.json');
+    if (!response.ok) return;
+    bots = await response.json();
+    renderTruth();
+    renderSearchLadder();
+    renderTuning();
+  } catch { /* the solved sections do not depend on it */ }
+}
+
 async function loadLab() {
   try {
     const response = await fetch('/atlas/lab.json');
@@ -1626,10 +1888,13 @@ function wireScrollLens() {
         moves: 'legal moves', openings: 'openings', variants: 'rule sets', layers: 'material',
         depth: 'depth', symmetry: 'symmetry', graph: 'continuations', puzzles: 'puzzle',
         reach: 'reachable play', simplex: 'material', squares: 'square value',
-        beyond: 'state space', measured: 'measured play', blocking: 'mobility',
+        tempo: 'the move itself', beyond: 'state space', measured: 'measured play',
+        blocking: 'mobility', search: 'playing strength',
       }[state.lens] || 'position';
       for (const link of $('atlas-nav').children) link.classList.toggle('on', link.getAttribute('href') === `#${id}`);
       if (id === 'variants') loadAllTables();
+      // Every table, then one pass over each: built when looked at, like its neighbours.
+      if (id === 'tempo') loadAllTables();
       if (id === 'openings') renderGallery();
       if (id === 'graph') fitGraph();
       // Both walk all 415,550 states, so they are built when first looked at rather than on load.
@@ -1671,6 +1936,7 @@ async function start() {
   renderReach();
   wireScrollLens();
   loadLab();
+  loadBots();
 }
 
 start();

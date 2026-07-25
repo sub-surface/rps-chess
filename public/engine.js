@@ -263,12 +263,19 @@ export function blocksBoard(size, per, layout = 'rows', random = Math.random) {
 // R/P/S are Blue rock/paper/scissors, lowercase for Red. Pieces stand on their
 // own colour (like blocksBoard); everything else starts unclaimed.
 const TYPE_OF = { R: 'rock', P: 'paper', S: 'scissors' };
+// The one character a cell gets, looked up rather than derived. This is the hot path of the whole
+// engine: every repetition key encodes the board, and a bot search asks for one on every move it
+// tries, so the flat loop below is deliberate — map/join over rows costs three times as much.
+const CODE = {
+  [BLUE]: { rock: 'R', paper: 'P', scissors: 'S' },
+  [RED]: { rock: 'r', paper: 'p', scissors: 's' },
+};
 export function encodePos(board) {
-  return board.map((row) => row.map((cell) => {
-    if (!cell.piece) return '.';
-    const letter = LETTER[cell.piece.type];
-    return cell.piece.color === BLUE ? letter : letter.toLowerCase();
-  }).join('')).join('');
+  let out = '';
+  for (const row of board) for (const cell of row) {
+    out += cell.piece ? CODE[cell.piece.color][cell.piece.type] : '.';
+  }
+  return out;
 }
 export function decodePos(str, size) {
   if (typeof str !== 'string' || str.length !== size * size) return null;
@@ -291,7 +298,9 @@ export function decodePos(str, size) {
 // B/R for painted ownership and '.' for neutral. Piece and ownership layers stay
 // separate so the original compact piece code remains backward compatible.
 export function encodeOwners(board) {
-  return board.map((row) => row.map((cell) => cell.owner || '.').join('')).join('');
+  let out = '';
+  for (const row of board) for (const cell of row) out += cell.owner || '.';
+  return out;
 }
 export function decodeOwners(str, board) {
   if (typeof str !== 'string' || !Array.isArray(board) || str.length !== board.length * board.length) return null;

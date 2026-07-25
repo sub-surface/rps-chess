@@ -192,7 +192,9 @@ Not rules. Never compared by `presetOf()`, never sent as authoritative state.
 | [x] | `pieces.js` | colour-aware SVG piece families, `glyph(type, color, style)` |
 | [x] | `showcase.js` | lazy replay theatre, visibility and reduced-motion guarded |
 | [x] | `tablebase.js` | 3×3 addressing, symmetry, decoding; shared with the generator |
-| [x] | `game.js` | preview, local play, bot, board and editor render, lobby, exports, online client |
+| [x] | `game.js` | preview, local play, board and editor render, lobby, exports, online client |
+| [x] | `bot.js` | one opponent for every ruleset: derived weights, alpha-beta through `applyMove()` (§6g) |
+| [x] | `bot-tuning.js` | generated weight overrides keyed by ruleset fingerprint; ignored when stale |
 | [x] | `atlas.js` | `/atlas`, the tablebase page |
 | [x] | `lab.js` | exact state-space counting and seeded self-play, shared by `scripts/lab.mjs` and the atlas |
 | [ ] | `topology.js` | square and hex lattice adapters, the only code that knows what a cell is **[D6]** |
@@ -387,7 +389,9 @@ server→  { type:"state", state } · { type:"chat", role, name, text, ts }
   that clock changes 5,952 of 415,550 verdicts (1.43%) and no legal opening. Threefold cannot
   change a positional verdict at all, since a forced win never needs to revisit a position.
 - [x] All **192** placements with 180° rotational symmetry, every position a JANKEN layout can
-  legally deal, are drawn under all seven archetypes, with no zugzwang.
+  legally deal, are drawn under all seven archetypes, and none of them is a zugzwang. That is a
+  fact about the openings, not about the game: elsewhere in the table the side to move decides the
+  result outright, and a smaller set of positions punishes whoever has to move (§6g).
 - [x] A runtime lookup API — `oracleFor(cfg)`, `probe`, `movesFrom`, `rankMoves`, `topMoves` — so the
   atlas, the analysis panel and the perfect bot all read one path. Lazy: a 9×9 game fetches nothing.
 - [x] **Puzzles.** `findPuzzle()` and `dailyPuzzle()` live beside the oracle, because the atlas and
@@ -428,6 +432,43 @@ server→  { type:"state", state } · { type:"chat", role, name, text, ts }
   dataset says rather than these figures, so a re-measure moves it.
 - [x] The atlas can extend the committed run in the reader's own browser (`mergeSummaries`), so the
   intervals narrow in front of them rather than being asserted.
+
+### 6g. The bot, and what it is measured against
+
+- [x] `public/bot.js` is one opponent for every ruleset, imported by the client, the tests and the
+  tuner. Four levels — casual, normal, strong, perfect — are four **budgets** on one program, not
+  four programs. An unknown persisted level resolves to normal, exactly as a retired piece style
+  resolves to the default.
+- [x] It searches by **playing moves through `applyMove()`**, on a real game object. Painting, ink
+  trails, enclosure, capture obligations, multi-action turns, threefold and every ending are
+  therefore the engine's, not a copy's, and a rule the engine gains is a rule the bot plays under
+  the same day. This is what closes the old debt in §9.10.
+- [x] Iterative-deepening alpha-beta with a capture-only quiescence search, delta pruning, killer
+  moves and a history table. Depth is never fixed: the budget is spent and whatever depth it
+  bought is used, so one setting covers a 3×3 pocket board and a 13×13 campaign. Turn direction
+  follows `game.turn` rather than the parity of the depth, because a `triple` turn does not
+  alternate.
+- [x] Everything the bot believes about a variant is **derived from the variant**. The capture
+  graph is read out of `captureTarget()` on a purpose-built board; a piece's base value starts from
+  its average legal destination count on an empty board of this size, so a knight is cheap on a 3×3
+  and dear on a 13×13; the scoreboard term follows `territory`; and a piece's worth moves with the
+  enemy material it eats and is eaten by, which is off automatically under chess capture because
+  then everything eats everything. A variant nobody has ever played gets a considered opinion
+  rather than a default.
+- [x] `public/bot-tuning.js` carries measured weight overrides keyed by a fingerprint of the exact
+  ruleset, prefixed by the weight-vector schema. **Tuning is an optimisation, never a rule**: a
+  fingerprint that matches nothing in play is never looked up, so a stale entry is ignored rather
+  than honoured. This is deliberately the opposite of `public/tablebase/`, which describes the rules
+  and must be regenerated with them.
+- [x] `npm run tune` measures and tunes in one pass, deterministically. Its objective is *regret* —
+  how much worse the move played was than the best available — graded against the solved table on
+  the 3×3, where a mistake is a fact, and against the same search given 25,000 nodes everywhere
+  else, where it is an opinion and the row is labelled as a lower bound. Positions with nothing to
+  get wrong are excluded and counted. A tuned vector is kept only if it also holds its own in a
+  head-to-head match, because agreeing with a deep search is not the same as winning games.
+- [x] `public/atlas/bots.json` publishes the result and §16 of the atlas prints it. The finding is
+  a shape: on the 3×3 sixteen times the search wins nothing — every game drawn, which is what a
+  solved drawn board looks like from inside — and the value of depth rises with the board.
 
 ### 6e. Verification and release
 
@@ -499,7 +540,7 @@ before the previous one settles. `needs` names the blocking item. Ownership is b
 
 | | ID | Item | Notes |
 | --- | --- | --- | --- |
-| [ ] | **D1** | Stronger default bot | Today it is one-ply greedy material plus centre plus noise. Give it a small alpha-beta over `applyBoardMove()` with a tuned eval, and measure it against the tablebase, which is a perfect oracle for exactly this. Needs A3 for scoring, D6 to stop reimplementing move application. |
+| [x] | **D1** | Stronger default bot | `public/bot.js`: iterative-deepening alpha-beta with quiescence, searching through `applyMove()` itself rather than a copy of it, on weights derived from the ruleset in play (§6g). Measured against the tablebase by `npm run tune`, which also tunes per variant and publishes the ladder the atlas prints. It did not need D6 after all — searching on a real game object was the way to stop reimplementing move application, not a topology adapter. |
 | [x] | **D2** | Atlas as laboratory: 5×5 prospects and 9×9 combinatorics | State-space arithmetic for 5×5 (and what a solve would cost in bytes and hours), plus the 9×9 count and what is knowable without solving it. Cheap to compute, high value, and it is what makes the atlas about the game rather than about one board. |
 | [ ] | **D3** | Login coherence | Usernames and passwords, create-account and login pages, no email verification. The D1 `accounts` table and `secret_hash` already exist, so this is UX plus a password KDF, not new infrastructure, and it stays inside the Cloudflare free tier. |
 | [ ] | **D4** | Start position as a first-class choice | The 3×3 result says orientation matters, and cramming permutations into the parameters menu would be clunky. Promote the analysis board instead: set up a position, see its verdict live beside it, play it. That is the same surface the setup variant needs, so build it once. |
@@ -726,9 +767,10 @@ Decided in advance, because a sweep has no natural place to discover them.
 9. **`moves.length === 0` appears in three lifecycle decisions** in `src/worker.js`: the lobby open
    test, the `new` refusal and the rating lock. All three become `hasStarted()` /
    `ratingLockPoint()`, or a setup game is resettable mid-draft and mis-rated.
-10. **The bot reimplements move application** inline in `game.js`. Until it calls
-    `applyBoardMove()`, gold, hex and forced capture diverge between what it simulates and what the
-    engine allows.
+10. ~~**The bot reimplements move application** inline in `game.js`.~~ Paid by D1: `bot.js`
+    searches on a real game object and calls `applyMove()`, so gold and hex will reach the bot the
+    moment they reach the engine. The trap survives as a rule — **nothing outside `engine.js` may
+    apply a move** — and the client keeps no move-scoring code of its own.
 11. **JPGN version selection is a compatibility test, not a preference.** Existing tests compare
     square records byte-for-byte, so the writer must keep emitting 1.1 for fixed square games.
 12. **`MAX_PIECES_PER_SIDE` stays single-source.** A second constant lets `blocksBoard` and
@@ -757,8 +799,9 @@ Decided in advance, because a sweep has no natural place to discover them.
 ## 9b. What the atlas may assert
 
 Every figure printed on `/atlas` is read at render time out of `public/tablebase/manifest.json`,
-a `.tb` file, or `public/atlas/lab.json`. None is typed into the markup, so a regenerated dataset
-moves the page and a stale one cannot hide behind prose. Two consequences are rules, not habits:
+a `.tb` file, `public/atlas/lab.json`, or `public/atlas/bots.json`. None is typed into the markup,
+so a regenerated dataset moves the page and a stale one cannot hide behind prose. Two consequences
+are rules, not habits:
 
 1. **Every chart exports what it drew.** A `csv` button on each section emits exactly the rows on
    screen, and the data pack carries all seven tables, the manifest, `lab.json`, the format note

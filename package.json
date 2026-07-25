@@ -18,7 +18,8 @@
     "tail": "wrangler tail rps-chess",
     "preview": "wrangler dev --remote",
     "tablebase": "node scripts/tablebase.mjs",
-    "lab": "node scripts/lab.mjs"
+    "lab": "node scripts/lab.mjs",
+    "tune": "node scripts/tune.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",

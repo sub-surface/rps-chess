@@ -5,6 +5,7 @@ import { annotateMoves, exportJpgn } from '/notation.js';
 import { glyph, PIECE_STYLE_IDS, PIECE_STYLES } from '/pieces.js';
 import { mountFact } from '/facts.js';
 import * as TB from '/tablebase.js';
+import * as Bot from '/bot.js';
 const { BLUE, RED, other } = E;
 
 // ── config + identity (persisted) ───────────────────────────────────────────
@@ -63,7 +64,8 @@ const cfg = {
   pieceStyle: PIECE_STYLE_IDS.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : DEFAULTS.pieceStyle,
   coordStyle: E.COORD_STYLES.includes(savedCfg.coordStyle) ? savedCfg.coordStyle : 'chess',
   zen: savedCfg.zen === true,
-  botLevel: savedCfg.botLevel === 'perfect' ? 'perfect' : 'normal',
+  // A level named by an older build must still resolve, so bot.js owns the fallback.
+  botLevel: Bot.levelOf(savedCfg.botLevel),
 };
 // `cfg` is the live config the board plays under, so joining an online room overwrites its
 // rules. `ownRules` is the variant this player chose, and only it is ever persisted —
@@ -278,64 +280,39 @@ function syncOracle() {
 }
 
 // ── bot ──────────────────────────────────────────────────────────────────────
-// A perfect move when the tables cover these rules and the player asked for one: a top-valued
-// move, chosen at random among equals so a rematch is not the same game twice.
-function perfectPick(color) {
-  if (cfg.botLevel !== 'perfect' || !oracle) return null;
-  const top = TB.topMoves(TB.rankMoves(TB.movesFrom(oracle.table, state.board, color, E.sanitizeCfg(cfg))));
-  return top.length ? top[(Math.random() * top.length) | 0] : null;
-}
-function metricDiff(board, color) {
-  if (cfg.territory) { const s = E.scoreOf(board); return color === BLUE ? s.B - s.R : s.R - s.B; }
-  const p = E.pieceCounts(board); return color === BLUE ? p.B - p.R : p.R - p.B;
-}
-function botPick(color) {
-  const perfect = perfectPick(color);
-  if (perfect) return perfect;
-  const moves = E.allMoves(state.board, color, cfg);
-  if (!moves.length) return null;
-  const mid = (state.board.length - 1) / 2;
-  let best = [], bv = -Infinity;
-  for (const m of moves) {
-    const b = E.cloneBoard(state.board);
-    const target = E.captureTarget(b, m, cfg);
-    const cap = !!target, p = b[m.fr][m.fc].piece;
-    b[m.fr][m.fc].piece = null;
-    if (target) b[target.row][target.col].piece = null;
-    if (cfg.territory && cfg.trail && E.pattern(p.type, cfg).slide) {
-      const dr = Math.sign(m.tr - m.fr), dc = Math.sign(m.tc - m.fc);
-      for (let r = m.fr + dr, c = m.fc + dc; r !== m.tr || c !== m.tc; r += dr, c += dc) {
-        if (b[r][c].owner === null) b[r][c].owner = color;
-      }
-    }
-    b[m.tr][m.tc] = { owner: cfg.territory ? color : b[m.tr][m.tc].owner, piece: p };
-    const enclosed = cfg.territory && cfg.enclosure
-      ? E.captureEnclosures(b, color)
-      : { squares: 0, pieces: 0 };
-    let v = metricDiff(b, color);
-    if (cap) v += cfg.territory ? 2.2 : 3.0;
-    if (enclosed.pieces) v += enclosed.pieces * 3;
-    v += 0.05 * (mid - Math.abs(mid - m.tr)) + 0.05 * (mid - Math.abs(mid - m.tc)) + Math.random() * 0.25;
-    if (v > bv) { bv = v; best = [m]; } else if (v === bv) best.push(m);
-  }
-  return best[(Math.random() * best.length) | 0];
-}
+// Everything the bot knows lives in bot.js, which searches by playing moves through the same
+// `applyMove()` this client does. There is deliberately no move-scoring code here: a second
+// opinion about what a move does is how a bot ends up playing a game nobody else is playing.
+const botMove = () => Bot.chooseMove(state, {
+  level: cfg.botLevel,
+  // The table is passed in when the shipped tables happen to cover these rules; every other
+  // ruleset — which is nearly all of them — is played by search alone.
+  oracle,
+})?.move || null;
 function botToMove() {
   if (state.gameOver || net || editing) return false;
   if (mode === 'bot') return state.turn === BOTSIDE;
   return mode === 'botbot';
 }
+// The pause before a bot move is a courtesy, not a computation, so the search is spent inside it
+// rather than after it: think first, then wait out whatever is left of the beat. A deeper level
+// therefore costs depth, not patience, until the search is slower than the pause itself.
 function maybeBot() {
   if (!botToMove()) return;
   state.thinking = true; render();
   const g = gen;
+  const beat = mode === 'botbot' ? 460 : 320;
   setTimeout(() => {
     if (g !== gen) return;
-    state.thinking = false;
-    if (!botToMove()) return render();
-    const m = botPick(state.turn);
-    if (m) doMove(m); else render();
-  }, mode === 'botbot' ? 460 : 320);
+    const started = Date.now();
+    const m = botToMove() ? botMove() : null;
+    setTimeout(() => {
+      if (g !== gen) return;
+      state.thinking = false;
+      if (!botToMove()) return render();
+      if (m) doMove(m); else render();
+    }, Math.max(0, beat - (Date.now() - started)));
+  }, 16);          // one frame, so "thinking…" is on screen before the search blocks it
 }
 
 function doMove(m) {
@@ -1833,7 +1810,7 @@ $('s-move-rotate').onclick = () => {
 for (const id of ['s-coords', 's-hints', 's-sound', 's-coordstyle', 's-botlevel']) $(id).onchange = () => {
   cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked;
   cfg.coordStyle = $('s-coordstyle').value === 'grid' ? 'grid' : 'chess';
-  cfg.botLevel = $('s-botlevel').value === 'perfect' ? 'perfect' : 'normal';
+  cfg.botLevel = Bot.levelOf($('s-botlevel').value);
   saveCfg();
   if (document.body.dataset.screen === 'game') render();
 };

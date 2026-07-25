@@ -70,6 +70,16 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
 - The same tables reach the rest of the site: the **analysis board** states an exact verdict, best
   moves and distance to mate for any 3×3 position it covers, and **Bot strength → Perfect** plays
   one of them.
+- **The bot plays your rules, not ours.** It searches by making moves with the same engine you are
+  playing against, so painting, enclosure, compulsory captures and three-moves-a-turn need no
+  special handling, and a variant you invent in the parameters menu gets a real opponent rather
+  than a default one. What a piece is worth is worked out from the rules in play: how far it can
+  actually move on a board that size, and how much of the enemy army it eats against how much of it
+  eats back. Four strengths — casual, normal, strong, and perfect on the board that is solved.
+- **How much thinking does this game need?** The atlas answers it with numbers rather than opinion,
+  by marking the bot's moves against the tablebase on the 3×3 and against a far deeper search
+  above it. On the pocket board sixteen times the search wins nothing at all — every game drawn —
+  and the value of depth climbs steadily with the board.
 - Everything the presets are built from is still yours to set: board size, pieces/type, up to
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
   `queen`, `cross`, or `long king`) per RPS piece, one-click movement sets (all kings, all Long

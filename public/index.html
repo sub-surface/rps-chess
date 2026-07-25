@@ -72,7 +72,7 @@
           <div class="play">
             <button class="btn big primary" data-mode="online" title="Open a public room — anyone in the lobby can join.">Play online ▸</button>
             <button class="btn big" data-mode="friend" title="Create a private room and copy its link. Only people you send it to can join.">Challenge a friend</button>
-            <button class="btn big" data-mode="bot" title="Play Blue against a quick greedy bot.">vs Bot</button>
+            <button class="btn big" data-mode="bot" title="Play Blue against a bot that searches these exact rules. Strength is in Preferences.">vs Bot</button>
             <button class="btn big" data-mode="human" title="Both players share this screen, taking turns.">Over the board</button>
           </div>
           <div class="play-more">
@@ -372,8 +372,10 @@
       <div class="prefrow">
         <label class="fld">Bot strength
           <select id="s-botlevel">
-            <option value="normal">Normal — one move ahead</option>
-            <option value="perfect">Perfect — solved 3×3 only</option>
+            <option value="casual">Casual — glances ahead</option>
+            <option value="normal">Normal — searches a few plies</option>
+            <option value="strong">Strong — searches as deep as it can</option>
+            <option value="perfect">Perfect — plays the solved 3×3 exactly</option>
           </select>
         </label>
       </div>
