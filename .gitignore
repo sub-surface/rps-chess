@@ -8,4 +8,7 @@ public/version.json
 .playwright-mcp/
 playwright-report/
 test-results/
+# Stray screenshots, but never a shipped asset: public/assets is part of the deployed bundle, so an
+# ignored sheet there would leave a fresh clone rendering blank pieces.
 *.png
+!public/assets/*.png

@@ -53,6 +53,11 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   tablebase for the 3×3 board — all 415,550 positions, for each of the seven movement
   archetypes. Set up any position and it will tell you whether it is won, lost or drawn and in
   how many plies. Every one of the 192 openings the game can legally deal is a draw.
+  Every chart there hands over its own numbers as CSV, and the whole thing — all seven solved
+  tables, the manifest, the aggregates and a format note — downloads as one data pack.
+- The same tables reach the rest of the site: the **analysis board** states an exact verdict, best
+  moves and distance to mate for any 3×3 position it covers, and **Bot strength → Perfect** plays
+  one of them.
 - Everything the presets are built from is still yours to set: board size, pieces/type, up to
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
   `queen`, `cross`, or `long king`) per RPS piece, one-click movement sets (all kings, all Long
@@ -64,9 +69,14 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   how-to-play dialog. It is generated from the rules engine, so it can never go stale.
 - The Standard 9×9 start uses centred facing blocks: Blue occupies b4–c6, with Rock/Paper/Scissors
   ordered vertically, and Red uses its 180° mirror on g4–h6.
-- Fourteen crisp, colour-aware piece styles in Preferences: line, solid, pixel, kanji (石 紙 鋏),
-  rounded kawaii, chunky blob, geometric, hand-drawn, origami, sticker, retro arcade, halftone,
-  ghost line, and long shadow.
+- Seven piece styles in Preferences: pixel sprites (the default), line, solid, kanji (石 紙 鋏),
+  rounded kawaii, origami, and retro arcade. All but the sprite sheet are colour-aware SVG that
+  stays crisp from the 22px legend to a full board.
+- **Two coordinate systems.** Chess labelling by default — `a1` bottom-left, files rightward — or
+  grid labelling, with rows lettered downward so `a1` is the top-left square. It changes the board,
+  the move log and the analysis panel; exported games always record canonical chess coordinates so
+  two players' exports of one game stay comparable.
+- **Zen mode** (`z`, or the button) strips everything but the board and whose turn it is.
 - The home selector shows a live variant stage: board preview with movement arrows, the actual
   starting formation and ownership, per-piece movement cards, action count, first player,
   capture rule, and goal — all generated from the same rules engine used during play. Hovering

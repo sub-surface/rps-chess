@@ -114,3 +114,63 @@ describe('solved variants', () => {
     }
   });
 });
+
+// The runtime oracle: the one path from a live config to a verdict, shared by the atlas, the
+// analysis panel and the perfect bot. Nothing here touches the network — these are the pure parts.
+describe('tablebase runtime oracle', () => {
+  const table = new Uint8Array(T.STATES);
+  const kingCfg = E.sanitizeCfg(manifest.variants.find((v) => v.id === 'king').cfg);
+
+  it('shares one placement index rather than rebuilding it per caller', () => {
+    expect(T.placements()).toBe(T.placements());
+    // It must agree with an independent enumeration, or a stored verdict is read from a wrong slot.
+    const board = E.blocksBoard(T.SIZE, 1, 'rows');
+    expect(T.placementOf(board)).toBe(index[T.keyOf(T.positionsOf(board))]);
+    // A board this tablebase cannot describe is -1, not a wrong slot.
+    expect(T.placementOf(E.blocksBoard(9, 2, 'rows'))).toBe(-1);
+  });
+
+  it('recognises a solved variant from a config and refuses the rest', () => {
+    expect(T.variantForCfg(manifest.variants, kingCfg).id).toBe('king');
+    expect(T.variantForCfg(manifest.variants, E.PRESETS.standard)).toBe(null);
+    // A preference field the tables know nothing about must not stop recognition.
+    expect(T.variantForCfg(manifest.variants, { ...kingCfg, pieceStyle: 'sprite' }).id).toBe('king');
+    // A rules field that differs must stop it.
+    expect(T.variantForCfg(manifest.variants, { ...kingCfg, capture: 'chess' })).toBe(null);
+  });
+
+  it('reads a packed entry back as the value and distance it stored', () => {
+    const board = E.blocksBoard(T.SIZE, 1, 'rows');
+    const placement = T.placementOf(board);
+    table[T.stateOf(placement, E.BLUE)] = T.packEntry(T.WIN, 7);
+    table[T.stateOf(placement, E.RED)] = T.packEntry(T.LOSS, 4);
+    expect(T.probe(table, board, E.BLUE)).toMatchObject({ value: 1, dtm: 7 });
+    expect(T.probe(table, board, E.RED)).toMatchObject({ value: -1, dtm: 4 });
+    expect(T.probe(table, E.blocksBoard(9, 2, 'rows'), E.BLUE)).toBe(null);
+    expect(T.probe(null, board, E.BLUE)).toBe(null);
+  });
+
+  it('ranks moves by result first, then races a win and stalls a loss', () => {
+    // Values are for the side that just moved, so a move into the opponent's loss is a win.
+    const move = (value, dtm) => ({ after: { value: -value, dtm } });
+    const ranked = T.rankMoves([
+      move(0, 0), move(1, 9), move(-1, 2), move(1, 3), move(-1, 8),
+    ]);
+    expect(ranked.map((m) => T.moverValue(m))).toEqual([1, 1, 0, -1, -1]);
+    expect(ranked[0].after.dtm).toBe(3);              // finish the win quickly
+    expect(ranked.at(-1).after.dtm).toBe(2);          // drag the loss out: 8 before 2
+    // Only moves exactly as good as the best are top moves; a slower win is not one.
+    expect(T.topMoves(ranked)).toHaveLength(1);
+    expect(T.topMoves(T.rankMoves([move(0, 0), move(0, 0), move(-1, 1)]))).toHaveLength(2);
+    expect(T.topMoves([])).toEqual([]);
+  });
+
+  it('offers no moves from a terminal position, whatever the geometry allows', () => {
+    const board = E.emptyBoard(T.SIZE);
+    board[0][0].piece = { type: 'rock', color: E.BLUE };
+    board[2][2].piece = { type: 'rock', color: E.RED };
+    // Rock cannot take rock, so this is over even though both sides can still walk about.
+    expect(E.allMoves(board, E.BLUE, kingCfg).length).toBeGreaterThan(0);
+    expect(T.movesFrom(table, board, E.BLUE, kingCfg)).toEqual([]);
+  });
+});

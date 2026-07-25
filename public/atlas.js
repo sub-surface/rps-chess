@@ -5,17 +5,32 @@
 // Rules come from engine.js exactly as they do in play, so the moves offered here are the moves
 // the game would allow. The tables only supply values — never legality.
 import * as E from './engine.js';
-import { glyph } from './pieces.js';
+import { glyph, PIECE_STYLE_IDS } from './pieces.js';
 import * as TB from './tablebase.js';
+import { mountFact } from './facts.js';
 
 const $ = (id) => document.getElementById(id);
+
+// The atlas reads the same stored preferences the game writes, so a player's piece artwork and
+// coordinate labelling follow them here. It never writes them back: this page is a reader of that
+// choice, not a second place to make it.
+const prefs = (() => {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('janken-cfg') || '{}') || {}; } catch { /* optional */ }
+  return {
+    pieceStyle: PIECE_STYLE_IDS.includes(saved.pieceStyle) ? saved.pieceStyle : 'sprite',
+    coordStyle: E.COORD_STYLES.includes(saved.coordStyle) ? saved.coordStyle : 'chess',
+  };
+})();
+const pieceGlyph = (type, color) => glyph(type, color, prefs.pieceStyle);
+const square = (row, col) => E.sqName(row, col, TB.SIZE, prefs.coordStyle);
 const nf = new Intl.NumberFormat('en-GB');
 const pct = (x) => `${(100 * x).toFixed(x < 0.001 ? 3 : 1)}%`;
 const LETTER = { rock: 'R', paper: 'P', scissors: 'S' };
 const TYPES = ['rock', 'paper', 'scissors'];
 const OUTCOME = ['L', 'D', 'W'];
 
-const { index, keys } = TB.enumeratePlacements();
+const { index, keys } = TB.placements();
 const tables = new Map();
 let manifest = null;
 
@@ -36,76 +51,172 @@ const variantOf = (id) => manifest.variants.find((v) => v.id === id);
 const activeCfg = () => variantOf(state.variant).cfg;
 
 // ── table access ─────────────────────────────────────────────────────────────
-// Artifacts are gzip on the wire and a flat byte array in memory. One variant is 406 KB
-// decompressed, so they load on demand and stay cached rather than shipping all seven upfront.
+// Loading, addressing, probing and ranking all live in tablebase.js, which the analysis panel and
+// the bot use too. This page keeps only its own index of which variants are in memory, because it
+// is the one caller that shows several at once.
 async function loadTable(id) {
-  if (tables.has(id)) return tables.get(id);
-  const response = await fetch(`/tablebase/${id}.tb`);
-  if (!response.ok) throw new Error(`could not load the ${id} tablebase`);
-  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
-  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-  if (bytes.length !== TB.STATES) throw new Error(`${id} tablebase is ${bytes.length} bytes, expected ${TB.STATES}`);
-  tables.set(id, bytes);
-  return bytes;
+  if (!tables.has(id)) tables.set(id, await TB.loadTable(id));
+  return tables.get(id);
 }
-
-const placementOf = (board) => {
-  const positions = TB.positionsOf(board);
-  return positions ? index[TB.keyOf(positions)] : -1;
-};
 
 // A verdict from the side to move's point of view: 1 win, 0 draw, -1 loss.
-function probe(board, turn, id = state.variant) {
-  const table = tables.get(id);
-  const placement = placementOf(board);
-  if (!table || placement < 0) return null;
-  const entry = table[TB.stateOf(placement, turn)];
-  return { value: TB.valueOf(entry), dtm: TB.dtmOf(entry), placement };
-}
+const probe = (board, turn, id = state.variant) => TB.probe(tables.get(id), board, turn);
 
 const terminalOf = (board, cfg) => E.terminalReason({ board, cfg, repetitions: {}, dry: 0 });
 
-function applyOn(board, move, cfg, turn) {
-  const next = E.cloneBoard(board);
-  E.applyMove({
-    board: next, cfg, moves: [], repetitions: {}, dry: 0, acts: 0,
-    turn, passStreak: 0, gameOver: false, endReason: null,
-  }, move);
-  return next;
-}
-
-// Legal moves with the position each one creates already evaluated. A terminal position has
-// none, whatever the geometry allows — that is the same judgement the solver made.
+// Legal moves with the position each one creates already evaluated, plus the move text this page
+// prints. A terminal position offers none, whatever the geometry allows.
 function movesFrom(board, turn, cfg = activeCfg()) {
-  if (terminalOf(board, cfg)) return [];
-  return E.allMoves(board, turn, cfg).map((move) => {
-    const piece = board[move.fr][move.fc].piece;
-    const captured = E.captureTarget(board, move, cfg)?.piece || null;
-    const next = applyOn(board, move, cfg, turn);
-    return {
-      ...move,
-      piece,
-      captured,
-      board: next,
-      after: probe(next, E.other(turn)),
-      san: `${LETTER[piece.type]}${E.sqName(move.fr, move.fc, TB.SIZE)}`
-        + `${captured ? '×' : '–'}${E.sqName(move.tr, move.tc, TB.SIZE)}`,
-    };
-  });
+  return TB.movesFrom(tables.get(state.variant), board, turn, cfg).map((move) => ({
+    ...move,
+    san: `${LETTER[move.piece.type]}${square(move.fr, move.fc)}`
+      + `${move.captured ? '×' : '–'}${square(move.tr, move.tc)}`,
+  }));
 }
 
-const moverValue = (move) => (move.after ? -move.after.value : 0);
-// Best first: win over draw over loss, then finish a win quickly and drag a loss out.
-const rankMoves = (list) => list.slice().sort((a, b) => {
-  const va = moverValue(a), vb = moverValue(b);
-  if (va !== vb) return vb - va;
-  if (va === 1) return a.after.dtm - b.after.dtm;
-  if (va === -1) return b.after.dtm - a.after.dtm;
-  return a.san.localeCompare(b.san);
-});
+const moverValue = TB.moverValue;
+// Best first: win over draw over loss, then finish a win quickly and drag a loss out. Sorting by
+// move text first makes the remaining ties read alphabetically, since the shared rank is stable.
+const rankMoves = (list) => TB.rankMoves(list.slice().sort((a, b) => a.san.localeCompare(b.san)));
 const isBest = (move, ranked) => ranked.length > 0
   && moverValue(move) === moverValue(ranked[0])
   && (moverValue(move) === 0 || move.after.dtm === ranked[0].after.dtm);
+
+// ── data provenance ──────────────────────────────────────────────────────────
+// Every chart on this page can hand over exactly the numbers it drew. That is not a convenience
+// feature: a page that makes numeric claims and cannot produce the numbers is asking to be trusted
+// instead of checked. Each entry returns the rows as drawn, not a recomputation.
+const csvCell = (value) => {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+const toCsv = (header, rows) => [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\n') + '\n';
+
+function download(name, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+// The distance-to-mate distribution, counted from the table itself. Shared by the chart and its
+// CSV so the two cannot disagree.
+function depthCounts(id = state.variant) {
+  const table = tables.get(id);
+  if (!table) return null;
+  const counts = new Array(variantOf(id).maxDtm + 1).fill(0);
+  for (let s = 0; s < TB.STATES; s++) {
+    const entry = table[s];
+    if (TB.valueOf(entry) !== 0) counts[TB.dtmOf(entry)]++;
+  }
+  return counts;
+}
+
+const CSV_SOURCES = {
+  moves: () => {
+    const ranked = rankMoves(movesFrom(state.board, state.turn));
+    return {
+      name: `janken-3x3-${state.variant}-moves.csv`,
+      header: ['move', 'piece', 'captures', 'result_for_mover', 'dtm_after', 'is_best'],
+      rows: ranked.map((move) => [
+        move.san, move.piece.type, move.captured ? move.captured.type : '',
+        { 1: 'win', 0: 'draw', '-1': 'loss' }[String(moverValue(move))],
+        move.after && moverValue(move) !== 0 ? move.after.dtm : '',
+        isBest(move, ranked) ? 1 : 0,
+      ]),
+    };
+  },
+  variants: () => ({
+    name: 'janken-3x3-variants.csv',
+    header: ['variant', 'rules', 'win', 'draw', 'loss', 'terminals', 'edges', 'max_dtm',
+      'start_value', 'fair_starts', 'fair_drawn', 'table_bytes'],
+    rows: manifest.variants.map((v) => [
+      v.id, v.rules, v.wdl.W, v.wdl.D, v.wdl.L, v.terminals, v.edges, v.maxDtm,
+      { 1: 'win', 0: 'draw', '-1': 'loss' }[String(v.start.value)],
+      v.fairStarts.count, v.fairStarts.D, v.bytes,
+    ]),
+  }),
+  layers: () => ({
+    name: `janken-3x3-${state.variant}-layers.csv`,
+    header: ['pieces_captured', 'states', 'win', 'draw', 'loss'],
+    rows: variantOf(state.variant).layers.map((l) => [l.m, l.states, l.W, l.D, l.L]),
+  }),
+  depth: () => {
+    const counts = depthCounts();
+    if (!counts) return null;
+    return {
+      name: `janken-3x3-${state.variant}-depth.csv`,
+      header: ['dtm_plies', 'decided_states'],
+      rows: counts.map((count, dtm) => [dtm, count]).filter(([dtm]) => dtm > 0),
+    };
+  },
+  // The full 6×6 grid, reachable and unreachable alike. Publishing only the 36 minus 30 that a
+  // layout can deal would be the biased half of the picture, and the unreachable cells are exactly
+  // where the wins live.
+  openings: () => ({
+    name: `janken-3x3-${state.variant}-openings.csv`,
+    header: ['blue_lineup', 'red_lineup', 'reachable', 'value_for_blue'],
+    rows: variantOf(state.variant).lineups.flatMap((row, blue) => row.map((value, red) => [
+      manifest.permutations[blue],
+      manifest.permutations[red],
+      manifest.permutations[red] === reversed(manifest.permutations[blue]) ? 1 : 0,
+      { 1: 'win', 0: 'draw', '-1': 'loss' }[String(value)],
+    ])),
+  }),
+};
+
+// One button per section that has data behind it, injected rather than written into the markup so
+// a chart and its export cannot drift apart in the HTML.
+function wireCsvButtons() {
+  for (const [key, source] of Object.entries(CSV_SOURCES)) {
+    const section = document.querySelector(`.atlas-section[data-csv="${key}"]`);
+    if (!section) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'csv-btn';
+    button.textContent = 'csv';
+    button.title = 'Download exactly the numbers this chart draws';
+    button.addEventListener('click', () => {
+      const data = source();
+      if (!data) { button.textContent = 'not loaded'; setTimeout(() => { button.textContent = 'csv'; }, 1200); return; }
+      download(data.name, new Blob([toCsv(data.header, data.rows)], { type: 'text/csv' }));
+      button.textContent = 'downloaded';
+      setTimeout(() => { button.textContent = 'csv'; }, 1200);
+    });
+    section.querySelector('.eyebrow').appendChild(button);
+  }
+}
+
+// The whole thing: every table, the manifest, every chart's CSV, and the format note.
+async function downloadDataPack(button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'building…';
+  try {
+    const { zip, FORMAT_NOTE } = await import('./datapack.js');
+    const members = [{ name: 'FORMAT.md', bytes: new TextEncoder().encode(FORMAT_NOTE) }];
+    const manifestText = JSON.stringify(manifest, null, 2);
+    members.push({ name: 'manifest.json', bytes: new TextEncoder().encode(manifestText) });
+    for (const variant of manifest.variants) {
+      const response = await fetch(`/tablebase/${variant.id}.tb`);
+      // The gzipped artifact goes in as it is served, so a member is byte-identical to the file the
+      // page itself reads.
+      members.push({ name: `${variant.id}.tb`, bytes: new Uint8Array(await response.arrayBuffer()) });
+    }
+    for (const [key, source] of Object.entries(CSV_SOURCES)) {
+      if (key === 'moves') continue;                 // position-specific, not an aggregate
+      const data = source();
+      if (data) members.push({ name: data.name, bytes: new TextEncoder().encode(toCsv(data.header, data.rows)) });
+    }
+    download('janken-3x3-data.zip', zip(members));
+    button.textContent = 'downloaded';
+  } catch {
+    button.textContent = 'failed — try again';
+  }
+  setTimeout(() => { button.textContent = original; button.disabled = false; }, 1600);
+}
 
 // ── position changes ─────────────────────────────────────────────────────────
 function setPosition(board, turn, { push = true, reason = '' } = {}) {
@@ -159,7 +270,7 @@ function buildBoard() {
     const cell = document.createElement('button');
     cell.type = 'button';
     cell.className = 'tb-sq';
-    cell.innerHTML = `<span class="tb-coord">${E.sqName(row, col, TB.SIZE)}</span>`
+    cell.innerHTML = `<span class="tb-coord">${square(row, col)}</span>`
       + '<span class="pcwrap"></span><span class="dotwrap"></span>';
     cell.pieceHost = cell.querySelector('.pcwrap');
     cell.dotHost = cell.querySelector('.dotwrap');
@@ -210,7 +321,7 @@ function renderBoard(ranked) {
     const pieceKey = piece ? `${piece.type}${piece.color}` : '';
     if (cell.dataset.piece !== pieceKey) {
       cell.dataset.piece = pieceKey;
-      cell.pieceHost.innerHTML = piece ? glyph(piece.type, piece.color, 'line') : '';
+      cell.pieceHost.innerHTML = piece ? pieceGlyph(piece.type, piece.color) : '';
     }
 
     const move = selectedMoves.find((m) => m.tr === row && m.tc === col);
@@ -226,7 +337,7 @@ function renderBoard(ranked) {
     cell.classList.toggle('from', !!state.lastMove
       && ((state.lastMove.fr === row && state.lastMove.fc === col)
         || (state.lastMove.tr === row && state.lastMove.tc === col)));
-    cell.setAttribute('aria-label', `${E.sqName(row, col, TB.SIZE)} `
+    cell.setAttribute('aria-label', `${square(row, col)} `
       + (piece ? `${piece.color === E.BLUE ? 'Blue' : 'Red'} ${piece.type}` : 'empty'));
   }
   renderArrows(ranked);
@@ -258,8 +369,14 @@ function arrowShape(move) {
 // best result available. Selecting a piece swaps that for its own destinations.
 function renderArrows(list) {
   const group = $('arrow-group');
+  const note = $('tb-key-note');
   group.innerHTML = '';
-  if (state.selected || !list.length) return;
+  if (state.selected || !list.length) {
+    note.textContent = state.selected
+      ? 'Dots mark this piece\'s legal squares, coloured the same way. A ring means a capture.'
+      : '';
+    return;
+  }
   const best = list.filter((move) => isBest(move, list));
   // A crowd of equally good moves is information, not decoration — but it should not shout.
   const weight = best.length > 4 ? 0.5 : best.length > 2 ? 0.66 : 0.82;
@@ -269,6 +386,12 @@ function renderArrows(list) {
       ? `<path class="garrow ${OUTCOME[moverValue(move) + 1]}" d="${shape}" opacity="${weight}"/>`
       : '';
   }).join('');
+  // The colour is the result for the side to move, and the fade counts how many moves tie for
+  // best. Both are stated rather than left to be inferred from the picture.
+  const word = { W: 'win', D: 'draw', L: 'loss' }[OUTCOME[moverValue(best[0]) + 1]];
+  const mover = state.turn === E.BLUE ? 'Blue' : 'Red';
+  note.textContent = `Shown: every move that ties for best here, ${best.length} of ${list.length} legal.`
+    + ` Each is a ${word} for ${mover}, and they fade as more of them tie.`;
 }
 
 // ── verdict ──────────────────────────────────────────────────────────────────
@@ -348,7 +471,7 @@ function renderMoveList(ranked) {
     row.className = `move-row${isBest(move, ranked) ? ' best' : ''}`;
     const letter = OUTCOME[moverValue(move) + 1];
     const word = { W: 'WIN', D: 'DRAW', L: 'LOSS' }[letter];
-    row.innerHTML = `${glyph(move.piece.type, move.piece.color, 'line')}`
+    row.innerHTML = `${pieceGlyph(move.piece.type, move.piece.color)}`
       + `<span class="san">${move.san}</span>`
       + `<span class="tag">${move.captured ? `takes ${move.captured.type}` : 'quiet'}</span>`
       + `<span class="out ${letter}">${word}${letter === 'D' ? '' : ` · ${move.after.dtm}`}</span>`;
@@ -536,15 +659,10 @@ function loadRandomFromLayer(material) {
 
 // ── 05 depth ─────────────────────────────────────────────────────────────────
 function renderHistogram() {
-  const table = tables.get(state.variant);
   const host = $('histogram');
-  if (!table) { host.innerHTML = '<p class="loading">reading the table</p>'; return; }
+  const counts = depthCounts();
+  if (!counts) { host.innerHTML = '<p class="loading">reading the table</p>'; return; }
   const variant = variantOf(state.variant);
-  const counts = new Array(variant.maxDtm + 1).fill(0);
-  for (let s = 0; s < TB.STATES; s++) {
-    const entry = table[s];
-    if (TB.valueOf(entry) !== 0) counts[TB.dtmOf(entry)]++;
-  }
   const peak = Math.max(...counts, 1);
   host.innerHTML = counts.map((count, dtm) => (dtm === 0 ? '' : `<button type="button" class="hbar${dtm === variant.maxDtm ? ' tall' : ''}" data-d="${dtm}"
       title="${nf.format(count)} positions forced in ${dtm}"><i style="height:${Math.max(1, 100 * count / peak)}%"></i>${dtm % 4 === 0 || dtm === variant.maxDtm ? `<span>${dtm}</span>` : ''}</button>`)).join('');
@@ -898,7 +1016,7 @@ function buildPalette() {
   for (const color of [E.BLUE, E.RED]) for (const type of TYPES) tools.push({ type, color });
   host.innerHTML = `<button type="button" class="tb-pal on" data-tool="move" title="Move pieces">move</button>`
     + tools.map((tool, i) => `<button type="button" class="tb-pal" data-tool="${i}"
-        title="${tool.color === E.BLUE ? 'Blue' : 'Red'} ${tool.type}">${glyph(tool.type, tool.color, 'line')}</button>`).join('')
+        title="${tool.color === E.BLUE ? 'Blue' : 'Red'} ${tool.type}">${pieceGlyph(tool.type, tool.color)}</button>`).join('')
     + '<button type="button" class="tb-pal" data-tool="erase" title="Remove a piece">clear</button>';
   for (const button of host.querySelectorAll('[data-tool]')) {
     button.addEventListener('click', () => {
@@ -991,6 +1109,9 @@ async function start() {
   buildBoard();
   buildPalette();
   wireControls();
+  wireCsvButtons();
+  $('pack-btn').addEventListener('click', (event) => downloadDataPack(event.currentTarget));
+  mountFact($('dyk'));
   wireGraphViewport();
   renderHero();
   renderMethodFacts();

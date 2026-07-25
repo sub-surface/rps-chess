@@ -47,10 +47,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .word { display: flex; flex-direction: column; line-height: 1; font-weight: 650; letter-spacing: .18em; font-size: 14px; }
 .word em { font-style: normal; font-weight: 500; letter-spacing: .2em; font-size: 9px; color: var(--muted); margin-top: 4px; }
 .tools { display: flex; align-items: center; gap: 16px; }
-.tbtn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; letter-spacing: .06em; cursor: pointer; padding: 2px 0; transition: color .15s; }
+.tbtn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; letter-spacing: .06em; cursor: pointer; padding: 2px 0; transition: color .15s; text-decoration: none; }
 .tbtn:hover { color: var(--text); }
+/* One did-you-know per visit, typed out beside the logo. It is decoration, so it takes the space
+   left over and yields it entirely on a phone rather than pushing the nav onto a second line. */
+.dyk { flex: 1; min-width: 0; margin: 0; padding: 0 8px; color: var(--muted); font-size: 11.5px; line-height: 1.45; max-height: 2.9em; overflow: hidden; }
+.dyk::before { content: "did you know "; opacity: .55; letter-spacing: .1em; text-transform: uppercase; font-size: 9px; }
+.dyk.typing::after { content: "▍"; animation: caret 1s step-end infinite; }
+@keyframes caret { 50% { opacity: 0; } }
 
 body[data-screen="home"] #play-btn { display: none; }
+
+/* ── zen mode ────────────────────────────────────────────
+   Board, turn indicator and history navigation; nothing else. Deliberately a list of what goes
+   rather than a class on what stays, so a new panel is loud in zen until someone decides. Online
+   chrome (seat, chat, resign) survives, because hiding whose turn it is in a live game is not calm.
+   Everything reachable only through hidden chrome keeps a keyboard route: z leaves again. */
+body.zen .foot,
+body.zen .dyk,
+body.zen .rules-tab,
+body.zen .controls,
+body.zen .log,
+body.zen .board-grip,
+body.zen #analysis-btn,
+body.zen #atlas-btn,
+body.zen #pieces-btn { display: none; }
+body.zen .top { padding-bottom: 4px; opacity: .38; transition: opacity .2s ease; }
+body.zen .top:hover, body.zen .top:focus-within { opacity: 1; }
+body.zen #zen-btn.on { color: var(--accent); }
+body.zen .app { padding-top: 6px; }
 .foot { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px 16px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .foot .sep { opacity: .5; }
 .linklike { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; text-decoration: none; padding: 0; }
@@ -99,7 +124,18 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .deco .t4 { bottom: 22%; right: 12%; width: 44px; fill: var(--muted); animation: drift 30s ease-in-out infinite reverse; }
 .deco .t5 { top: 52%; left: 3%; width: 52px; fill: var(--blue); animation: drift 24s ease-in-out infinite reverse; }
 .deco .t6 { top: 58%; right: 5%; width: 36px; fill: var(--accent); animation: drift 29s ease-in-out infinite; }
+/* The RPS silhouettes drift more slowly and breathe rather than rotate, so the background reads as
+   ambient depth. Longer periods than the tetrominoes keep the two sets from beating against each
+   other at a period the eye can lock onto. */
+.deco .rps { opacity: .055; fill: currentColor; }
+.deco .r1 { top: 34%; left: 12%; width: 82px; color: var(--red); animation: breathe 38s ease-in-out infinite; }
+.deco .r2 { top: 12%; right: 22%; width: 68px; color: var(--blue); animation: breathe 44s ease-in-out infinite reverse; }
+.deco .r3 { bottom: 8%; right: 30%; width: 74px; color: var(--accent); animation: breathe 41s ease-in-out infinite; }
 @keyframes drift { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-14px) rotate(6deg); } }
+@keyframes breathe {
+  0%,100% { transform: translate(0, 0) scale(1) rotate(-3deg); }
+  50% { transform: translate(10px, -18px) scale(1.06) rotate(4deg); }
+}
 @media (prefers-reduced-motion: reduce) { .deco .tetro { animation: none; } }
 
 .home-inner { position: relative; z-index: 1; width: 100%; max-width: 840px; display: flex; flex-direction: column; gap: 30px; }
@@ -315,9 +351,11 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 
 /* ── board ──────────────────────────────────────────── */
 .board { aspect-ratio: 1 / 1; display: grid; border: 1px solid var(--line); user-select: none; touch-action: none; }
-/* piece being dragged: a fixed-position ghost follows the pointer, origin square dims */
-.drag-ghost { position: fixed; transform: translate(-50%, -50%); pointer-events: none; z-index: 50; display: flex; align-items: center; justify-content: center; }
-.drag-ghost svg { width: 82%; height: 82%; filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+/* Piece being dragged: a fixed ghost follows the pointer and the origin square dims. Positioned
+   by transform rather than left/top so a drag never touches layout, and the -50% centring is
+   folded into the JS transform because a second transform property would overwrite it. */
+.drag-ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 50; display: flex; align-items: center; justify-content: center; will-change: transform; }
+.drag-ghost svg { width: 96%; height: 96%; filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
 .sq { position: relative; border: 0; padding: 0; margin: 0; background: var(--sq-dark); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .16s ease; }
 .sq.light { background: var(--sq-light); }
 .sq.own-B { background: color-mix(in srgb, var(--tint-b), var(--sq-dark)); }
@@ -326,14 +364,14 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .sq.light.own-R { background: color-mix(in srgb, var(--tint-r), var(--sq-light)); }
 .sq.last { box-shadow: inset 0 0 0 100px var(--last); }
 .sq .pcw { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.sq svg.pc { width: 76%; height: 76%; display: block; overflow: visible; }
+.sq svg.pc { width: 92%; height: 92%; display: block; overflow: visible; }
 .pc { stroke-linecap: round; stroke-linejoin: round; }
 .pc.pix { shape-rendering: crispEdges; stroke-linecap: butt; stroke-linejoin: miter; }
-.pc.doodle { stroke-linecap: round; stroke-linejoin: round; }
-.pc.origami, .pc.geometric { stroke-linecap: butt; stroke-linejoin: miter; }
-.pc.sticker { filter: drop-shadow(0 2px 1px rgba(0,0,0,.24)); }
+.pc.origami { stroke-linecap: butt; stroke-linejoin: miter; }
 .pc.arcade { shape-rendering: crispEdges; }
-.pc.ghost { opacity: .88; }
+/* The sheet is 32px art shown at board size, so nearest-neighbour is the intended look rather
+   than a compromise; smoothing it would read as a blurry SVG instead of a sprite. */
+.pc.sprite image { image-rendering: pixelated; }
 .pc-B { color: var(--blue); } .pc-R { color: var(--red); } /* pc-N inherits its container's colour */
 .pc.kanji text { font-family: "Yu Gothic UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", sans-serif; }
 .sq.pop svg.pc { animation: pop .2s ease; }
@@ -526,6 +564,17 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .pstyle .opt .row svg { width: 25px; height: 25px; }
 .pstyle .opt .nm { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prefrow { display: flex; gap: 22px; flex-wrap: wrap; padding: 4px 0; }
+.prefrow .note { flex-basis: 100%; margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+
+/* The analysis board's tablebase readout. Present only when the answer is exact, so it is allowed
+   to look certain — no hedging colour, no evaluation bar. */
+.tbverdict { border: 1px solid var(--line); border-left: 2px solid var(--accent); padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+.tbv-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.tbv-head b { font-size: 13px; letter-spacing: .02em; }
+.tbv-head span { font-size: 11px; color: var(--muted); }
+.tbv-win { color: var(--blue); } .tbv-loss { color: var(--red); } .tbv-draw { color: var(--text); }
+.tbv-src, .tbv-best { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.tbv-best { font-variant-numeric: tabular-nums; }
 
 /* ── responsive ─────────────────────────────────────── */
 @media (max-width: 720px) {
@@ -559,5 +608,6 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
   .rules-tab { display: none; }
   /* Keep the header to one line on a phone; analysis stays reachable from Home. */
   #analysis-btn { display: none; }
+  .dyk { display: none; }
   .lobby-head { flex-wrap: wrap; }
 }

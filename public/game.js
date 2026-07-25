@@ -3,10 +3,15 @@
 import * as E from '/engine.js';
 import { annotateMoves, exportJpgn } from '/notation.js';
 import { glyph, PIECE_STYLE_IDS, PIECE_STYLES } from '/pieces.js';
+import { mountFact } from '/facts.js';
+import * as TB from '/tablebase.js';
 const { BLUE, RED, other } = E;
 
 // ── config + identity (persisted) ───────────────────────────────────────────
-const DEFAULTS = { ...E.PRESETS.standard, coords: true, hints: true, sound: true, pieceStyle: 'line' };
+const DEFAULTS = {
+  ...E.PRESETS.standard,
+  coords: true, hints: true, sound: true, pieceStyle: 'sprite', coordStyle: 'chess', zen: false,
+};
 const store = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* storage is optional */ } },
@@ -53,7 +58,12 @@ const cfg = {
   coords: savedCfg.coords !== false,
   hints: savedCfg.hints !== false,
   sound: savedCfg.sound !== false,
-  pieceStyle: PIECE_STYLE_IDS.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : 'line',
+  // A retired style ID resolves to the current default rather than rendering blank, which is what
+  // makes culling a family safe for a browser that has one persisted.
+  pieceStyle: PIECE_STYLE_IDS.includes(savedCfg.pieceStyle) ? savedCfg.pieceStyle : DEFAULTS.pieceStyle,
+  coordStyle: E.COORD_STYLES.includes(savedCfg.coordStyle) ? savedCfg.coordStyle : 'chess',
+  zen: savedCfg.zen === true,
+  botLevel: savedCfg.botLevel === 'perfect' ? 'perfect' : 'normal',
 };
 // `cfg` is the live config the board plays under, so joining an online room overwrites its
 // rules. `ownRules` is the variant this player chose, and only it is ever persisted —
@@ -62,6 +72,7 @@ let ownRules = E.sanitizeCfg(cfg);
 const saveCfg = () => store.set('janken-cfg', JSON.stringify({
   ...ownRules,
   coords: cfg.coords, hints: cfg.hints, sound: cfg.sound, pieceStyle: cfg.pieceStyle,
+  coordStyle: cfg.coordStyle, zen: cfg.zen, botLevel: cfg.botLevel,
 }));
 // Call after the player themselves changes the rules; plain saveCfg() is for view prefs.
 const adoptRules = () => { ownRules = E.sanitizeCfg(cfg); saveCfg(); };
@@ -90,23 +101,73 @@ async function api(path, body) {
   return response.json();
 }
 
-// ── sounds — tiny synthesized clicks, no assets ──────────────────────────────
+// ── sounds — synthesized on demand, still no assets ──────────────────────────
+// Each piece sounds like the thing it is: a rock knocks, paper rustles, scissors snip. Rock and
+// scissors are pitched noise bursts because a stone knock and a blade closing are both broadband
+// transients that no oscillator imitates; paper is a longer, softer band of the same noise.
 let audioCtx = null;
-function blip(freq, dur = 0.06, gain = 0.05, type = 'sine') {
-  if (!cfg.sound) return;
+let noiseBuffer = null;
+const audio = () => {
+  if (!cfg.sound) return null;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+    return audioCtx;
+  } catch { return null; }
+};
+function blip(freq, dur = 0.06, gain = 0.05, type = 'sine') {
+  const ctx = audio();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
     osc.type = type; osc.frequency.value = freq;
-    g.gain.setValueAtTime(gain, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    osc.connect(g); g.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + dur);
+    g.gain.setValueAtTime(gain, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + dur);
   } catch { /* audio is optional */ }
 }
-const soundMove = () => blip(220, 0.05, 0.045);
-const soundCap = () => blip(150, 0.09, 0.06, 'square');
+// One second of white noise, generated once and replayed at different rates and bandwidths.
+function noise(ctx) {
+  if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
+  const frames = ctx.sampleRate;
+  noiseBuffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  return noiseBuffer;
+}
+// `sweep` bends the filter across the burst: downward reads as a knock settling, upward as a
+// blade closing. `q` decides how tonal the burst is — a high Q on a short burst is a woodblock.
+function thud(freq, dur, gain, { q = 1, sweep = 1, type = 'bandpass' } = {}) {
+  const ctx = audio();
+  if (!ctx) return;
+  try {
+    const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noise(ctx);
+    src.playbackRate.value = 0.8 + Math.random() * 0.4;   // a touch of variation per move
+    filter.type = type; filter.Q.value = q;
+    filter.frequency.setValueAtTime(freq, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(80, freq * sweep), ctx.currentTime + dur);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(gain, ctx.currentTime + Math.min(0.012, dur / 4));
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    src.connect(filter); filter.connect(g); g.connect(ctx.destination);
+    src.start(); src.stop(ctx.currentTime + dur);
+  } catch { /* audio is optional */ }
+}
+const PIECE_SOUNDS = {
+  rock: () => { thud(320, 0.09, 0.07, { q: 3.4, sweep: 0.35 }); blip(140, 0.05, 0.03, 'triangle'); },
+  paper: () => thud(2600, 0.14, 0.035, { q: 0.7, sweep: 0.6, type: 'highpass' }),
+  scissors: () => { thud(1900, 0.05, 0.055, { q: 6, sweep: 2.2 }); setTimeout(() => thud(2400, 0.045, 0.045, { q: 6, sweep: 0.5 }), 42); },
+};
+// A move sounds like the piece that moved; a capture adds the loser's sound just behind it, so a
+// trade is audibly two objects rather than one louder click.
+const soundMove = (type) => (PIECE_SOUNDS[type] || (() => blip(220, 0.05, 0.045)))();
+const soundCap = (type, taken) => {
+  soundMove(type);
+  if (PIECE_SOUNDS[taken]) setTimeout(() => PIECE_SOUNDS[taken](), 55);
+  else blip(150, 0.09, 0.05, 'square');
+};
 const soundEnd = () => { blip(392, 0.09, 0.05); setTimeout(() => blip(523, 0.14, 0.05), 100); };
 
 // ── piece glyphs ─────────────────────────────────────────────────────────────
@@ -197,12 +258,40 @@ function humanControls(color) {
 }
 const canPlay = () => !state.gameOver && !state.thinking && isLive() && humanControls(state.turn);
 
+// ── tablebase oracle ────────────────────────────────────────────────────────
+// Loaded whenever the rules in play happen to be solved, which is what lets the analysis panel
+// state a verdict and the bot play one. `oracle` is null for almost every game and that is the
+// normal case, not a failure: nothing is fetched for a board the tables do not cover.
+let oracle = null;
+let oracleFor = '';
+function syncOracle() {
+  const key = JSON.stringify(E.sanitizeCfg(cfg));
+  if (key === oracleFor) return;
+  oracleFor = key;
+  oracle = null;
+  TB.oracleFor(cfg).then((found) => {
+    // A slower load for a config the player has since left must not overwrite the current one.
+    if (oracleFor !== key) return;
+    oracle = found;
+    if (editing) renderTbVerdict();
+  }).catch(() => { /* a missing table is a missing bonus, never a broken game */ });
+}
+
 // ── bot ──────────────────────────────────────────────────────────────────────
+// A perfect move when the tables cover these rules and the player asked for one: a top-valued
+// move, chosen at random among equals so a rematch is not the same game twice.
+function perfectPick(color) {
+  if (cfg.botLevel !== 'perfect' || !oracle) return null;
+  const top = TB.topMoves(TB.rankMoves(TB.movesFrom(oracle.table, state.board, color, E.sanitizeCfg(cfg))));
+  return top.length ? top[(Math.random() * top.length) | 0] : null;
+}
 function metricDiff(board, color) {
   if (cfg.territory) { const s = E.scoreOf(board); return color === BLUE ? s.B - s.R : s.R - s.B; }
   const p = E.pieceCounts(board); return color === BLUE ? p.B - p.R : p.R - p.B;
 }
 function botPick(color) {
+  const perfect = perfectPick(color);
+  if (perfect) return perfect;
   const moves = E.allMoves(state.board, color, cfg);
   if (!moves.length) return null;
   const mid = (state.board.length - 1) / 2;
@@ -254,7 +343,8 @@ function doMove(m) {
   state.justMovedTo = { r: m.tr, c: m.tc };
   state.selected = null; state.targets = [];
   positions.push(snap()); viewPly = liveIndex();
-  if (state.gameOver) soundEnd(); else if (cap) soundCap(); else soundMove();
+  const last = state.moves[state.moves.length - 1] || {};
+  if (state.gameOver) soundEnd(); else if (cap) soundCap(last.piece, last.capture); else soundMove(last.piece);
   render(); maybeBot();
 }
 
@@ -294,6 +384,7 @@ function renderLegend() {
 }
 
 function render() {
+  syncOracle();
   const size = curSize;
   let board, lastMove, boardMode;
   if (editing) { board = editBoard; lastMove = null; boardMode = 'edit'; }
@@ -323,16 +414,66 @@ function render() {
       s.pcw.innerHTML = cell.piece ? pieceGlyph(cell.piece.type, cell.piece.color) : '';
       s.pieceKey = pieceKey;
     }
+    const square = E.sqName(r, c, size, cfg.coordStyle);
     const label = cell.piece
-      ? `${cell.piece.color === BLUE ? 'Blue' : 'Red'} ${cell.piece.type} on ${E.sqName(r, c, size)}`
-      : `Empty ${E.sqName(r, c, size)}`;
+      ? `${cell.piece.color === BLUE ? 'Blue' : 'Red'} ${cell.piece.type} on ${square}`
+      : `Empty ${square}`;
     if (s.label !== label) { s.btn.setAttribute('aria-label', label); s.label = label; }
     const showR = cfg.coords && dc === 0, showF = cfg.coords && dr === size - 1;
-    s.rank.hidden = !showR; if (showR) s.rank.textContent = size - r;
-    s.file.hidden = !showF; if (showF) s.file.textContent = E.fileL(c);
+    const [edge, foot] = E.axisLabels(r, c, size, cfg.coordStyle);
+    s.rank.hidden = !showR; if (showR) s.rank.textContent = edge;
+    s.file.hidden = !showF; if (showF) s.file.textContent = foot;
   }
   state.justMovedTo = null;
   renderHUD(board);
+  refreshFavicon();
+  if (editing) renderTbVerdict();
+}
+
+// ── the analysis board's tablebase readout ──────────────────────────────────
+// Exact, or absent. Nothing here evaluates a position: if the shipped tables do not cover the
+// rules on the board, the panel says nothing rather than guessing, and it stays out of live play
+// so a solved verdict can never become a hint mid-game.
+const TB_WORDS = { 1: 'Win', 0: 'Draw', '-1': 'Loss' };
+const edFirst = () => ($('ed-first').value === RED ? RED : BLUE);
+function renderTbVerdict() {
+  const box = $('ed-tb');
+  const safe = E.sanitizeCfg(cfg);
+  const verdict = oracle && TB.probe(oracle.table, editBoard, edFirst());
+  if (!verdict) {
+    box.hidden = true;
+    box.textContent = '';
+    return;
+  }
+  const mover = edFirst() === BLUE ? 'Blue' : 'Red';
+  const ranked = TB.rankMoves(TB.movesFrom(oracle.table, editBoard, edFirst(), safe));
+  const top = TB.topMoves(ranked);
+  const word = TB_WORDS[String(verdict.value)];
+  const detail = verdict.value === 0
+    ? 'no forced result for either side'
+    : `${verdict.dtm} ${verdict.dtm === 1 ? 'ply' : 'plies'} under best play`;
+  box.hidden = false;
+  box.innerHTML = `<div class="tbv-head"><b class="tbv-${word.toLowerCase()}">${word} for ${mover}</b>`
+    + `<span>${detail}</span></div>`
+    + `<p class="tbv-src">Solved ${oracle.label} tablebase · exact, positional</p>`
+    + (top.length
+      ? `<p class="tbv-best">Best: ${top.slice(0, 4).map((m) => tbMoveText(m, safe)).join(' · ')}`
+        + `${top.length > 4 ? ` and ${top.length - 4} more` : ''}</p>`
+      : '');
+}
+const tbMoveText = (move, safe) => {
+  const from = E.sqName(move.fr, move.fc, safe.size, cfg.coordStyle);
+  const to = E.sqName(move.tr, move.tc, safe.size, cfg.coordStyle);
+  return `${move.piece.type[0].toUpperCase()}${from}${move.captured ? '×' : '–'}${to}`;
+};
+// Redrawing a favicon is cheap but not free, and render() runs on every hover; only the facts the
+// icon actually shows are worth reacting to.
+let faviconKey = '';
+function refreshFavicon() {
+  const key = `${document.body.dataset.screen}:${state.turn}:${state.gameOver ? 1 : 0}`;
+  if (key === faviconKey) return;
+  faviconKey = key;
+  paintFavicon();
 }
 
 function renderHUD(board) {
@@ -369,13 +510,13 @@ function renderHUD(board) {
 }
 
 function renderLog() {
-  const key = state.moves
+  const key = cfg.coordStyle + '|' + state.moves
     .map((move) => `${move.c}:${move.piece}:${move.from}:${move.to}:${move.capture || ''}:${move.t || ''}`)
     .join('|');
   if (key === lastLogKey) return;
   lastLogKey = key;
   const rows = [];
-  for (const entry of annotateMoves(state.moves, cfg.size)) {
+  for (const entry of annotateMoves(state.moves, cfg.size, cfg.coordStyle)) {
     let row = rows[rows.length - 1];
     if (!row || row.n !== entry.round) {
       row = { n: entry.round, B: [], R: [] };
@@ -483,6 +624,16 @@ function ghostFor(piece, sqEl) {
   document.body.appendChild(g);
   return g;
 }
+// Pointer events can arrive several times per frame. Painting the ghost once per frame, by
+// transform, keeps a drag off the layout path entirely — the difference is visible on a phone.
+let dragFrame = 0;
+function moveGhost(x, y) {
+  if (dragFrame) return;
+  dragFrame = requestAnimationFrame(() => {
+    dragFrame = 0;
+    if (drag?.ghost) drag.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+  });
+}
 boardEl.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   suppressClick = false;
@@ -502,15 +653,16 @@ window.addEventListener('pointermove', (e) => {
     render();
     const pcw = drag.sqEl.querySelector('.pcw'); if (pcw) pcw.style.opacity = '.25';
     drag.ghost = ghostFor(drag.piece, drag.sqEl);
+    drag.ghost.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0) translate(-50%, -50%)`;
     try { boardEl.setPointerCapture(drag.pointerId); } catch { /* older browsers */ }
   }
-  drag.ghost.style.left = e.clientX + 'px';
-  drag.ghost.style.top = e.clientY + 'px';
+  moveGhost(e.clientX, e.clientY);
   e.preventDefault();
 });
 window.addEventListener('pointerup', (e) => {
   if (!drag || e.pointerId !== drag.pointerId) return;
   const d = drag; drag = null;
+  if (dragFrame) { cancelAnimationFrame(dragFrame); dragFrame = 0; }
   if (d.ghost) d.ghost.remove();
   const pcw = d.sqEl.querySelector('.pcw'); if (pcw) pcw.style.opacity = '';
   try { boardEl.releasePointerCapture(d.pointerId); } catch { /* ignore */ }
@@ -543,6 +695,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === 'f' || e.key === 'F') && document.body.dataset.screen === 'game') {
     flipped = !flipped; store.set('janken-flip', flipped ? '1' : '0'); render(); drawAnnos(); return;
   }
+  if (e.key === 'z' || e.key === 'Z') { setZen(!cfg.zen); return; }
   if (editing || !canNavigateHistory()) return;
   if (e.key === 'ArrowLeft') { nav(viewPly - 1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { nav(viewPly + 1); e.preventDefault(); }
@@ -871,9 +1024,10 @@ function applyServerState(s) {
   if (curSize !== cfg.size) build(cfg.size);
   const moves = Array.isArray(s.moves) ? s.moves : [];
   if (lastServerMoves >= 0 && moves.length > lastServerMoves) {
+    const last = moves[moves.length - 1] || {};
     if (s.gameOver) soundEnd();
-    else if ((moves[moves.length - 1].capture || '') || (moves[moves.length - 1].t || '').includes('×')) soundCap();
-    else soundMove();
+    else if ((last.capture || '') || (last.t || '').includes('×')) soundCap(last.piece, last.capture);
+    else soundMove(last.piece);
   }
   lastServerMoves = moves.length;
   Object.assign(state, {
@@ -1098,7 +1252,7 @@ function analysisMove(fr, fc, tr, tc) {
   const enclosed = safe.territory && safe.enclosure
     ? E.captureEnclosures(b, p.color)
     : { pieces: 0 };
-  if (cap || enclosed.pieces) soundCap(); else soundMove();
+  if (cap || enclosed.pieces) soundCap(p.type, target?.piece?.type); else soundMove(p.type);
 }
 function editClick(r, c) {
   if (tool === 'move') {
@@ -1523,6 +1677,8 @@ function fillHome() {
   $('s-retread').checked = cfg.retread; $('s-trail').checked = cfg.trail; $('s-enclosure').checked = cfg.enclosure;
   $('s-layout').value = cfg.layout; $('s-first').value = cfg.first;
   $('s-coords').checked = cfg.coords; $('s-hints').checked = cfg.hints; $('s-sound').checked = cfg.sound;
+  $('s-coordstyle').value = cfg.coordStyle;
+  $('s-botlevel').value = cfg.botLevel;
   $('name-input').value = name;
   $('retread-row').hidden = !cfg.territory;
   $('trail-row').hidden = !cfg.territory;
@@ -1598,10 +1754,15 @@ $('s-move-rotate').onclick = () => {
   readHome();
 };
 // View preferences live in the Preferences dialog so they can change mid-game too.
-for (const id of ['s-coords', 's-hints', 's-sound']) $(id).onchange = () => {
-  cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked; saveCfg();
+for (const id of ['s-coords', 's-hints', 's-sound', 's-coordstyle', 's-botlevel']) $(id).onchange = () => {
+  cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked;
+  cfg.coordStyle = $('s-coordstyle').value === 'grid' ? 'grid' : 'chess';
+  cfg.botLevel = $('s-botlevel').value === 'perfect' ? 'perfect' : 'normal';
+  saveCfg();
   if (document.body.dataset.screen === 'game') render();
 };
+// The verdict is stated for whoever is to move, so changing that changes the answer.
+$('ed-first').onchange = () => { if (editing) renderTbVerdict(); };
 $('s-terr').onchange = () => {
   const elim = $('s-terr').value !== 'territory';
   $('retread-row').hidden = elim;
@@ -1781,6 +1942,54 @@ function buildPStyle() {
   markPStyle();
 }
 function markPStyle() { for (const o of $('pstyle').children) o.classList.toggle('on', o.dataset.style === cfg.pieceStyle); }
+
+// ── GIF piece rasterizer ─────────────────────────────────────────────────────
+// Turns the active pieces.js glyph into a block of palette indices for gif.js, which never learns
+// where the artwork came from. Browsers do not rasterize SVG identically, so this is deliberately
+// the untested path: gif.js still draws its own geometry whenever the hook is absent.
+//
+// Returns null on any failure — an unsupported OffscreenCanvas, a sprite sheet that has not
+// finished loading, a tainted read — and a null stamp simply falls back to the geometric renderer.
+// Rasterizing is asynchronous — an SVG has to decode before it can be drawn — while gif.js renders
+// synchronously, so all six stamps are prepared up front and the hook itself is a map lookup.
+async function pieceStamper(palette, cell) {
+  const nearest = (r, g, b) => {
+    let best = 0, bestDistance = Infinity;
+    for (let i = 0; i < palette.length; i++) {
+      const [pr, pg, pb] = palette[i];
+      const distance = (pr - r) ** 2 + (pg - g) ** 2 + (pb - b) ** 2;
+      if (distance < bestDistance) { bestDistance = distance; best = i; }
+    }
+    return best;
+  };
+  const stamps = new Map();
+  const rasterize = async (type, color) => {
+    const svg = pieceGlyph(type, color)
+      .replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${cell}" height="${cell}" `);
+    const image = new Image();
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await image.decode();
+    const canvas = new OffscreenCanvas(cell, cell);
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0, cell, cell);
+    const { data } = context.getImageData(0, 0, cell, cell);
+    const stamp = new Uint8Array(cell * cell).fill(255);
+    let painted = 0;
+    for (let i = 0; i < cell * cell; i++) {
+      if (data[i * 4 + 3] < 128) continue;
+      stamp[i] = nearest(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+      painted++;
+    }
+    if (painted) stamps.set(`${type}:${color}`, stamp);
+  };
+  try {
+    for (const type of ['rock', 'paper', 'scissors']) {
+      for (const color of [BLUE, RED]) await rasterize(type, color);
+    }
+  } catch { /* an unsupported canvas or a slow sheet: gif.js falls back to its own geometry */ }
+  // No stamps at all means no hook, so the export takes exactly the path the tests assert.
+  return stamps.size ? ((type, color) => stamps.get(`${type}:${color}`) || null) : null;
+}
 $('pieces-btn').onclick = () => { buildPStyle(); buildAcctBox(); $('pieces').showModal(); };
 
 // ── controls / chrome ─────────────────────────────────────────────────────────
@@ -1821,8 +2030,13 @@ $('gif-btn').onclick = async () => {
   try {
     // GIF code is loaded only on demand; it adds no parsing cost to the homepage.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const { exportGameGif } = await import('/gif.js');
-    const blob = exportGameGif(state);
+    const { exportGameGif, frameGeometry, PALETTES } = await import('/gif.js');
+    const theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    const { cell } = frameGeometry(state.board.length);
+    const blob = exportGameGif(state, {
+      theme,
+      drawPiece: await pieceStamper(PALETTES[theme], cell),
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1843,8 +2057,45 @@ $('gif-btn').onclick = async () => {
 };
 $('ocopy').onclick = async () => { try { await navigator.clipboard.writeText($('oshare').value); const b = $('ocopy'); b.textContent = 'copied'; setTimeout(() => b.textContent = 'copy link', 1200); } catch { } };
 
-function applyTheme(t) { document.documentElement.dataset.theme = t; document.querySelector('meta[name=theme-color]').setAttribute('content', t === 'dark' ? '#000000' : '#ffffff'); store.set('janken-theme', t); }
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name=theme-color]').setAttribute('content', t === 'dark' ? '#000000' : '#ffffff');
+  store.set('janken-theme', t);
+  paintFavicon();
+}
 $('theme-btn').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
+// ── zen mode ────────────────────────────────────────────────────────────────
+// One body attribute; the CSS decides what counts as chrome. Persisted, because someone who wants
+// a bare board wants it on the next visit too.
+function setZen(on) {
+  cfg.zen = !!on;
+  document.body.classList.toggle('zen', cfg.zen);
+  $('zen-btn').classList.toggle('on', cfg.zen);
+  saveCfg();
+}
+$('zen-btn').onclick = () => setZen(!cfg.zen);
+setZen(cfg.zen);
+
+// ── favicon ─────────────────────────────────────────────────────────────────
+// Drawn rather than shipped, so it can follow the theme and say whose turn it is at a glance in a
+// crowded tab strip: the ring is the side to move, and it fills solid once the game is over.
+const FAVICON_HUES = { B: '#4c8dff', R: '#ff5c5c' };
+let faviconLink = null;
+function paintFavicon() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const playing = document.body.dataset.screen === 'game';
+  const turn = playing && !state.gameOver ? state.turn : null;
+  const accent = FAVICON_HUES[turn] || (dark ? '#f4f4f4' : '#111111');
+  const done = playing && state.gameOver;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">`
+    + `<rect width="32" height="32" rx="7" fill="${dark ? '#0b0b0b' : '#fbfbfb'}"/>`
+    + `<circle cx="16" cy="16" r="8.5" fill="${done ? accent : 'none'}" stroke="${accent}" stroke-width="3"/>`
+    + (done ? '' : `<circle cx="16" cy="16" r="2.6" fill="${accent}"/>`)
+    + `</svg>`;
+  faviconLink = faviconLink || document.querySelector('link[rel~="icon"]');
+  if (faviconLink) faviconLink.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(svg)}`);
+}
 
 // footer commit
 fetch('/version.json').then(r => r.json()).then(v => { if (v && v.short) { const a = $('commit-link'); a.href = v.url; a.textContent = v.short; } }).catch(() => { });
@@ -1900,3 +2151,4 @@ if (!store.get('janken-seen')) {
   $('rules-link').classList.add('attention');
   $('rules-tab').classList.add('attention');
 }
+mountFact($('dyk'));

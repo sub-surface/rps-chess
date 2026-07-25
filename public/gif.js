@@ -3,24 +3,54 @@
 // avoiding a canvas readback or a large GIF library on the initial page load.
 import * as E from './engine.js';
 
-const PALETTE = [
-  [10, 10, 12],      // dark square
-  [20, 20, 24],      // light square
-  [20, 31, 61],      // Blue-owned dark
-  [28, 41, 75],      // Blue-owned light
-  [58, 21, 25],      // Red-owned dark
-  [70, 29, 34],      // Red-owned light
-  [77, 124, 254],    // Blue piece
-  [229, 72, 77],     // Red piece
-  [32, 32, 39],      // grid
-  [139, 108, 255],   // last move
-  [242, 242, 245],   // highlight
-  [134, 134, 143],   // muted
-  [0, 0, 0],
-  [255, 255, 255],
-  [0, 0, 0],
-  [0, 0, 0],
-];
+// Two palettes, one per theme, with identical index meanings. Nothing downstream — the encoder, the
+// frame sampler, the tests — knows which one is in play, which is why the index layout is fixed
+// even where a slot goes unused.
+//
+// Slots 9 and 14 are the last-move wash, one per square parity. They are a lift of the square
+// beneath rather than a colour of their own: a highlight that competes with Blue and Red for
+// attention makes a two-player board harder to read, not easier.
+export const PALETTES = {
+  dark: [
+    [10, 10, 12],      //  0 dark square
+    [20, 20, 24],      //  1 light square
+    [20, 31, 61],      //  2 Blue-owned dark
+    [28, 41, 75],      //  3 Blue-owned light
+    [58, 21, 25],      //  4 Red-owned dark
+    [70, 29, 34],      //  5 Red-owned light
+    [77, 124, 254],    //  6 Blue piece
+    [229, 72, 77],     //  7 Red piece
+    [32, 32, 39],      //  8 grid
+    [30, 29, 44],      //  9 last move, dark parity
+    [242, 242, 245],   // 10 highlight
+    [134, 134, 143],   // 11 muted
+    [0, 0, 0],         // 12
+    [255, 255, 255],   // 13
+    [42, 41, 58],      // 14 last move, light parity
+    [0, 0, 0],         // 15
+  ],
+  light: [
+    [232, 232, 236],   //  0 dark square
+    [246, 246, 248],   //  1 light square
+    [196, 209, 240],   //  2 Blue-owned dark
+    [214, 224, 248],   //  3 Blue-owned light
+    [242, 202, 204],   //  4 Red-owned dark
+    [250, 219, 221],   //  5 Red-owned light
+    [40, 84, 208],     //  6 Blue piece
+    [190, 40, 46],     //  7 Red piece
+    [206, 206, 212],   //  8 grid
+    [214, 212, 232],   //  9 last move, dark parity
+    [24, 24, 27],      // 10 highlight
+    [110, 110, 118],   // 11 muted
+    [0, 0, 0],         // 12
+    [255, 255, 255],   // 13
+    [230, 228, 244],   // 14 last move, light parity
+    [0, 0, 0],         // 15
+  ],
+};
+// An export with no theme keeps the dark palette, which is the path the Workers-runtime tests take.
+const paletteFor = (theme) => (theme === 'light' ? PALETTES.light : PALETTES.dark);
+const LAST_DARK = 9, LAST_LIGHT = 14;
 
 const push16 = (out, value) => {
   out.push(value & 255, (value >> 8) & 255);
@@ -86,7 +116,7 @@ function lzw(indices, minCodeSize) {
   return bytes;
 }
 
-export function encodeGif({ width, height, frames, palette = PALETTE, loop = 0 }) {
+export function encodeGif({ width, height, frames, palette = PALETTES.dark, loop = 0 }) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     throw new Error('GIF dimensions must be positive integers');
   }
@@ -214,7 +244,25 @@ function drawPiece(pixels, width, height, type, colour, x, y, cell) {
   }
 }
 
-function renderBoard(board, lastMove, width, height) {
+// `paint` is an optional hook supplying a cell-sized block of palette indices for a piece, with 255
+// meaning leave the square showing. It exists so a browser can export the artwork the player is
+// actually looking at; with no hook this draws its own geometry, which is the only path under test.
+// Copies a cell-sized index block onto the frame. 255 is the transparent index, chosen because it
+// cannot collide with a sixteen-entry palette.
+function blit(pixels, width, height, stamp, x, y, cell) {
+  for (let dy = 0; dy < cell; dy++) {
+    const py = y + dy;
+    if (py < 0 || py >= height) continue;
+    for (let dx = 0; dx < cell; dx++) {
+      const value = stamp[dy * cell + dx];
+      const px = x + dx;
+      if (value === 255 || px < 0 || px >= width) continue;
+      pixels[py * width + px] = value;
+    }
+  }
+}
+
+function renderBoard(board, lastMove, width, height, paint = null) {
   const pixels = new Uint8Array(width * height);
   const size = board.length;
   const cell = Math.floor(Math.min(width, height) / size);
@@ -229,19 +277,25 @@ function renderBoard(board, lastMove, width, height) {
     if (square.owner === E.RED) colour = light ? 5 : 4;
     const isLast = lastMove
       && ((lastMove.fr === row && lastMove.fc === col) || (lastMove.tr === row && lastMove.tc === col));
-    if (isLast) colour = 9;
+    const wash = light ? LAST_LIGHT : LAST_DARK;
+    // On unclaimed ground the wash replaces the square. On painted ground it becomes an inset
+    // frame instead: sixteen colours cannot hold a lift of all six square colours, and whose
+    // territory a square is matters more than where the last move went.
+    if (isLast && square.owner === null) colour = wash;
     const x = left + col * cell, y = top + row * cell;
     fillRect(pixels, width, height, x, y, cell, cell, colour);
-    if (square.piece) drawPiece(
-      pixels,
-      width,
-      height,
-      square.piece.type,
-      square.piece.color === E.BLUE ? 6 : 7,
-      x,
-      y,
-      cell,
-    );
+    if (isLast && square.owner !== null) {
+      const inset = Math.max(1, Math.round(cell * 0.12));
+      const far = cell - inset - 1;
+      line(pixels, width, height, x + inset, y + inset, x + far, y + inset, wash);
+      line(pixels, width, height, x + far, y + inset, x + far, y + far, wash);
+      line(pixels, width, height, x + far, y + far, x + inset, y + far, wash);
+      line(pixels, width, height, x + inset, y + far, x + inset, y + inset, wash);
+    }
+    if (!square.piece) continue;
+    const stamp = paint && paint(square.piece.type, square.piece.color, cell);
+    if (stamp) blit(pixels, width, height, stamp, x, y, cell);
+    else drawPiece(pixels, width, height, square.piece.type, square.piece.color === E.BLUE ? 6 : 7, x, y, cell);
   }
   for (let index = 0; index <= size; index++) {
     line(pixels, width, height, left + index * cell, top, left + index * cell, top + span, 8);
@@ -281,13 +335,26 @@ export function gameFrames(record, maxFrames = 160) {
   return sampled;
 }
 
+const frameWidth = (options) => Math.max(180, Math.min(600, Math.round(options.size || 320)));
+
+// The frame width and square size an export will use. A caller that has to prepare artwork per
+// square needs to know the size in advance, and deriving it a second time is how two renderers
+// start disagreeing by a pixel.
+export const frameGeometry = (boardSize, options = {}) => {
+  const width = frameWidth(options);
+  return { width, cell: Math.floor(width / boardSize) };
+};
+
+// `theme` selects a palette, `drawPiece` optionally supplies the client's own artwork. Both are
+// omitted by every non-browser caller, which is what keeps this module DOM-free and deterministic.
 export function exportGameGif(record, options = {}) {
-  const width = Math.max(180, Math.min(600, Math.round(options.size || 320)));
+  const width = frameWidth(options);
   const snapshots = gameFrames(record, options.maxFrames || 96);
+  const paint = typeof options.drawPiece === 'function' ? options.drawPiece : null;
   const frames = snapshots.map((snapshot, index) => ({
-    pixels: renderBoard(snapshot.board, snapshot.lastMove, width, width),
+    pixels: renderBoard(snapshot.board, snapshot.lastMove, width, width, paint),
     delay: index === snapshots.length - 1 ? 160 : 48,
   }));
-  const bytes = encodeGif({ width, height: width, frames });
+  const bytes = encodeGif({ width, height: width, frames, palette: paletteFor(options.theme) });
   return new Blob([bytes], { type: 'image/gif' });
 }

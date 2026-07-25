@@ -32,13 +32,16 @@ npm run tail           # live production logs
 | Path | Responsibility |
 | --- | --- |
 | `public/engine.js` | Pure rules. **Single source of truth**, imported by browser *and* Worker. |
-| `public/tablebase.js` | 3×3 tablebase addressing, symmetry, decoding. Shared with the generator. |
+| `public/tablebase.js` | 3×3 addressing, symmetry, decoding **and the runtime oracle** (`oracleFor`, `probe`, `movesFrom`, `rankMoves`, `topMoves`). Shared with the generator, the atlas, the analysis panel, and the perfect bot. |
 | `public/tablebase/` | Generated: one solved `.tb` per movement archetype, plus `manifest.json`. |
+| `public/datapack.js` | Lazy store-only zip writer + `FORMAT.md` text for the atlas data pack. |
+| `public/facts.js` | Did-you-know corpus, no-immediate-repeat picker, typewriter mount. |
+| `public/assets/` | `rps-sprites.png` — the 128×64 sheet behind the `sprite` piece family. |
 | `public/atlas.html`, `atlas.css`, `atlas.js` | `/atlas` — the tablebase page. Board is the hero; every chart loads it. |
 | `public/notation.js` | JPGN writer, parser, and strict legality-checked replayer. |
 | `public/gif.js` | Dependency-free indexed GIF encoder + deterministic board renderer. |
 | `public/showcase.js` | Lazy replay theatre (recent games, bot variations). |
-| `public/pieces.js` | Fourteen colour-aware SVG piece families; `glyph(type, color, style)`. |
+| `public/pieces.js` | Seven piece families; `glyph(type, color, style)`. Six are colour-aware SVG; `sprite` crops a raster sheet. |
 | `public/game.js` | Everything client: play, bot, board/editor render, lobby, online socket, exports. |
 | `public/index.html`, `style.css` | Markup and styling. No inline scripts (CSP). |
 | `public/admin.html`, `admin.js` | Unlinked `noindex` metrics dashboard. |
@@ -95,6 +98,19 @@ refactor.
 12. **Comments explain why.** The codebase's comments carry reasoning that isn't recoverable from
     the code (why elimination ends on `capturesPossible()` and not "nothing en prise"; why the
     lobby fingerprints its metadata). Match that register — skip the ones that restate the line.
+13. **`coordStyle` is a preference, not a rule.** It never enters `sanitizeCfg()`'s rules fields,
+    `presetOf()`, authoritative state, or JPGN movetext. `sqName()`/`axisLabels()` default to
+    `chess` so every historical call site keeps writing canonical coordinates; only display code
+    passes a style. A record's `Coords` tag says how to *show* moves, never how to read them.
+14. **A retired piece style must still resolve.** `pieceStyle` is persisted in browsers and named
+    nowhere else, so an unknown ID falls back to the current default rather than rendering blank.
+    `glyph()` owns that fallback; dropping a family is otherwise a one-file change.
+15. **A glyph clips itself.** `.sq svg.pc` sets `overflow: visible` for the families that draw
+    outside their box, so the raster `sprite` family crops with a *nested* `<svg>` viewport rather
+    than relying on the outer one. Anything addressing a sheet by cell must clip structurally.
+16. **`gif.js` stays DOM-free.** Theme is a palette index choice and piece artwork arrives as the
+    optional `drawPiece` hook — never an import of `pieces.js`, never a canvas. The hook is never
+    the asserted path: determinism is tested against the geometric renderer.
 
 ## Common tasks
 

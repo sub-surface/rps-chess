@@ -91,7 +91,18 @@ export function pattern(type, cfgOrMovement) {
 }
 
 export const fileL = (c) => String.fromCharCode(97 + c);
-export const sqName = (r, c, size) => fileL(c) + (size - r);
+
+// Two ways to say the same square. `chess` is canonical and the only thing that reaches
+// authoritative state or JPGN movetext: a1 is bottom-left, files run right, ranks run up. `grid`
+// is the labelling most people reach for unprompted — rows lettered downward, columns numbered
+// rightward, so a1 is top-left — and exists as a display preference only. Keeping the default in
+// the fourth argument means every historical call site still writes chess coordinates.
+export const COORD_STYLES = Object.freeze(['chess', 'grid']);
+export const sqName = (r, c, size, style = 'chess') =>
+  (style === 'grid' ? fileL(r) + (c + 1) : fileL(c) + (size - r));
+// The two labels a coordinate ruler shows for a cell: [along the left edge, along the bottom].
+export const axisLabels = (r, c, size, style = 'chess') =>
+  (style === 'grid' ? [fileL(r), String(c + 1)] : [String(size - r), fileL(c)]);
 
 export const emptyBoard = (S) => Array.from({ length: S }, () => Array.from({ length: S }, () => ({ owner: null, piece: null })));
 export const cloneBoard = (b) => b.map(row => row.map(c => ({ owner: c.owner, piece: c.piece ? { ...c.piece } : null })));

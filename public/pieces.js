@@ -2,21 +2,17 @@
 // stays sharp from the 22px legend to the full board and automatically follows
 // the active Blue/Red palette.
 
+// Seven families, down from fourteen. The cull kept the ones that stay legible at 22px in the
+// legend and still read as rock/paper/scissors at board size; a retired ID falls back to `line`,
+// which is what makes dropping one safe for a browser that has it persisted.
 export const PIECE_STYLES = Object.freeze([
+  { id: 'sprite', label: 'Pixel sprites' },
   { id: 'line', label: 'Line' },
   { id: 'solid', label: 'Solid' },
-  { id: 'pixel', label: 'Pixel' },
   { id: 'kanji', label: 'Kanji' },
   { id: 'kawaii', label: 'Rounded kawaii' },
-  { id: 'blob', label: 'Chunky blob' },
-  { id: 'geometric', label: 'Geometric' },
-  { id: 'doodle', label: 'Hand-drawn' },
   { id: 'origami', label: 'Origami' },
-  { id: 'sticker', label: 'Sticker' },
   { id: 'arcade', label: 'Retro arcade' },
-  { id: 'halftone', label: 'Halftone' },
-  { id: 'ghost', label: 'Ghost line' },
-  { id: 'longshadow', label: 'Long shadow' },
 ]);
 export const PIECE_STYLE_IDS = Object.freeze(PIECE_STYLES.map(({ id }) => id));
 
@@ -52,16 +48,6 @@ const FACE = {
   scissors: '<circle cx="40" cy="72" r="2.7"/><circle cx="60" cy="72" r="2.7"/><path d="M46 79 Q50 82 54 79" fill="none" stroke-width="3"/>',
 };
 
-const DOODLE = {
-  rock: `<path d="M16 66 Q20 52 29 45 Q27 35 39 29 Q48 20 57 30 Q69 25 72 40 Q86 45 82 61 Q88 72 73 78 Q56 85 35 81 Q20 83 16 66 Z"/>
-         <path d="M30 66 L67 38 M36 75 L76 48 M48 79 L78 59" stroke-width="3"/>`,
-  paper: `<path d="M29 18 Q31 14 37 16 L61 15 L76 30 L74 84 Q72 87 66 84 L31 86 Q28 83 30 76 Z"/>
-          <path d="M61 16 L60 31 L75 30 M38 45 Q52 42 66 45 M38 57 Q51 54 65 58 M38 70 Q48 67 58 70" stroke-width="4"/>`,
-  scissors: `<path d="M29 18 Q33 14 38 21 L52 50 L66 17 Q72 13 76 21 L58 59"/>
-             <path d="M42 59 Q25 58 25 75 Q26 87 37 86 Q48 85 50 71 Q52 85 64 87 Q75 86 76 75 Q75 59 58 59"/>
-             <path d="M27 30 L35 27 M66 31 L75 34 M48 40 L53 43" stroke-width="3"/>`,
-};
-
 const ORIGAMI = {
   rock: `<path d="M16 65 L27 38 L50 20 L74 37 L85 65 L70 84 L31 84 Z"/>
          <path d="M16 65 L50 20 L48 61 Z" fill="#fff" opacity=".18"/><path d="M50 20 L74 37 L48 61 Z" fill="#fff" opacity=".32"/>
@@ -73,17 +59,16 @@ const ORIGAMI = {
              <path d="M22 85 L50 72 L39 62 Z" fill="#fff" opacity=".16"/>`,
 };
 
-const GEOMETRIC = {
-  rock: '<path d="M29 21 H70 L88 51 L70 81 H29 L12 51 Z"/>',
-  paper: '<path d="M28 14 H61 L77 30 V86 H28 Z"/><path d="M61 14 V30 H77" fill="#fff" opacity=".28"/>',
-  scissors: '<path d="M25 18 L32 13 L53 46 L68 13 L76 19 L58 52 L76 79 L68 86 L51 60 L34 86 L25 79 L44 52 Z"/><circle cx="32" cy="80" r="8" fill="none" stroke="currentColor" stroke-width="6"/><circle cx="68" cy="80" r="8" fill="none" stroke="currentColor" stroke-width="6"/>',
-};
-
-const HALFTONE_LINES = {
-  rock: '<path d="M24 52 L53 24 M18 65 L66 24 M20 76 L78 34 M34 83 L84 48 M51 83 L82 62" stroke-width="3" stroke-dasharray="1 5"/>',
-  paper: '<path d="M34 28 L69 28 M34 38 L69 38 M34 48 L69 48 M34 58 L69 58 M34 68 L69 68 M34 78 L69 78" stroke-width="3" stroke-dasharray="1 5"/>',
-  scissors: '<path d="M28 21 L71 80 M72 20 L29 81" stroke-width="9" stroke-dasharray="1 5"/><circle cx="33" cy="76" r="7" stroke-width="3" stroke-dasharray="1 4"/><circle cx="67" cy="76" r="7" stroke-width="3" stroke-dasharray="1 4"/>',
-};
+// The sprite sheet is 128×64 with 32px cells: column 0 is empty, columns 1–3 are rock, paper and
+// scissors, row 0 is Blue and row 1 is Red.
+//
+// The crop is a *nested* <svg> whose viewBox selects the cell. That looks like one element too many
+// until you notice `.sq svg.pc` sets `overflow: visible` for the families that draw outside their
+// box — which would let the whole sheet paint over the board. A nested viewport clips on its own,
+// needs no CSS to cooperate, and unlike a clipPath needs no document-unique id per glyph.
+const SPRITE_COL = { rock: 1, paper: 2, scissors: 3 };
+const SPRITE_SHEET = '/assets/rps-sprites.png';
+const SPRITE_CELL = 32;
 
 const svg = (style, color, body, attrs = 'fill="none" stroke="currentColor" stroke-width="6"') =>
   `<svg class="pc ${style} pc-${color}" viewBox="0 0 100 100" ${attrs}>${body}</svg>`;
@@ -102,8 +87,12 @@ const pixelCells = (type, arcade = false) => {
 export function glyph(type, color, requestedStyle = 'line') {
   if (!['rock', 'paper', 'scissors'].includes(type)) return '';
   const style = PIECE_STYLE_IDS.includes(requestedStyle) ? requestedStyle : 'line';
-  if (style === 'pixel') {
-    return `<svg class="pc pixel pix pc-${color}" viewBox="0 0 12 12" fill="currentColor" stroke="none">${pixelCells(type)}</svg>`;
+  if (style === 'sprite') {
+    // Neutral has no row of its own; it borrows Blue's artwork rather than rendering blank.
+    const x = SPRITE_CELL * SPRITE_COL[type], y = color === 'R' ? SPRITE_CELL : 0;
+    return `<svg class="pc sprite pc-${color}" viewBox="0 0 ${SPRITE_CELL} ${SPRITE_CELL}">`
+      + `<svg width="${SPRITE_CELL}" height="${SPRITE_CELL}" viewBox="${x} ${y} ${SPRITE_CELL} ${SPRITE_CELL}">`
+      + `<image href="${SPRITE_SHEET}" width="128" height="64"/></svg></svg>`;
   }
   if (style === 'arcade') {
     return `<svg class="pc arcade pix pc-${color}" viewBox="0 0 12 12" fill="currentColor" stroke="currentColor">${pixelCells(type, true)}</svg>`;
@@ -116,25 +105,6 @@ export function glyph(type, color, requestedStyle = 'line') {
     return svg(style, color, `<path d="${BASE[type]}" fill="currentColor" opacity=".24"/>`
       + `<path d="${BASE[type]}" fill="none"/>${FACE[type]}`, 'fill="currentColor" stroke="currentColor" stroke-width="5"');
   }
-  if (style === 'blob') {
-    return svg(style, color, `<path d="${BASE[type]}"/><path d="${BASE[type]}" transform="translate(5 7) scale(.9)" fill="#fff" opacity=".12"/>`, 'fill="currentColor" stroke="currentColor" stroke-width="4"');
-  }
-  if (style === 'geometric') return svg(style, color, GEOMETRIC[type], 'fill="currentColor" stroke="none"');
-  if (style === 'doodle') return svg(style, color, DOODLE[type], 'fill="none" stroke="currentColor" stroke-width="5"');
   if (style === 'origami') return svg(style, color, ORIGAMI[type], 'fill="currentColor" stroke="currentColor" stroke-width="1.5"');
-  if (style === 'sticker') {
-    return svg(style, color, `<g fill="currentColor" stroke="#fff" stroke-width="15">${BASE[type] ? `<path d="${BASE[type]}"/>` : ''}</g>`
-      + `<path d="${BASE[type]}" fill="currentColor" stroke="currentColor" stroke-width="4"/>`);
-  }
-  if (style === 'halftone') {
-    return svg(style, color, `<path d="${BASE[type]}" fill="currentColor" opacity=".12"/>`
-      + `<path d="${BASE[type]}"/>${HALFTONE_LINES[type]}`, 'fill="none" stroke="currentColor" stroke-width="5"');
-  }
-  if (style === 'ghost') {
-    return svg(style, color, `<path d="${BASE[type]}"/>`, 'fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="7 7"');
-  }
-  if (style === 'longshadow') {
-    return svg(style, color, `<g transform="translate(8 8)" opacity=".2">${SOLID[type]}</g>${SOLID[type]}`, 'fill="currentColor" stroke="none"');
-  }
   return svg('line', color, LINE[type]);
 }

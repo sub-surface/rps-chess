@@ -46,6 +46,31 @@ describe('JANKEN Portable Game Notation', () => {
     expect(parseJpgn(historical).cfg.threefold).toBe(false);
   });
 
+  // A coordinate preference is display metadata. If it ever reached movetext, two records of the
+  // same game would stop being comparable, so the tag is additive and the moves never move.
+  it('records a coordinate preference without touching the movetext', () => {
+    const cfg = E.sanitizeCfg(E.PRESETS.skirmish);
+    const game = E.newGame(cfg);
+    game.startedAt = Date.UTC(2026, 6, 24);
+    playFirst(game, 4);
+
+    const canonical = exportJpgn(game);
+    const grid = exportJpgn(game, { coordStyle: 'grid' });
+    expect(canonical).not.toContain('[Coords');
+    expect(grid).toContain('[Coords "grid"]');
+    // Identical bytes once the one added tag is removed: same movetext, same everything else.
+    expect(grid.replace('[Coords "grid"]\n', '')).toBe(canonical);
+    // And it still replays, because the parser reads coordinates the one canonical way.
+    expect(E.encodePos(replayJpgn(grid).game.board)).toBe(E.encodePos(game.board));
+    expect(parseJpgn(grid).tags.Coords).toBe('grid');
+
+    // The history panel is the only caller that relabels, and only in its own display strings.
+    const [first] = annotateMoves(game.moves, cfg.size, 'grid');
+    const [same] = annotateMoves(game.moves, cfg.size);
+    expect(first.notation).not.toBe(same.notation);
+    expect(first.move).toBe(same.move);
+  });
+
   it('preserves the territory enclosure rule in portable records', () => {
     const cfg = E.sanitizeCfg(E.PRESETS.melee);
     const game = E.newGame(cfg);

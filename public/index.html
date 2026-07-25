@@ -28,10 +28,13 @@
       </svg>
       <span class="word">JANKEN<em>rps · chess</em></span>
     </a>
+    <p class="dyk" id="dyk" aria-live="polite" hidden></p>
     <nav class="tools">
       <button id="play-btn" class="tbtn accent" title="Back to the play menu">play ▸</button>
       <button id="analysis-btn" class="tbtn" title="Analysis board — set up or explore any position">analysis</button>
+      <a href="/atlas" id="atlas-btn" class="tbtn" title="Atlas — the solved 3×3 board and the combinatorics of the rest">atlas</a>
       <button id="pieces-btn" class="tbtn" title="Preferences">options</button>
+      <button id="zen-btn" class="tbtn gameonly" title="Zen mode — board only (z)">zen</button>
       <button id="flip-btn" class="tbtn gameonly" title="Flip board">flip</button>
       <button id="theme-btn" class="tbtn" title="Toggle theme">theme</button>
     </nav>
@@ -46,6 +49,11 @@
       <svg class="tetro t4" viewBox="0 0 20 20"><rect x="0" y="0" width="10" height="10"/><rect x="10" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/></svg>
       <svg class="tetro t5" viewBox="0 0 30 20"><rect x="10" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="10" y="10" width="10" height="10"/></svg>
       <svg class="tetro t6" viewBox="0 0 20 30"><rect x="0" y="0" width="10" height="10"/><rect x="0" y="10" width="10" height="10"/><rect x="0" y="20" width="10" height="10"/><rect x="10" y="20" width="10" height="10"/></svg>
+      <!-- The pieces themselves, drifting behind the page. Same silhouettes as the kawaii family
+           so the background is recognisably this game rather than generic shapes. -->
+      <svg class="tetro rps r1" viewBox="0 0 100 100"><path d="M17 65 C18 55 23 48 30 43 C31 30 41 22 51 25 C59 19 70 28 70 39 C80 42 85 52 82 63 C85 75 74 83 62 82 H36 C23 84 14 76 17 65 Z"/></svg>
+      <svg class="tetro rps r2" viewBox="0 0 100 100"><path d="M29 18 Q29 14 34 14 H61 L76 29 V81 Q76 86 71 86 H34 Q29 86 29 81 Z"/></svg>
+      <svg class="tetro rps r3" viewBox="0 0 100 100"><path d="M29 18 Q34 13 39 19 L52 47 L65 18 Q70 13 75 18 Q79 22 75 28 L59 57 Q72 62 75 73 Q78 85 66 88 Q55 89 50 76 Q45 89 34 88 Q22 85 25 73 Q28 62 41 57 L25 28 Q21 22 29 18 Z"/></svg>
     </div>
     <div class="home-inner">
       <section class="lead">
@@ -280,6 +288,8 @@
         <button class="btn ghost sm" id="ed-clear" title="Remove all">Clear</button>
       </div>
       <p class="hint">Move pieces freely — either side, any time, current rules apply. Pick a palette piece to place it. Right-click draws arrows; shift or alt recolours.</p>
+      <!-- Populated only when the shipped tablebase covers the rules on the board. -->
+      <div class="tbverdict" id="ed-tb" hidden></div>
       <label class="frow"><span>To move</span><select id="ed-first"><option value="B">Blue</option><option value="R">Red</option></select></label>
       <div class="controls">
         <button id="ed-start" class="btn">Over the board</button>
@@ -309,8 +319,6 @@
   </main>
 
   <footer class="foot">
-    <a href="/atlas" class="linklike">3×3 tablebase</a>
-    <span class="sep">·</span>
     <a href="https://subsurfaces.net" class="linklike">subsurfaces.net</a>
     <span class="sep">·</span>
     <a id="commit-link" class="linklike" href="https://github.com/sub-surface/rps-chess" target="_blank" rel="noopener">source</a>
@@ -337,6 +345,24 @@
         <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
         <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
         <label class="chk"><input type="checkbox" id="s-sound" checked> Sounds</label>
+      </div>
+      <div class="prefrow">
+        <label class="fld">Bot strength
+          <select id="s-botlevel">
+            <option value="normal">Normal — one move ahead</option>
+            <option value="perfect">Perfect — solved 3×3 only</option>
+          </select>
+        </label>
+      </div>
+      <div class="prefrow">
+        <label class="fld">Coordinate style
+          <select id="s-coordstyle">
+            <option value="chess">Chess — a1 bottom-left</option>
+            <option value="grid">Grid — a1 top-left</option>
+          </select>
+        </label>
+        <p class="note">Display only. Exported games always record canonical chess coordinates, so
+          two players' exports of one game stay comparable.</p>
       </div>
       <h3>Account</h3>
       <div class="acct-box" id="acct-box"></div>

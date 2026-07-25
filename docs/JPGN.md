@@ -96,6 +96,14 @@ Online records can include `Room`, `BlueElo`, and `RedElo`. Implementations may
 add namespaced metadata tags, but game semantics must remain in the required
 fields. `Rated` is emitted as `1` or `0`.
 
+`Coords "grid"` says how the record's author was reading the board: rows lettered
+downward and columns numbered rightward, so `a1` is the top-left square. It is
+**display metadata only**. Movetext is always written in canonical chess
+coordinates — `a1` bottom-left, files rightward, ranks upward — whatever the
+author's preference, so two records of the same game are byte-identical apart from
+this tag. A reader may relabel its own display; it must not reinterpret a move.
+The tag is absent when the author used chess coordinates, which is the default.
+
 ## 4. Canonical rules
 
 `Rules` is a semicolon-separated set of `key=value` fields:

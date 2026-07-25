@@ -29,6 +29,7 @@
       </svg>
       <span class="word">JANKEN<em>tablebase atlas</em></span>
     </a>
+    <p class="dyk" id="dyk" aria-live="polite" hidden></p>
     <div class="tools">
       <a class="tbtn" href="/">play</a>
       <button class="tbtn" id="theme-btn" type="button">theme</button>
@@ -79,6 +80,16 @@
           </svg>
         </div>
 
+        <!-- The arrows have always been coloured by result. Saying so is the difference between a
+             legible diagram and a pretty one. -->
+        <div class="tb-key" id="tb-key">
+          <span class="tb-key-label">arrows</span>
+          <span class="tb-key-item"><i class="tb-swatch W"></i>wins</span>
+          <span class="tb-key-item"><i class="tb-swatch D"></i>draws</span>
+          <span class="tb-key-item"><i class="tb-swatch L"></i>loses</span>
+          <span class="tb-key-note" id="tb-key-note"></span>
+        </div>
+
         <div class="verdict" id="verdict" aria-live="polite">
           <div class="verdict-main">
             <span class="verdict-word" id="verdict-word">…</span>
@@ -108,7 +119,7 @@
       </aside>
 
       <div class="atlas-stream">
-        <section class="atlas-section" id="reading" data-lens="moves">
+        <section class="atlas-section" id="reading" data-csv="moves" data-lens="moves">
           <p class="eyebrow">01 — reading a position</p>
           <h2>Every move, ranked</h2>
           <p class="lede">
@@ -121,7 +132,7 @@
           <p class="note" id="movelist-note"></p>
         </section>
 
-        <section class="atlas-section" id="openings" data-lens="openings">
+        <section class="atlas-section" id="openings" data-csv="openings" data-lens="openings">
           <p class="eyebrow">02 — openings</p>
           <h2>Every legal opening is drawn</h2>
           <p class="lede">
@@ -153,7 +164,7 @@
           <p class="note" id="opening-note"></p>
         </section>
 
-        <section class="atlas-section" id="variants" data-lens="variants">
+        <section class="atlas-section" id="variants" data-csv="variants" data-lens="variants">
           <p class="eyebrow">03 — seven ways to move</p>
           <h2>The same board, seven games</h2>
           <p class="lede">
@@ -169,7 +180,7 @@
           <div class="crosscheck" id="crosscheck"></div>
         </section>
 
-        <section class="atlas-section" id="layers" data-lens="layers">
+        <section class="atlas-section" id="layers" data-csv="layers" data-lens="layers">
           <p class="eyebrow">04 — material</p>
           <h2>Down to the last piece</h2>
           <p class="lede">
@@ -181,7 +192,7 @@
           <div class="waterfall" id="waterfall"></div>
         </section>
 
-        <section class="atlas-section" id="depth" data-lens="depth">
+        <section class="atlas-section" id="depth" data-csv="depth" data-lens="depth">
           <p class="eyebrow">05 — depth</p>
           <h2>How long is forced?</h2>
           <p class="lede">
@@ -275,6 +286,19 @@
             writes: every value must equal the best reply available, every distance must match the
             best line, and every verdict must survive all 24 symmetries.
           </p>
+
+          <h3>Take the data</h3>
+          <p class="lede">
+            Every chart above has a <b>csv</b> button that hands over exactly the rows it drew. The
+            pack below is the whole thing: all seven solved tables as served, the manifest, each
+            chart's aggregates, and a format note explaining the byte layout and the placement
+            numbering well enough to write your own reader. No claim on this page needs to be taken
+            on trust.
+          </p>
+          <div class="btn-row">
+            <button type="button" class="mini" id="pack-btn">download janken-3x3-data.zip</button>
+            <a class="mini" href="/tablebase/manifest.json" download>manifest.json</a>
+          </div>
         </section>
       </div>
     </div>

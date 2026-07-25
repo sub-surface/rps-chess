@@ -602,6 +602,31 @@ describe('rules summary', () => {
     expect(E.capturesPossible(E.blocksBoard(9, 2, 'rows'), cfg)).toBe(true);
   });
 
+  // Two labellings of one board. `chess` is canonical and reaches records; `grid` is the labelling
+  // most people reach for unprompted and never leaves the screen.
+  it('names squares in both coordinate styles without changing the default', () => {
+    expect(E.COORD_STYLES).toEqual(['chess', 'grid']);
+    // Every historical call site omits the style, so the default must stay chess.
+    expect(E.sqName(0, 0, 5)).toBe('a5');
+    expect(E.sqName(0, 0, 5, 'chess')).toBe('a5');
+    expect(E.sqName(4, 4, 5, 'chess')).toBe('e1');
+    // Grid: rows lettered downward, columns numbered rightward, so a1 is top-left.
+    expect(E.sqName(0, 0, 5, 'grid')).toBe('a1');
+    expect(E.sqName(0, 4, 5, 'grid')).toBe('a5');
+    expect(E.sqName(4, 0, 5, 'grid')).toBe('e1');
+    expect(E.sqName(4, 4, 5, 'grid')).toBe('e5');
+    // Distinct names in both styles, since a collision would make a move log ambiguous.
+    for (const style of E.COORD_STYLES) {
+      const names = new Set();
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) names.add(E.sqName(r, c, 5, style));
+      expect(names.size, style).toBe(25);
+    }
+    // The ruler shows [left edge, bottom edge], and each label must agree with the square name.
+    expect(E.axisLabels(0, 0, 5)).toEqual(['5', 'a']);
+    expect(E.axisLabels(0, 0, 5, 'grid')).toEqual(['a', '1']);
+    expect(E.axisLabels(3, 2, 5, 'grid').join('')).toBe('d3');
+  });
+
   it('sanitizes hostile input rather than echoing it', () => {
     const summary = text({ size: 999, perType: -4, capture: '<script>', layout: 'nope' });
     expect(summary).toContain('13×13');

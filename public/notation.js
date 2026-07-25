@@ -92,12 +92,15 @@ const validSquare = (square, size) => Array.isArray(square)
   && square.every(Number.isInteger)
   && square.every((coordinate) => coordinate >= 0 && coordinate < size);
 
-export const moveNotation = (move, size) => {
+// `coordStyle` is display only and defaults to canonical chess coordinates, so every JPGN caller
+// keeps writing the same bytes it always did. Only the history panel passes a preference through.
+export const moveNotation = (move, size, coordStyle) => {
   if (move
       && PIECE_LETTER[move.piece]
       && validSquare(move.from, size)
       && validSquare(move.to, size)) {
-    return `${PIECE_LETTER[move.piece]}${E.sqName(move.from[0], move.from[1], size)}${move.capture ? 'x' : '-'}${E.sqName(move.to[0], move.to[1], size)}`;
+    const sq = (cell) => E.sqName(cell[0], cell[1], size, coordStyle);
+    return `${PIECE_LETTER[move.piece]}${sq(move.from)}${move.capture ? 'x' : '-'}${sq(move.to)}`;
   }
   const legacy = String(move?.t || '').trim()
     .replace(/\s+/g, '')
@@ -109,7 +112,7 @@ export const moveNotation = (move, size) => {
 // The history panel and JPGN writer share this numbering and piece formatter.
 // That keeps every action in a multi-action turn visible and prevents either
 // surface from reconstructing a piece letter from the post-move board.
-export function annotateMoves(moves, size) {
+export function annotateMoves(moves, size, coordStyle) {
   let round = 1;
   let previous = null;
   let action = 0;
@@ -121,7 +124,7 @@ export function annotateMoves(moves, size) {
     } else {
       action++;
     }
-    const notation = moveNotation(move, size);
+    const notation = moveNotation(move, size, coordStyle);
     const display = notation
       ? `${notation[0]} ${notation.slice(1).replace('x', '×').replace('-', '–')}`
       : null;
@@ -182,6 +185,12 @@ export function exportJpgn(game, context = {}) {
     ['Replayable', replayable ? '1' : '0'],
   ];
   if (context.room) tags.splice(4, 0, ['Room', context.room]);
+  // Display metadata only. The movetext above is always canonical, so this tag cannot change how a
+  // record replays — it only says how its author was reading the board. Emitted solely when it
+  // differs from the default, which keeps every existing export byte-for-byte identical.
+  if (context.coordStyle === 'grid') {
+    tags.splice(tags.findIndex(([key]) => key === 'Rules'), 0, ['Coords', 'grid']);
+  }
   if (Number.isFinite(context.ratings?.B)) tags.splice(-4, 0, ['BlueElo', Math.round(context.ratings.B)]);
   if (Number.isFinite(context.ratings?.R)) tags.splice(-4, 0, ['RedElo', Math.round(context.ratings.R)]);
 

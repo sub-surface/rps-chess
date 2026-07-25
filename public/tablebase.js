@@ -5,7 +5,8 @@
 // The solved game is the 3×3 board with one piece of each type a side: the Skirmish preset.
 // Six labelled pieces, each either captured or on a distinct square, gives
 //   Σ C(6,k)·P(9,k) = 207,775 placements, doubled by the side to move.
-import { BLUE, RED, emptyBoard } from './engine.js';
+import * as E from './engine.js';
+const { BLUE, RED, emptyBoard } = E;
 
 export const SIZE = 3;
 export const CELLS = SIZE * SIZE;
@@ -146,3 +147,114 @@ export const DTM_MAX = 63;
 export const packEntry = (value, dtm) => (value << 6) | Math.min(DTM_MAX, dtm);
 export const valueOf = (entry) => (entry >> 6) - 1;   // -1 loss, 0 draw, 1 win
 export const dtmOf = (entry) => entry & DTM_MAX;
+
+// ── runtime oracle ───────────────────────────────────────────────────────────
+// One path from a live config to a verdict, used by the atlas, the analysis panel and the perfect
+// bot. Everything here is lazy: a 9×9 game must never pay for a 3×3 table, and the placement
+// index alone is a 4 MB array. `oracleFor()` returning null is the normal answer for most games
+// and is not an error — it means the shipped tables say nothing about these rules.
+const ROOT = '/tablebase';
+const tables = new Map();
+let manifestPromise = null;
+let placementTable = null;
+
+// The placement index and key list, built once on first use. It is a 4 MB Int32Array, so nothing
+// that never probes a 3×3 position should ever construct it.
+export const placements = () => (placementTable ||= enumeratePlacements());
+
+export const manifest = () => (manifestPromise ||= fetch(`${ROOT}/manifest.json`)
+  .then((response) => {
+    if (!response.ok) throw new Error(`could not load the tablebase manifest (${response.status})`);
+    return response.json();
+  })
+  .catch((error) => { manifestPromise = null; throw error; }));
+
+// Artifacts are gzip on the wire and a flat byte array in memory: 406 KB decompressed each, so
+// they load on demand and stay cached rather than shipping all seven upfront.
+export async function loadTable(id) {
+  if (tables.has(id)) return tables.get(id);
+  const response = await fetch(`${ROOT}/${id}.tb`);
+  if (!response.ok) throw new Error(`could not load the ${id} tablebase`);
+  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  if (bytes.length !== STATES) throw new Error(`${id} tablebase is ${bytes.length} bytes, expected ${STATES}`);
+  tables.set(id, bytes);
+  return bytes;
+}
+
+// The manifest carries each solved variant's exact sanitized config, so recognition compares
+// fields rather than guessing from an archetype name. Comparing the manifest's keys — not the live
+// config's — means a config that grows a new field still matches until the tables are regenerated,
+// which is the same tolerance `presetOf()` deliberately does not have.
+export function variantForCfg(list, cfg) {
+  const live = E.sanitizeCfg(cfg);
+  return (list || []).find((variant) => Object.entries(variant.cfg)
+    .every(([field, value]) => live[field] === value)) || null;
+}
+
+// A loaded oracle for these rules, or null if they are not solved. Callers hold the result.
+export async function oracleFor(cfg) {
+  if (E.sanitizeCfg(cfg).size !== SIZE) return null;      // cheap reject before any network
+  const list = (await manifest()).variants;
+  const variant = variantForCfg(list, cfg);
+  if (!variant) return null;
+  return { id: variant.id, label: variant.label, table: await loadTable(variant.id), variant };
+}
+
+export const placementOf = (board) => {
+  const positions = positionsOf(board);
+  return positions ? placements().index[keyOf(positions)] : -1;
+};
+
+// A verdict from the side to move's point of view: 1 win, 0 draw, -1 loss. DTM is plies to the
+// end of the game under best play, and is meaningless for a draw.
+export function probe(table, board, turn) {
+  const placement = table ? placementOf(board) : -1;
+  if (placement < 0) return null;
+  const entry = table[stateOf(placement, turn)];
+  return { value: valueOf(entry), dtm: dtmOf(entry), placement };
+}
+
+const applyOn = (board, move, cfg, turn) => {
+  const next = E.cloneBoard(board);
+  E.applyMove({
+    board: next, cfg, moves: [], repetitions: {}, dry: 0, acts: 0,
+    turn, passStreak: 0, gameOver: false, endReason: null,
+  }, move);
+  return next;
+};
+
+// Every legal move with the position it creates already evaluated. A terminal position offers
+// none, whatever the geometry allows, which is the judgement the solver made too.
+export function movesFrom(table, board, turn, cfg) {
+  if (E.terminalReason({ board, cfg, repetitions: {}, dry: 0 })) return [];
+  return E.allMoves(board, turn, cfg).map((move) => {
+    const piece = board[move.fr][move.fc].piece;
+    const captured = E.captureTarget(board, move, cfg)?.piece || null;
+    const next = applyOn(board, move, cfg, turn);
+    return { ...move, piece, captured, board: next, after: probe(table, next, E.other(turn)) };
+  });
+}
+
+// The value of a move to the player making it: the opponent's verdict, negated.
+export const moverValue = (move) => (move.after ? -move.after.value : 0);
+
+// Best first: win over draw over loss, then finish a win quickly and drag a loss out. Ties keep
+// their generated order, so a caller wanting variety picks randomly among the equal leaders
+// rather than relying on this being unstable.
+export const rankMoves = (list) => list.slice().sort((a, b) => {
+  const va = moverValue(a), vb = moverValue(b);
+  if (va !== vb) return vb - va;
+  if (va === 1) return a.after.dtm - b.after.dtm;
+  if (va === -1) return b.after.dtm - a.after.dtm;
+  return 0;
+});
+
+// Every move that is exactly as good as the best one. Equal value and, when the game is decided,
+// equal distance — a slower win is not a top move.
+export const topMoves = (ranked) => {
+  if (!ranked.length) return [];
+  const best = ranked[0], value = moverValue(best);
+  return ranked.filter((move) => moverValue(move) === value
+    && (value === 0 || move.after.dtm === best.after.dtm));
+};
