@@ -44,8 +44,8 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   Spectators can use the move log, arrow keys, or board controls to review any earlier position
   without losing their place when another live move arrives.
 - **Eleven named variants**, each a real combination rather than a slider preset — Standard,
-  Skirmish (3×3, one of each), Triple step (3 actions/turn), Cavalry (all knights), Painters
-  (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
+  Skirmish (3×3, one of each, elimination), Triple step (3 actions/turn), Cavalry (all knights),
+  Painters (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
   (13×13, four of each), King's field (rook/knight/bishop, elimination), Checkers (Long kings
   with leap captures), and Melee (all kings, RPS captures, territory enclosure) — plus
   **Custom**. See `SPEC.md` §1.

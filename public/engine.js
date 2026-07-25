@@ -626,7 +626,9 @@ export const PRESETS = {
   // Every preset spells out every compared field, so presetOf() can recognise one
   // exactly. Standard's values are the base; each variant states only what it changes.
   ...Object.fromEntries(Object.entries({
-    skirmish: { size: 3, perType: 1 },
+    // Skirmish is the one pocket board small enough to solve exactly, so it plays the
+    // unpainted game: elimination, with threefold as the only repetition rule.
+    skirmish: { size: 3, perType: 1, territory: false, retread: false },
     triple: { actionsPerTurn: 3 },
     cavalry: { rockMove: 'knight', paperMove: 'knight', scissorsMove: 'knight' },
     ambush: { layout: 'scattered' },

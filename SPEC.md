@@ -127,7 +127,7 @@ and phase fields after Phases 3 and 4.
 | Preset | Rules |
 | --- | --- |
 | **Standard** | 9×9, all kings, RPS capture, elimination, one action |
-| **Skirmish** | 3×3, one piece per type, territory with re-tread |
+| **Skirmish** | 3×3, one piece per type, elimination |
 | **Triple step** | Three actions per turn, territory with re-tread |
 | **Cavalry** | All knights, territory with re-tread |
 | **Painters** | All queens, territory with ink trails, no re-tread |

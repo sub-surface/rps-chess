@@ -505,7 +505,15 @@ describe('preset library', () => {
       capture: 'checkers',
       territory: false,
     });
-    expect(E.PRESETS.skirmish).toMatchObject({ size: 3, perType: 1 });
+    // Skirmish plays the unpainted game so the 3×3 tablebase describes the shipped preset.
+    expect(E.PRESETS.skirmish).toMatchObject({
+      size: 3,
+      perType: 1,
+      capture: 'rps',
+      territory: false,
+      retread: false,
+      threefold: true,
+    });
   });
 
   it('every preset produces a playable opening position', () => {
@@ -550,7 +558,10 @@ describe('rules summary', () => {
     expect(painters).toContain('Slides stop at the first piece');
 
     expect(text(E.PRESETS.triple)).toContain('3 moves per turn');
-    expect(text(E.PRESETS.skirmish)).toContain('1 rock, 1 paper and 1 scissors');
+    const skirmish = text(E.PRESETS.skirmish);
+    expect(skirmish).toContain('1 rock, 1 paper and 1 scissors');
+    expect(skirmish).toContain('Take every enemy piece');
+    expect(skirmish).not.toContain('Painting');
     // A shared archetype is stated once; mixed assignments are spelled out per piece.
     expect(text(E.PRESETS.cavalry)).toContain('Every piece jumps in an L');
     const checkers = text(E.PRESETS.checkers);
