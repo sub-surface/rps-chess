@@ -396,10 +396,13 @@ function renderGallery() {
   });
 }
 
+const reversed = (label) => [...label].reverse().join('');
+
 function renderOpeningGrid() {
   const variant = variantOf(state.variant);
   const host = $('opening-grid');
   const [shippedBlue, shippedRed] = manifest.startLineup;
+  const reachable = [], unreachable = { W: 0, D: 0, L: 0 };
   let html = '<div class="oh"></div>';
   for (const label of manifest.permutations) html += `<div class="oh">${label}</div>`;
   for (let blue = 0; blue < 6; blue++) {
@@ -407,7 +410,8 @@ function renderOpeningGrid() {
     for (let red = 0; red < 6; red++) {
       const value = variant.lineups[blue][red];
       // Reachable exactly when Red's column is Blue's reversed — that is what a 180° turn does.
-      const legal = manifest.permutations[red] === [...manifest.permutations[blue]].reverse().join('');
+      const legal = manifest.permutations[red] === reversed(manifest.permutations[blue]);
+      if (legal) reachable.push(value); else unreachable[OUTCOME[value + 1]]++;
       const shipped = blue === shippedBlue && red === shippedRed;
       html += `<button type="button" class="opening-cell ${OUTCOME[value + 1]}`
         + `${legal ? ' legal' : ''}${shipped ? ' shipped' : ''}" data-b="${blue}" data-r="${red}"`
@@ -416,6 +420,12 @@ function renderOpeningGrid() {
     }
   }
   host.innerHTML = html;
+  // State the resolution in figures, so the grid's wins never have to be taken on trust.
+  const drawn = reachable.filter((value) => value === 0).length;
+  $('opening-note').textContent = `${reachable.length} of 36 pairings are ones a layout can deal, `
+    + `and ${drawn === reachable.length ? 'every one is drawn' : `${drawn} of them are drawn`}. `
+    + `The unreachable 30 split ${unreachable.W} won, ${unreachable.D} drawn, ${unreachable.L} lost — `
+    + 'those are the wins and losses you can see. The ringed cell is the layout Skirmish deals.';
   for (const button of host.querySelectorAll('.opening-cell')) {
     button.addEventListener('click', () => {
       const positions = [-1, -1, -1, -1, -1, -1];

@@ -223,14 +223,24 @@ body[data-screen="atlas"] { display: block; min-height: 100dvh; }
 
 .opening-grid { display: grid; grid-template-columns: auto repeat(6, minmax(0, 1fr)); gap: 2px; max-width: 460px; }
 .opening-grid .oh { font: 9.5px ui-monospace, monospace; color: var(--muted); display: grid; place-items: center; padding: 4px; }
+/* The unreachable thirty recede so the six a layout can actually deal carry the eye — the
+   grid's wins and losses all live in the fog, and that is the whole point of the picture. */
 .opening-cell {
-  aspect-ratio: 1; border: 1px solid var(--line); background: var(--surface); cursor: pointer;
-  font: 700 11px ui-monospace, monospace; display: grid; place-items: center; transition: all .12s; color: var(--muted);
+  aspect-ratio: 1; border: 1px solid var(--line); background: transparent; cursor: pointer;
+  font: 700 11px ui-monospace, monospace; display: grid; place-items: center;
+  transition: all .12s; opacity: .3;
 }
 .opening-cell.W { color: var(--win); } .opening-cell.D { color: var(--draw); } .opening-cell.L { color: var(--loss); }
-.opening-cell.legal { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); border-color: var(--hair); }
-.opening-cell:hover { border-color: var(--accent); }
-.opening-cell.shipped { box-shadow: inset 0 0 0 2px var(--accent); }
+.opening-cell.legal {
+  opacity: 1; background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.opening-cell:hover { opacity: 1; border-color: var(--accent); }
+.opening-cell.shipped::after {
+  content: ""; position: absolute; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); transform: translate(11px, -11px);
+}
+.opening-cell.shipped { position: relative; }
 
 /* ── 03 variants ────────────────────────────────────── */
 .variant-list { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
