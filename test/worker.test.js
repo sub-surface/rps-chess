@@ -132,8 +132,8 @@ describe('GameRoom Durable Object', () => {
     const room = 'checkers-jump';
     const board = E.emptyBoard(6);
     board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
-    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
-    board[0][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    board[3][2] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    board[0][5] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
     const cfg = {
       ...E.PRESETS.checkers,
       size: 6,
@@ -155,9 +155,42 @@ describe('GameRoom Durable Object', () => {
       paperMove: 'longking',
       scissorsMove: 'longking',
     });
+    expect(state.cfg.forcedCapture).toBe(true);
+    expect(state.cfg.rulesVersion).toBe('1.1');
     expect(state.board[3][2].piece).toBeNull();
     expect(state.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
-    expect(state.moves[0]).toMatchObject({ piece: 'rock', capture: 'paper' });
+    expect(state.moves[0]).toMatchObject({ piece: 'rock', capture: 'scissors' });
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
+  // The server owns legality, so a client that thinks it may leap a piece it does not beat has to
+  // be refused rather than trusted — this is the same predicate the board highlights from.
+  it('refuses a leap over a piece the mover does not beat', async () => {
+    const room = 'checkers-blocked';
+    const board = E.emptyBoard(6);
+    board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };   // paper beats rock
+    board[4][4] = { owner: E.BLUE, piece: { type: 'scissors', color: E.BLUE } };
+    const cfg = {
+      ...E.PRESETS.checkers,
+      size: 6,
+      perType: 1,
+      pos: E.encodePos(board),
+      own: E.encodeOwners(board),
+    };
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host', cfg });
+    const guest = await connect(stub, room, { name: 'Guest' });
+    const refusal = nextMessage(host.socket, (message) => message.type === 'error');
+
+    host.socket.send(JSON.stringify({ type: 'move', from: [4, 2], to: [2, 2] }));
+    expect((await refusal).msg).toMatch(/illegal/i);
+
+    const live = await runInDurableObject(stub, (instance) => instance.game);
+    expect(live.moves.length).toBe(0);
+    expect(live.board[3][2].piece).toMatchObject({ type: 'paper', color: E.RED });
 
     host.socket.close(1000, 'done');
     guest.socket.close(1000, 'done');

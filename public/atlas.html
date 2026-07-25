@@ -63,6 +63,12 @@
       <a href="#depth">depth</a>
       <a href="#symmetry">symmetry</a>
       <a href="#graph">graph</a>
+      <a href="#puzzles">puzzles</a>
+      <a href="#reach">reach</a>
+      <a href="#simplex">material</a>
+      <a href="#squares">squares</a>
+      <a href="#beyond">5×5 · 9×9</a>
+      <a href="#measured">measured</a>
       <a href="#method">method</a>
     </nav>
 
@@ -109,6 +115,9 @@
             <button type="button" class="mini" id="random-btn">random</button>
             <button type="button" class="mini" id="share-btn">share</button>
           </div>
+          <!-- The board tints every destination by how the game ends from it. That is the point of
+               the page and the one thing a puzzle cannot have on screen. -->
+          <button type="button" class="mini toggle on" id="spoiler-btn" aria-pressed="true">answers shown</button>
         </div>
 
         <details class="editor">
@@ -255,8 +264,132 @@
           <p class="note" id="graph-note"></p>
         </section>
 
+        <section class="atlas-section" id="puzzles" data-lens="puzzles">
+          <p class="eyebrow">08 — puzzles</p>
+          <h2>Find the only move</h2>
+          <p class="lede">
+            A solved game can set its own exercises. Every puzzle below is a position the table
+            says is won, with the number of plies perfect play still needs — so the answer is not
+            an opinion, and neither is your move. Play it on the board to the left.
+          </p>
+          <div class="puzzle" id="puzzle">
+            <div class="puzzle-head">
+              <span class="puzzle-tag" id="puzzle-tag">daily</span>
+              <b id="puzzle-ask">…</b>
+            </div>
+            <p class="puzzle-state" id="puzzle-state" aria-live="polite">Loading a position…</p>
+            <div class="btn-row">
+              <button type="button" class="mini" id="puzzle-daily">today's</button>
+              <button type="button" class="mini" id="puzzle-next">another</button>
+              <button type="button" class="mini" id="puzzle-give">show the move</button>
+            </div>
+            <div class="puzzle-streak" id="puzzle-streak"></div>
+          </div>
+          <p class="note">
+            Puzzles are drawn from the variant currently selected, so the seven rule sets set
+            seven different exercises from the same board.
+          </p>
+        </section>
+
+        <section class="atlas-section" id="reach" data-csv="reach" data-lens="reach">
+          <p class="eyebrow">09 — reachable play</p>
+          <h2>Most of this table is unreachable</h2>
+          <p class="lede">
+            The tablebase covers every position the six pieces can form. A game does not: it
+            starts from one of the <b id="reach-deals">…</b> legal deals and only ever moves
+            forward. Walking every legal continuation from every one of them gives the positions
+            play can actually enter — <b id="reach-headline">…</b> of the whole table.
+          </p>
+          <p class="lede" id="reach-verdicts">…</p>
+          <div class="reachbars" id="reachbars"></div>
+          <p class="note">
+            Reachability, like every verdict here, ignores the clock: a position counts as
+            reachable if some legal sequence arrives at it, not if a game that has not already
+            drawn arrives at it. That makes this an upper bound on what play visits.
+          </p>
+        </section>
+
+        <section class="atlas-section" id="simplex" data-csv="simplex" data-lens="simplex">
+          <p class="eyebrow">10 — the shape of material</p>
+          <h2>Which pieces beat which armies</h2>
+          <p class="lede">
+            Chess counts material; JANKEN cannot. Rock against rock is not an even game, it is
+            a dead one — neither side can ever capture, whatever either does. The grid pairs every
+            combination of surviving types Blue can hold against every one Red can hold, and
+            colours each cell by how Blue fares across all positions with that material and Blue
+            to move. Click any cell to drop one of its positions onto the board.
+          </p>
+          <div class="simplex" id="simplex-grid"></div>
+          <p class="note" id="simplex-note"></p>
+        </section>
+
+        <section class="atlas-section" id="squares" data-csv="squares" data-lens="squares">
+          <p class="eyebrow">11 — where the value is</p>
+          <h2>What a square is worth</h2>
+          <p class="lede">
+            Take every position in which a given piece stands on a given square, with that side to
+            move, and count how they come out. The result is a value map of the board — exact, not
+            an evaluation function's guess at one. On nine squares with three pieces it is the
+            whole of positional knowledge, printed.
+          </p>
+          <div class="heatgrid" id="heatgrid"></div>
+          <p class="note" id="heat-note"></p>
+        </section>
+
+        <section class="atlas-section" id="beyond" data-csv="ladder" data-lens="beyond">
+          <p class="eyebrow">12 — beyond the pocket board</p>
+          <h2>5×5, 9×9, and what solving them would cost</h2>
+          <p class="lede">
+            The 3×3 is not the game people play. 5×5 and 9×9 are, and neither will ever be solved
+            — but the size of what we are not solving is exact arithmetic, not a guess. Counting
+            distinguishable arrangements of each side's material gives every bar below: three
+            pieces a side on the 3×3, six on every board above it. Only the first bar is a table
+            that exists.
+          </p>
+          <div class="ladder" id="ladder"></div>
+          <div class="ladder-table" id="ladder-table"></div>
+          <p class="note" id="ladder-note"></p>
+        </section>
+
+        <section class="atlas-section" id="measured" data-csv="measured" data-lens="measured">
+          <p class="eyebrow">13 — measured play</p>
+          <h2>What we can know without solving</h2>
+          <p class="lede">
+            No oracle exists above 3×3, so these are measurements: seeded self-play under the
+            shipped rules, with a 95% interval on every rate. The honesty check is the top row.
+            The table knows that every 3×3 opening is drawn — and self-play, which is not perfect
+            play, draws far fewer. That gap is the size of the error you should expect from the
+            rows below it.
+          </p>
+          <div class="runs" id="runs"></div>
+          <div class="btn-row">
+            <button type="button" class="mini" id="lab-more">run 200 more here</button>
+            <span class="lab-status" id="lab-status"></span>
+          </div>
+          <p class="note" id="runs-note"></p>
+          <h3>How long a game lasts</h3>
+          <p class="lede" id="length-lede">
+            Ply counts, bucketed. A distribution with a fat tail means abandonment, not draws, is
+            the common way a game ends.
+          </p>
+          <div class="lengths" id="lengths"></div>
+        </section>
+
+        <section class="atlas-section" id="blocking" data-csv="blocking" data-lens="blocking">
+          <p class="eyebrow">14 — the blocking law</p>
+          <h2>Two thirds of every contact is a wall</h2>
+          <p class="lede">
+            This is the difference from chess, stated as arithmetic. A piece meeting an enemy can
+            take it only if it beats it, which is one type in three; the other two are pieces it
+            cannot touch and cannot pass. Mobility therefore falls as the board fills, and it
+            falls faster than crowding alone explains.
+          </p>
+          <div class="blocklaw" id="blocklaw"></div>
+          <p class="note" id="block-note"></p>
+        </section>
+
         <section class="atlas-section" id="method">
-          <p class="eyebrow">08 — method</p>
+          <p class="eyebrow">15 — method</p>
           <h2>How this was built, and what it does not claim</h2>
           <p class="lede">
             Six labelled pieces, each captured or on one of nine squares, give

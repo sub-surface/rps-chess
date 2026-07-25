@@ -88,18 +88,55 @@ describe('JANKEN Portable Game Notation', () => {
     const cfg = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
     const board = E.emptyBoard(6);
     board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
-    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
-    board[0][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    board[3][2] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    board[0][5] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };
     const game = E.newGame(cfg, board);
     E.applyMove(game, { fr: 4, fc: 2, tr: 2, tc: 2 });
 
     const text = exportJpgn(game);
     expect(text).toContain('capture=checkers');
+    expect(text).toContain('forcedCapture=1');
+    expect(text).toContain('[RulesetVersion "1.1"]');
     expect(text).toContain('Rc2xc4');
     const replayed = replayJpgn(text).game;
     expect(replayed.board[3][2].piece).toBeNull();
     expect(replayed.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
     expect(() => replayJpgn(text.replace('Rc2xc4', 'Rc2-c4'))).toThrow(/capture marker/i);
+  });
+
+  // The unrestricted leap is reachable from a record and nowhere else. A 1.1 reader must replay a
+  // pre-1.1 game under the rule it was played by, or its history stops being legal.
+  it('replays a pre-1.1 record under the unrestricted leap it was written with', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
+    const board = E.emptyBoard(6);
+    board[4][2] = { owner: E.BLUE, piece: { type: 'rock', color: E.BLUE } };
+    board[3][2] = { owner: E.RED, piece: { type: 'paper', color: E.RED } };  // paper beats rock
+    board[0][5] = { owner: E.RED, piece: { type: 'scissors', color: E.RED } };
+    const legacy = E.sanitizeCfg({ ...cfg, rulesVersion: '1.0' });
+    const game = E.newGame(legacy, board);
+    E.applyMove(game, { fr: 4, fc: 2, tr: 2, tc: 2 });
+    const text = exportJpgn(game);
+    expect(text).toContain('[RulesetVersion "1.0"]');
+    expect(replayJpgn(text).game.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
+
+    // Relabel the same record as 1.1 and the move it contains is no longer legal.
+    expect(() => replayJpgn(text.replace('[RulesetVersion "1.0"]', '[RulesetVersion "1.1"]')))
+      .toThrow(/capture marker|illegal move/i);
+  });
+
+  // An absent field means the rule that predated it, never the new one.
+  it('reads an absent forcedCapture and RulesetVersion as the historical rules', () => {
+    const text = exportJpgn(E.newGame(E.sanitizeCfg(E.PRESETS.standard)));
+    const stripped = text
+      .replace(';forcedCapture=0', '')
+      .replace('[RulesetVersion "1.1"]\n', '');
+    const parsed = parseJpgn(stripped);
+    expect(parsed.cfg.forcedCapture).toBe(false);
+    expect(parsed.cfg.rulesVersion).toBe('1.0');
+    // A record that does spell it out keeps the obligation.
+    const forced = exportJpgn(E.newGame(E.sanitizeCfg({ ...E.PRESETS.standard, forcedCapture: true })));
+    expect(parseJpgn(forced).cfg.forcedCapture).toBe(true);
+    expect(parseJpgn(forced).cfg.rulesVersion).toBe('1.1');
   });
 
   it('keeps every piece letter correct across all three actions in a turn', () => {

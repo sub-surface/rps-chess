@@ -43,18 +43,30 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
 - Online games include rate-limited, ephemeral player chat (spectators may read) and resignation.
   Spectators can use the move log, arrow keys, or board controls to review any earlier position
   without losing their place when another live move arrives.
-- **Eleven named variants**, each a real combination rather than a slider preset — Standard,
-  Skirmish (3×3, one of each, elimination), Triple step (3 actions/turn), Cavalry (all knights),
-  Painters (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
-  (13×13, four of each), King's field (rook/knight/bishop, elimination), Checkers (Long kings
-  with leap captures), and Melee (all kings, RPS captures, territory enclosure) — plus
+- **Twelve named variants**, each a real combination rather than a slider preset — Standard,
+  Skirmish (3×3, one of each, elimination), Azel's wall (5×5, three scissors screening rock, paper,
+  rock), Triple step (3 actions/turn), Cavalry (all knights), Painters (queens with ink trails),
+  Ambush (scattered start), Siege (corners, no re-tread), Expanse (13×13, four of each), King's
+  field (rook/knight/bishop, elimination), Checkers (Long kings leaping only what they beat, with
+  captures compulsory), and Melee (all kings, RPS captures, territory enclosure) — plus
   **Custom**. See `SPEC.md` §1.
 - **Skirmish is solved.** [`/atlas`](https://rps.subsurfaces.net/atlas) publishes an exact
   tablebase for the 3×3 board — all 415,550 positions, for each of the seven movement
   archetypes. Set up any position and it will tell you whether it is won, lost or drawn and in
   how many plies. Every one of the 192 openings the game can legally deal is a draw.
   Every chart there hands over its own numbers as CSV, and the whole thing — all seven solved
-  tables, the manifest, the aggregates and a format note — downloads as one data pack.
+  tables, the manifest, `lab.json`, the aggregates and a format note — downloads as one data pack.
+- **And what the tablebase cannot reach.** The atlas also measures the boards nobody will ever
+  solve. Counting is exact: a 5×5 holds 10^14 positions and a 9×9 10^21, which is 179 TB and 1.3 ZB
+  of table respectively, so the answer to "solve the 9×9" is arithmetic rather than ambition. Play
+  is measured: seeded self-play with a 95% interval on every rate, calibrated against the one board
+  where the truth is known. You can run more games in your own browser and watch the intervals
+  narrow. There are **daily puzzles** drawn from the table — a won position, the exact number of
+  plies it needs, and marking that cannot be wrong because the answer is the table's — plus an
+  exact value map of every square, a material grid showing which armies simply cannot capture each
+  other, and a count of how much of the solved table real play can actually reach: 99.5% under
+  kings, 4.5% under bishops. Today's puzzle also sits on the home page, and the atlas has an
+  **answers toggle** so you can study any position without the board telling you how it ends.
 - The same tables reach the rest of the site: the **analysis board** states an exact verdict, best
   moves and distance to mate for any 3×3 position it covers, and **Bot strength → Perfect** plays
   one of them.
@@ -62,8 +74,8 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
   `queen`, `cross`, or `long king`) per RPS piece, one-click movement sets (all kings, all Long
   kings, rook/knight/bishop, or all queens), RPS/chess/checkers capture, elimination, ink trails,
-  enclosure captures, threefold repetition, rows/corners/scattered layouts, and custom starting
-  positions.
+  enclosure captures, compulsory captures, threefold repetition, rows/corners/scattered/Azel
+  layouts, and custom starting positions.
 - **Contextual rules everywhere**: a `rules` tab on the board's left edge slides out the whole
   game explained from scratch *for the variant you are playing* — and the same text backs the
   how-to-play dialog. It is generated from the rules engine, so it can never go stale.

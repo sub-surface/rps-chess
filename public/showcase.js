@@ -1,5 +1,10 @@
-// Homepage "variant theatre": replays the newest completed online game, then
-// alternates through deterministic bot variations. Loaded lazily from game.js.
+// Homepage "variant theatre": replays real games of the variant currently on show, and falls
+// back to a deterministic bot game under those exact rules when the feed has none. Loaded lazily
+// from game.js, which is also the only thing that tells it which variant is on show.
+//
+// The recent-game feed is fetched once per visit and never on a restart: switching variants is a
+// filter over what is already in hand plus a locally simulated game, so dragging a slider costs
+// no network at all.
 import * as E from './engine.js';
 
 const $ = (id) => document.getElementById(id);
@@ -11,6 +16,18 @@ const seeded = (initial) => {
     seed = (1664525 * seed + 1013904223) >>> 0;
     return seed / 0x100000000;
   };
+};
+
+// Two configs describe the same variant when every rules field agrees. Comparing the sanitized
+// objects rather than a preset name keeps a Custom ruleset matchable too, which is the case that
+// actually needs it: a dragged slider is Custom by definition.
+const RULES_FIELDS = [
+  'size', 'perType', 'rockMove', 'paperMove', 'scissorsMove', 'capture', 'forcedCapture',
+  'territory', 'retread', 'trail', 'enclosure', 'threefold', 'layout', 'actionsPerTurn', 'first',
+];
+const rulesKey = (cfg) => {
+  const safe = E.sanitizeCfg(cfg);
+  return RULES_FIELDS.map((field) => String(safe[field])).join('|');
 };
 
 function botGame(rawCfg, seed, title) {
@@ -133,16 +150,59 @@ function fallbackGames() {
   ];
 }
 
+// A stable seed per ruleset, so hovering away from a variant and back shows the same game
+// rather than a fresh one every pass.
+const seedFor = (key) => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+  return hash >>> 0;
+};
+
+// What to play for a given ruleset: real games of it first, then one bot game under exactly
+// those rules. `null` means no variant has been named yet, which is the mixed opening programme.
+function programmeFor(cfg, recent) {
+  if (!cfg) {
+    const bots = fallbackGames();
+    const feed = recent.slice(0, 2);
+    if (!feed.length) return bots;
+    return feed.length > 1 ? [feed[0], bots[0], feed[1], bots[1], bots[2]] : [feed[0], ...bots];
+  }
+  const key = rulesKey(cfg);
+  const matching = recent.filter((game) => rulesKey(game.cfg) === key).slice(0, 3);
+  const label = E.presetLabel(E.presetOf(cfg));
+  const filler = botGame(cfg, seedFor(key), `${label} · ${E.variantLabel(cfg)}`);
+  return [...matching, filler];
+}
+
 // Replaying a record is the expensive part, so each one is simulated once and its
 // frames cached on the record — the replayability filter and playback share the result.
 const framesFor = (record) => (record.frames || (record.frames = snapshots(record)));
+
+// The variant on show, and the one hook the page has into this module. `showcaseVariant()` may
+// be called before the theatre exists — the request is simply remembered and honoured on start,
+// which is what makes a hover during first paint behave the same as one a second later.
+let wanted = null;
+let restart = null;
+let restartTimer = null;
+export function showcaseVariant(cfg) {
+  const next = cfg ? E.sanitizeCfg(cfg) : null;
+  if (rulesKey(wanted || {}) === rulesKey(next || {}) && !!wanted === !!next) return;
+  wanted = next;
+  if (!restart) return;
+  // One debounce, shared by every caller: a dragged slider fires this on every tick and must
+  // still start exactly one game.
+  const root = $('showcase');
+  if (root) root.dataset.restarting = '1';
+  clearTimeout(restartTimer);
+  restartTimer = setTimeout(restart, 260);
+}
 
 export async function initShowcase() {
   const root = $('showcase');
   if (!root || root.dataset.ready) return;
   root.dataset.ready = '1';
-  const bots = fallbackGames();
-  let records = bots;
+  let recent = [];
+  let records = programmeFor(wanted, recent);
   let recordIndex = 0;
   let frames = framesFor(records[0]);
   let frameIndex = 0;
@@ -168,13 +228,22 @@ export async function initShowcase() {
     clearTimeout(timer);
     if (active()) timer = setTimeout(advance, delay);
   };
-  const selectRecord = (index) => {
+  const selectRecord = (index, guard = 0) => {
     recordIndex = (index + records.length) % records.length;
     frames = framesFor(records[recordIndex]);
     frameIndex = 0;
-    if (!frames.length) return selectRecord(recordIndex + 1);
+    // A programme of unreplayable records would otherwise recurse for ever.
+    if (!frames.length && guard < records.length) return selectRecord(recordIndex + 1, guard + 1);
     updateCaption();
-    renderSnapshot(frames[0]);
+    if (frames.length) renderSnapshot(frames[0]);
+  };
+  // Every ruleset change restarts the theatre rather than mutating a game in flight: a board
+  // that changed size mid-replay would be showing a position that never existed.
+  restart = () => {
+    records = programmeFor(wanted, recent);
+    root.dataset.restarting = '';
+    selectRecord(0);
+    schedule(500);
   };
   const advance = () => {
     if (!active()) return;
@@ -213,15 +282,11 @@ export async function initShowcase() {
     clearTimeout(timeout);
     if (!response.ok) return;
     const body = await response.json();
-    const recent = Array.isArray(body.games)
-      ? body.games.filter((game) => framesFor(game).length > 1).slice(0, 2)
+    recent = Array.isArray(body.games)
+      ? body.games.filter((game) => framesFor(game).length > 1)
       : [];
     if (!recent.length) return;
     recent.forEach((game) => { game.source = 'recent'; });
-    records = recent.length > 1
-      ? [recent[0], bots[0], recent[1], bots[1], bots[2]]
-      : [recent[0], ...bots];
-    selectRecord(0);
-    schedule(600);
+    restart();
   } catch { /* Offline and first-run states simply keep the bot theatre. */ }
 }

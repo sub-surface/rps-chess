@@ -37,6 +37,7 @@ const rulesText = (cfg) => {
     `paperMove=${safe.paperMove}`,
     `scissorsMove=${safe.scissorsMove}`,
     `capture=${safe.capture}`,
+    `forcedCapture=${safe.forcedCapture ? 1 : 0}`,
     `territory=${safe.territory ? 1 : 0}`,
     `retread=${safe.retread ? 1 : 0}`,
     `trail=${safe.trail ? 1 : 0}`,
@@ -48,7 +49,8 @@ const rulesText = (cfg) => {
   ].join(';');
 };
 
-const parseRules = (value) => {
+const BOOL_RULES = ['territory', 'retread', 'trail', 'enclosure', 'threefold', 'forcedCapture'];
+const parseRules = (value, rulesetVersion) => {
   const raw = {};
   for (const field of String(value || '').split(';')) {
     const at = field.indexOf('=');
@@ -56,12 +58,15 @@ const parseRules = (value) => {
     const key = field.slice(0, at);
     const item = field.slice(at + 1);
     if (['size', 'perType', 'actionsPerTurn'].includes(key)) raw[key] = Number(item);
-    else if (['territory', 'retread', 'trail', 'enclosure', 'threefold'].includes(key)) raw[key] = item === '1';
+    else if (BOOL_RULES.includes(key)) raw[key] = item === '1';
     else raw[key] = item;
   }
-  // Records written before the field existed must retain their historical rules;
-  // new records always spell it out.
+  // Records written before a field existed must retain their historical rules; new records
+  // always spell it out. An absent obligation is off, and an absent ruleset version means the
+  // record was written under the unrestricted leap, so it has to replay under that.
   if (!('threefold' in raw)) raw.threefold = false;
+  if (!('forcedCapture' in raw)) raw.forcedCapture = false;
+  raw.rulesVersion = rulesetVersion === E.RULES_VERSION ? E.RULES_VERSION : '1.0';
   return E.sanitizeCfg(raw);
 };
 
@@ -172,7 +177,7 @@ export function exportJpgn(game, context = {}) {
     ['Result', result],
     ['Variant', E.variantLabel(cfg)],
     ['Ruleset', ruleset],
-    ['RulesetVersion', '1.0'],
+    ['RulesetVersion', cfg.rulesVersion],
     ['Board', `${cfg.size}x${cfg.size}`],
     ['StartLayout', cfg.layout],
     ['Rules', rulesText(cfg)],
@@ -228,7 +233,7 @@ export function parseJpgn(text) {
   if (!RESULT_TOKENS.has(tags.Result)) throw new Error('Invalid JPGN Result tag');
   if (tags.Replayable !== '1') throw new Error('JPGN record is marked non-replayable');
 
-  const cfg = parseRules(tags.Rules);
+  const cfg = parseRules(tags.Rules, tags.RulesetVersion);
   if (tags.Board !== `${cfg.size}x${cfg.size}`) throw new Error('JPGN Board tag does not match Rules');
   const positionMatch = String(tags.Position || '').match(/^(\d+):([RPSrps.]+)$/);
   if (!positionMatch || Number(positionMatch[1]) !== cfg.size) throw new Error('Invalid JPGN position');

@@ -96,6 +96,79 @@ describe('solved variants', () => {
     expect(manifest.variants[0].lineups[blue][red]).toBe(0);
   });
 
+  // Forward reachability from the 192 deals. This is the denominator behind every claim the atlas
+  // makes about play rather than about the board, so it has to be internally consistent with the
+  // layer counts it is derived from and bounded by them.
+  it('records what play can actually reach, consistent with the whole table', () => {
+    for (const variant of manifest.variants) {
+      const reach = variant.reachable;
+      expect(reach, `${variant.id} has no reachability — rerun npm run tablebase`).toBeTruthy();
+      expect(reach.states).toBeGreaterThan(0);
+      expect(reach.states).toBeLessThanOrEqual(T.STATES);
+      expect(reach.placements).toBeLessThanOrEqual(T.PLACEMENTS);
+      // Every deal is itself reachable, and each is a distinct placement with Blue to move.
+      expect(reach.states).toBeGreaterThanOrEqual(variant.fairStarts.count);
+      const wdl = reach.wdl.W + reach.wdl.D + reach.wdl.L;
+      expect(wdl).toBe(reach.states);
+      let states = 0, reached = 0;
+      for (const layer of reach.layers) {
+        expect(layer.reached).toBeLessThanOrEqual(layer.states);
+        expect(layer.W + layer.D + layer.L).toBe(layer.reached);
+        states += layer.states;
+        reached += layer.reached;
+      }
+      expect(states).toBe(T.STATES);
+      expect(reached).toBe(reach.states);
+      // The full-material layer holds every deal, so it can never be unreachable.
+      expect(reach.layers[6].reached).toBeGreaterThanOrEqual(variant.fairStarts.count);
+    }
+    // The finding the page leads with: movement geometry, not board size, decides how much of the
+    // table a game can enter. A colour-bound bishop reaches a small fraction of what a king does.
+    const share = (id) => manifest.variants.find((v) => v.id === id).reachable.states / T.STATES;
+    expect(share('king')).toBeGreaterThan(0.9);
+    expect(share('bishop')).toBeLessThan(0.2);
+    expect(share('knight')).toBeLessThan(share('king'));
+  });
+
+  // Puzzles come out of the same table the page reads, so a puzzle cannot be marked wrong. What
+  // can go wrong is posing two different ones from the same seed, or posing something that is not
+  // a puzzle at all — everything wins, or there is nothing to choose between.
+  it('poses the same daily puzzle from a seed, and only real ones', () => {
+    const variant = manifest.variants.find((v) => v.id === 'king');
+    const cfg = E.sanitizeCfg(variant.cfg);
+    // A synthetic table rather than the shipped artifact, which is gzipped and 400 KB. Values are
+    // hashed so that a won position has *some* moves that keep the win and some that throw it
+    // away — an all-winning table would offer no decision and the picker would rightly refuse it.
+    const table = new Uint8Array(T.STATES);
+    for (let s = 0; s < T.STATES; s++) {
+      const hash = Math.imul(s ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
+      table[s] = T.packEntry(hash % 4 === 0 ? T.LOSS : T.WIN, 3 + (hash % 9));
+    }
+    const first = T.dailyPuzzle(table, cfg, 'king', '2026-07-25');
+    const same = T.dailyPuzzle(table, cfg, 'king', '2026-07-25');
+    expect(first).toBeTruthy();
+    expect(same.placement).toBe(first.placement);
+    expect(same.turn).toBe(first.turn);
+    // A different day, or a different rule set, is a different exercise.
+    expect(T.dailyPuzzle(table, cfg, 'king', '2026-07-26').placement).not.toBe(first.placement);
+    expect(T.dailyPuzzle(table, cfg, 'rook', '2026-07-25').placement).not.toBe(first.placement);
+
+    expect(first.dtm).toBeGreaterThanOrEqual(3);
+    expect(first.dtm).toBeLessThanOrEqual(11);
+    expect(first.legal).toBeGreaterThanOrEqual(3);
+    expect(first.best.length).toBeGreaterThan(0);
+    expect(first.best.length).toBeLessThanOrEqual(2);
+    // The whole point: some legal move is not an answer, or there is no decision to make.
+    expect(first.best.length).toBeLessThan(first.legal);
+    // The position really is the one the seed names, and it is the mover's turn to find it.
+    expect(T.positionsOf(first.board)).toBeTruthy();
+    expect([E.BLUE, E.RED]).toContain(first.turn);
+    // A table with nothing won offers nothing rather than inventing a puzzle.
+    const drawn = new Uint8Array(T.STATES).fill(T.packEntry(T.DRAW, 0));
+    expect(T.findPuzzle(drawn, cfg, T.rngFrom(1), { tries: 200 })).toBeNull();
+    expect(T.findPuzzle(null, cfg, T.rngFrom(1))).toBeNull();
+  });
+
   it('still matches the engine in the small material layers', () => {
     // Rebuilding the whole graph is a generator's job, but the layers with at most three
     // pieces are quick — enough to catch artifacts that outlived a rules change.

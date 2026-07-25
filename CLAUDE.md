@@ -18,6 +18,7 @@ npm test               # vitest only (boots workerd; first run is slow)
 npm run test:smoke     # Chromium through a local wrangler dev server
 npm run deploy:dry     # verify + wrangler bundle, no upload, no DB writes
 npm run tablebase      # re-solve the 3x3 board into public/tablebase/ (~2 min, all 7 variants)
+npm run lab            # re-measure public/atlas/lab.json (~30 s, deterministic)
 npm run d1:migrate:local   # apply migrations to the local D1
 npm run d1:migrate     # applies to PRODUCTION D1 (--remote)
 npm run deploy         # verify → assert-clean → version stamp → d1:migrate → upload
@@ -32,15 +33,17 @@ npm run tail           # live production logs
 | Path | Responsibility |
 | --- | --- |
 | `public/engine.js` | Pure rules. **Single source of truth**, imported by browser *and* Worker. |
-| `public/tablebase.js` | 3×3 addressing, symmetry, decoding **and the runtime oracle** (`oracleFor`, `probe`, `movesFrom`, `rankMoves`, `topMoves`). Shared with the generator, the atlas, the analysis panel, and the perfect bot. |
+| `public/tablebase.js` | 3×3 addressing, symmetry, decoding, **the runtime oracle** (`oracleFor`, `probe`, `movesFrom`, `rankMoves`, `topMoves`) **and the puzzle picker** (`findPuzzle`, `dailyPuzzle`). Shared with the generator, the atlas, the analysis panel, the home page and the perfect bot. |
 | `public/tablebase/` | Generated: one solved `.tb` per movement archetype, plus `manifest.json`. |
 | `public/datapack.js` | Lazy store-only zip writer + `FORMAT.md` text for the atlas data pack. |
+| `public/lab.js` | Exact state-space counting (BigInt) and seeded self-play. Shared by `scripts/lab.mjs` and the atlas, so a published figure and a live one are one implementation. |
+| `public/atlas/lab.json` | Generated: the size ladder and the committed self-play run. |
 | `public/facts.js` | Did-you-know corpus, no-immediate-repeat picker, typewriter mount. |
 | `public/assets/` | `rps-sprites.png` — the 128×64 sheet behind the `sprite` piece family. |
 | `public/atlas.html`, `atlas.css`, `atlas.js` | `/atlas` — the tablebase page. Board is the hero; every chart loads it. |
 | `public/notation.js` | JPGN writer, parser, and strict legality-checked replayer. |
 | `public/gif.js` | Dependency-free indexed GIF encoder + deterministic board renderer. |
-| `public/showcase.js` | Lazy replay theatre (recent games, bot variations). |
+| `public/showcase.js` | Lazy replay theatre beside the play card. Follows the variant stage; recent games of that ruleset, bot game under those exact rules as fallback. |
 | `public/pieces.js` | Seven piece families; `glyph(type, color, style)`. Six are colour-aware SVG; `sprite` crops a raster sheet. |
 | `public/game.js` | Everything client: play, bot, board/editor render, lobby, online socket, exports. |
 | `public/index.html`, `style.css` | Markup and styling. No inline scripts (CSP). |
@@ -49,7 +52,8 @@ npm run tail           # live production logs
 | `src/worker.js` | Worker routes + `GameRoom` and `Lobby` Durable Objects. |
 | `src/elo.js` | `eloDelta`, `START_RATING`. K=32, draws 0.5. |
 | `migrations/` | D1 schema, applied by `deploy` before upload. |
-| `scripts/tablebase.mjs` | Solves the 3×3 board with `engine.js` and writes `public/tablebase/`. |
+| `scripts/tablebase.mjs` | Solves the 3×3 board with `engine.js` and writes `public/tablebase/`, including forward reachability from the 192 deals. |
+| `scripts/lab.mjs` | Writes `public/atlas/lab.json` from `lab.js`. Deterministic, no timestamps. |
 | `scripts/version.mjs` | Stamps `public/version.json` (git SHA shown in the footer). |
 | `scripts/assert-clean.mjs` | Refuses to deploy an uncommitted application tree. |
 | `test/` | engine, notation, gif, pieces, elo, worker/DO suites. |
@@ -94,7 +98,10 @@ refactor.
     silently inherits the game's rules.
 11. **A solved tablebase describes the shipped rules.** Changing a preset or a movement archetype
     invalidates `public/tablebase/`. Rerun `npm run tablebase` in the same commit — the suite
-    recounts the small material layers against `engine.js` and fails on stale artifacts.
+    recounts the small material layers against `engine.js` and fails on stale artifacts. The same
+    applies to `public/atlas/lab.json`: a rules change moves the measurements, so rerun `npm run
+    lab` too. Both generators are deterministic, so a run that changes the file without a rules
+    change is a drift worth investigating rather than noise to commit.
 12. **Comments explain why.** The codebase's comments carry reasoning that isn't recoverable from
     the code (why elimination ends on `capturesPossible()` and not "nothing en prise"; why the
     lobby fingerprints its metadata). Match that register — skip the ones that restate the line.
@@ -108,7 +115,14 @@ refactor.
 15. **A glyph clips itself.** `.sq svg.pc` sets `overflow: visible` for the families that draw
     outside their box, so the raster `sprite` family crops with a *nested* `<svg>` viewport rather
     than relying on the outer one. Anything addressing a sheet by cell must clip structurally.
-16. **`gif.js` stays DOM-free.** Theme is a palette index choice and piece artwork arrives as the
+16. **The atlas never types a number into its markup.** Every figure on the page is read at render
+    time from `manifest.json`, a `.tb` file or `lab.json`, and every section exports the rows it
+    drew. Exact claims (counting, reachability, tablebase verdicts) and measured ones (self-play,
+    with a 95% interval) are labelled differently and must stay that way — see `SPEC.md` §9b.
+17. **`perType` does not always describe the board.** `layout=azel` deals a fixed 2/1/3, so prose,
+    previews, JPGN and any future layout ask `startingMaterial(cfg)` rather than assuming three
+    equal piles. `sanitizeCfg()` reads `layout` before `size` because that layout has a minimum board.
+18. **`gif.js` stays DOM-free.** Theme is a palette index choice and piece artwork arrives as the
     optional `drawPiece` hook — never an import of `pieces.js`, never a canvas. The hook is never
     the asserted path: determinism is tested against the geometric renderer.
 
@@ -134,6 +148,9 @@ test, by design.
    pre-existing rule, not the new one.
 6. `docs/JPGN.md` §4 field table; `SPEC.md` §2.
 7. Tests: a sanitize case and a JPGN round-trip.
+
+A field that changes what a *layout* deals also touches `startingMaterial()` (invariant 17), and
+one that changes legality invalidates `public/tablebase/` and `public/atlas/lab.json` (invariant 11).
 
 ### Add a protocol message
 
@@ -187,10 +204,10 @@ migration.
 ## Where things stand
 
 Sections 1–6 of `SPEC.md` describe shipped behaviour, except where a **[Phase N]** marker points
-into the delivery plan in §8. Two of those markers are debts rather than features: `forcedCapture`
-and the RPS restriction on checkers leaps are specified but not yet implemented (Phase 0). Phase 0b
-is presentation — theme-aware GIF export and the theatre moving beside the play card — and lands
-early because Phases 1, 3, and 4 all build on those surfaces.
+into the delivery plan in §8. The Phase 0 rules debt is paid: `forcedCapture`, the RPS-restricted
+checkers leap and `rulesVersion` stamping all ship, so §1 and §2 are now true of the engine. What
+remains is the larger work — `topology.js` and the two validators (D6), then gold generals, hex
+boards and alternating setup (D7), all of which ship unrated.
 
 Gold generals, hex boards, and alternating setup ship **unrated** — `isRatedEligible(cfg)` is the
 single place that policy lives, and §8.9 lists what must be measured before it widens.

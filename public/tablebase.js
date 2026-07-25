@@ -258,3 +258,57 @@ export const topMoves = (ranked) => {
   return ranked.filter((move) => moverValue(move) === value
     && (value === 0 || move.after.dtm === best.after.dtm));
 };
+
+// ── puzzles ──────────────────────────────────────────────────────────────────
+// A solved game sets its own exercises and marks them, so a puzzle here is not an engine's
+// opinion about a position — it is the table's verdict, and the accepted answers are exactly
+// `topMoves`. Lives beside the oracle because the atlas and the home page must pose the same
+// puzzle from the same seed, and two copies of this would eventually pose two different ones.
+const FNV = 0x01000193;
+export const seedFrom = (text) => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < String(text).length; i++) hash = Math.imul(hash ^ String(text).charCodeAt(i), FNV) >>> 0;
+  return hash || 1;
+};
+// xorshift32, so the same seed poses the same puzzle in every browser and in the tests.
+export const rngFrom = (seed) => {
+  let state = seed >>> 0 || 1;
+  return () => {
+    state ^= state << 13; state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5; state >>>= 0;
+    return state / 0x100000000;
+  };
+};
+// The UTC day, so everyone gets the same daily puzzle regardless of where they are.
+export const puzzleDay = (now = new Date()) => now.toISOString().slice(0, 10);
+
+// A won position with a real decision in it. The bounds are the whole design: too shallow and
+// there is nothing to see, too deep and it is a lecture; a position where everything wins is not
+// a puzzle, and one with a single legal move is not a choice.
+export function findPuzzle(table, cfg, random, options = {}) {
+  const { minDtm = 3, maxDtm = 11, maxBest = 2, minMoves = 3, tries = 6000 } = options;
+  const { keys } = placements();
+  if (!table) return null;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const placement = (random() * PLACEMENTS) | 0;
+    const red = random() < 0.5;
+    const entry = table[placement * 2 + (red ? 1 : 0)];
+    if (valueOf(entry) !== 1) continue;
+    const dtm = dtmOf(entry);
+    if (dtm < minDtm || dtm > maxDtm) continue;
+    const board = boardOf(positionsFromKey(keys[placement]));
+    const turn = red ? RED : BLUE;
+    const options_ = rankMoves(movesFrom(table, board, turn, cfg));
+    if (options_.length < minMoves) continue;
+    const best = topMoves(options_);
+    if (best.length > maxBest || best.length === options_.length) continue;
+    return { placement, board, turn, dtm, best, legal: options_.length };
+  }
+  return null;
+}
+
+// The one puzzle everybody sees today, for these rules. Same day plus same variant gives the same
+// position on the home page and on the atlas, which is what makes the deep link between them work.
+export const dailyPuzzle = (table, cfg, variantId, day = puzzleDay()) =>
+  findPuzzle(table, cfg, rngFrom(seedFrom(`${day}${variantId}`)));

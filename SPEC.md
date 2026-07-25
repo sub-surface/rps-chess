@@ -47,18 +47,20 @@ expands to the three explicit fields at the trust boundary.
 - [x] **rps** (default): a piece captures only what it beats, rock > scissors > paper > rock. A
   non-capturable enemy blocks movement.
 - [x] **chess**: any enemy may be captured.
-- [~] **checkers**: ordinary moves cannot capture. An exact two-square orthogonal leap over an
+- [x] **checkers**: ordinary moves cannot capture. An exact two-square orthogonal leap over an
   adjacent enemy onto an empty square removes the jumped piece. Sanitization forces all three
   movement fields to `longking` so the rule is always usable. No chaining.
-  - [ ] The leap must require that the mover **beats** the jumped piece in the RPS cycle: Paper
+  - [x] The leap requires that the mover **beats** the jumped piece in the RPS cycle: Paper
     leaps Rock, Rock leaps Scissors, Scissors leaps Paper. A non-beaten enemy blocks the leap
-    exactly as it blocks a landing capture. **Debt, see §7 B0.**
-- [ ] `forcedCapture` (default `false`, independent of the capture mechanism). When on, the engine
+    exactly as it blocks a landing capture. Games stamped `rulesVersion=1.0` keep the original
+    unrestricted leap; nothing else can reach it.
+- [x] `forcedCapture` (default `false`, independent of the capture mechanism). When on, the engine
   checks the side to act before **each action**: if any legal capture exists anywhere in that
   army, every non-capturing move is illegal. Recomputed after each action of a multi-action turn.
   Applies to RPS landing captures, chess captures and RPS-legal checkers leaps; a leap over a
   non-beaten enemy never creates an obligation. It does not require the longest capture, grant a
-  bonus action, or chain. **Debt, see §7 B0.**
+  bonus action, or chain. `sideHasCapture()` is the one predicate; `legalDest()` filters on it, so
+  the client's highlights, the bot's search and the server's validation cannot disagree.
 
 ### Goal — `territory`
 
@@ -84,6 +86,13 @@ All layouts have 180° rotational symmetry.
 - [x] **corners**: blocks anchored to opposite corners.
 - [x] **scattered**: random cells in each player's near half, fair because the generated board is
   itself the shared state.
+- [x] **azel**: a named formation rather than a generated one — three scissors screening rock,
+  paper, rock on the two files nearest each player, vertically centred. Alone among the layouts its
+  material is **not** uniform: two rocks, one paper and three scissors a side, fixed, whatever
+  `perType` says. `startingMaterial(cfg)` is the single place that asymmetry is expressed, and
+  `rulesSummary()`, the preview and JPGN all read it rather than assuming `perType` describes the
+  board. Needs 4×4 or larger to keep the two walls disjoint, so `sanitizeCfg()` reads `layout`
+  before `size` and clamps the board up rather than dealing an impossible position.
 
 ### Turns — `actionsPerTurn`
 
@@ -103,6 +112,7 @@ order. Every preset spells out **every** compared field so `presetOf()` recognis
 | --- | --- | --- |
 | [x] | **Standard** | 9×9, all kings, RPS, elimination, one action |
 | [x] | **Skirmish** | 3×3, one per type, elimination |
+| [x] | **Azel's wall** | 5×5, azel layout, all kings, RPS, elimination |
 | [x] | **Triple step** | three actions, territory with re-tread |
 | [x] | **Cavalry** | all knights, territory with re-tread |
 | [x] | **Painters** | all queens, territory with ink trails, no re-tread |
@@ -110,7 +120,7 @@ order. Every preset spells out **every** compared field so `presetOf()` recognis
 | [x] | **Siege** | corner stand-off, territory without re-tread |
 | [x] | **Expanse** | 13×13, four per type, territory with re-tread |
 | [x] | **King's field** | Rock rook / Paper knight / Scissors bishop, elimination |
-| [~] | **Checkers** | 8×8, all long kings, leap captures, elimination. Needs `forcedCapture=true` |
+| [x] | **Checkers** | 8×8, all long kings, RPS-restricted leap captures, forced captures, elimination |
 | [x] | **Melee** | all kings, RPS, territory with re-tread and enclosure, first past half wins |
 | [ ] | **Hex field** | radius 6 hex, otherwise Standard (§8.2) |
 | [ ] | **Setup chess** | 9×9 alternating placement, King's-field movement (§8.3) |
@@ -125,9 +135,10 @@ topology square|hex (default square)                    [§8.2]
 size 3..13 (square) · radius 4..8 (hex)                 [§8.2]
 perType 1..4 (clamped to board/layout capacity)
 rockMove|paperMove|scissorsMove <archetype>
-capture rps|chess|checkers · forcedCapture bool         [B0]
+capture rps|chess|checkers · forcedCapture bool
+rulesVersion 1.0|1.1 (migration and replay only, never a setting)
 territory bool · retread bool · trail bool · enclosure bool
-layout rows|corners|scattered
+layout rows|corners|scattered|azel
 setup fixed|alternating (default fixed)                 [§8.3]
 threefold bool (default true) · actionsPerTurn 1..3 · first B|R
 ```
@@ -140,12 +151,15 @@ threefold bool (default true) · actionsPerTurn 1..3 · first B|R
 - [x] Movement macros (all kings, all long kings, rook/knight/bishop, all queens) fill only the
   three canonical fields and add no config field. Choosing checkers capture applies the long-king
   macro; moving away from that set returns capture to RPS.
-- [ ] An absent `forcedCapture` stays `false` everywhere, including persisted rooms and JPGN
-  written before the field existed, so historical Checkers games keep their legality. **[B0]**
-- [ ] `rulesVersion` stamping. New games carry the current version. A persisted in-progress game
+- [x] An absent `forcedCapture` stays `false` everywhere, including persisted rooms and JPGN
+  written before the field existed, so historical Checkers games keep their legality.
+- [x] `rulesVersion` stamping. New games carry the current version. A persisted in-progress game
   without the stamp finishes under legacy 1.0 (unrestricted leap); its rematch starts under the
-  current rule. The legacy path exists only in migration and replay code and is never a setting.
-  **[B0]**
+  current rule. The legacy path exists only in `GameRoom`'s hydration and in `parseRules()`, and is
+  never a setting. `presetOf()` deliberately does not compare it: it says which edition a game
+  finishes under, not what variant it is, so a legacy record keeps its preset name.
+- [x] `layout=azel` forces `perType` to 2 — six pieces, stated as 3 × 2 — so the field stays
+  comparable across records even though the deal is 2/1/3.
 
 ### Client-only preferences
 
@@ -180,6 +194,7 @@ Not rules. Never compared by `presetOf()`, never sent as authoritative state.
 | [x] | `tablebase.js` | 3×3 addressing, symmetry, decoding; shared with the generator |
 | [x] | `game.js` | preview, local play, bot, board and editor render, lobby, exports, online client |
 | [x] | `atlas.js` | `/atlas`, the tablebase page |
+| [x] | `lab.js` | exact state-space counting and seeded self-play, shared by `scripts/lab.mjs` and the atlas |
 | [ ] | `topology.js` | square and hex lattice adapters, the only code that knows what a cell is **[D6]** |
 
 - [x] Home leads with the play card (name, current variant, the four ways into a game) so the first
@@ -207,7 +222,15 @@ Not rules. Never compared by `presetOf()`, never sent as authoritative state.
 - [x] The lobby polls immediately then every 12s, pauses while hidden, prevents overlap, times out
   stalled requests and backs off exponentially. Sockets reconnect with jittered backoff; network
   loss, reconnecting, replaced-tab and expired-room states are explicit.
-- [ ] The theatre sits **beside the play card**, stacking beneath it on narrow screens. **[C10]**
+- [x] Today's puzzle sits under the theatre on Home, hidden until the tablebase answers — a puzzle
+  nobody can mark is worse than none — and links to `/atlas#puzzle=daily`. It loads later than the
+  theatre because it pulls a table down and nothing on the page waits for it.
+- [x] The theatre sits **beside the play card**, stacking beneath it on narrow screens. It opens on
+  the newest completed game of the variant on show and falls back to a bot game generated under
+  exactly those rules. Every ruleset change **restarts** it rather than mutating a game in flight,
+  debounced once inside `showcase.js` so a dragged slider starts one game. `/api/showcase` is
+  fetched at most once per visit and never on a restart: switching variants is a filter over what
+  is already in hand plus a local simulation.
 
 ## 4. Worker and Durable Objects
 
@@ -314,7 +337,8 @@ server→  { type:"state", state } · { type:"chat", role, name, text, ts }
   inconsistent captures, turns or results. Format: [`docs/JPGN.md`](./docs/JPGN.md).
 - [x] Optional `Coords "grid"` tag. Display metadata only: move text stays chess-style so two
   records of the same game are byte-identical whatever the author's preference. **[A1]**
-- [ ] `forcedCapture` in `Rules` (absent ⇒ false) and `RulesetVersion "1.1"`. **[B0]**
+- [x] `forcedCapture` in `Rules` (absent ⇒ false) and `RulesetVersion` carrying the rules edition
+  (absent ⇒ 1.0, so a record written under the unrestricted leap still replays).
 - [ ] **JPGN 2.0** for hex and setup, selected from the game itself: a fixed-start square game
   stays 1.1 byte-for-byte. A 2.0 reader accepts every 1.0 and 1.1 square record. **[§8.2, §8.3]**
 
@@ -366,6 +390,44 @@ server→  { type:"state", state } · { type:"chat", role, name, text, ts }
   legally deal, are drawn under all seven archetypes, with no zugzwang.
 - [x] A runtime lookup API — `oracleFor(cfg)`, `probe`, `movesFrom`, `rankMoves`, `topMoves` — so the
   atlas, the analysis panel and the perfect bot all read one path. Lazy: a 9×9 game fetches nothing.
+- [x] **Puzzles.** `findPuzzle()` and `dailyPuzzle()` live beside the oracle, because the atlas and
+  the home page must pose the *same* daily puzzle and two copies of the picker would eventually
+  pose two. A puzzle is a won position with distance 3–11 where at least three moves are legal and
+  at most two keep the win: a position where everything wins teaches nothing and one with a single
+  legal move is not a choice. The accepted answers are exactly `topMoves`, so a puzzle cannot be
+  marked wrong. Seeded by UTC day plus variant, so `#puzzle=daily` derives the position on both
+  pages rather than passing one between them.
+- [x] **Answers toggle.** The atlas tints every destination by result and draws arrows at the best
+  move, which is the point of the page and precisely what a puzzle cannot have on screen. One
+  `spoilers` flag governs the dots, the arrows, the ranked ordering and the move list's verdict
+  column; loading a puzzle turns it off and finishing one turns it back on. It is a toggle rather
+  than a puzzle-only mode so any position can be studied blind.
+- [x] **Reachability.** The generator also walks forward from all 192 deals and records which
+  states play can actually enter, per material layer, in `manifest.json`. The table covers every
+  position the pieces can form; a game only ever moves forward from a deal, so the two are not the
+  same set and the difference is large and archetype-dependent: **99.5%** of the table is reachable
+  under kings, **99.6%** under long kings, **84.5%** under crosses, **12.2%** under knights and
+  **4.5%** under bishops. A colour-bound or parity-bound piece cannot assemble most of what the
+  board allows. Like every other verdict here it ignores the clock, so it is an upper bound.
+
+### 6f. The laboratory, for the boards nobody will solve
+
+- [x] `public/lab.js` holds two kinds of claim and keeps them apart. **Counting is exact**:
+  `stateSpace()` counts distinguishable arrangements in BigInt and reproduces the tablebase's
+  207,775 placements and 192 openings on the 3×3, which is the check that the formula is the right
+  one. **Playing is measured**: `playout()` is seeded self-play under the shipped engine, and every
+  rate carries a 95% Wilson interval.
+- [x] `scripts/lab.mjs` writes `public/atlas/lab.json` — the ladder for 3×3 to 13×13 and a run of
+  600 games a size under greedy and random policies. Deterministic: same seed, same bytes, no
+  timestamps. Solve cost is priced from the run that produced `public/tablebase/` (128,000 moves a
+  second on one core) and from measured branching, not from a hoped-for rate, which puts the 3×3
+  estimate at 20 seconds against the 21 it really took.
+- [x] The honest answer to **D9**: a 5×5 is 179 TB of table and roughly 700 single-core years of
+  walking; a 9×9 is 1.3 ZB, more storage than has been manufactured. Openings stay countable at
+  every size — 22,109,068,800 of them on a 9×9, exactly. The page prints whatever the current
+  dataset says rather than these figures, so a re-measure moves it.
+- [x] The atlas can extend the committed run in the reader's own browser (`mergeSummaries`), so the
+  intervals narrow in front of them rather than being asserted.
 
 ### 6e. Verification and release
 
@@ -411,7 +473,7 @@ before the previous one settles. `needs` names the blocking item. Ownership is b
 
 | | ID | Item | Files | Needs |
 | --- | --- | --- | --- | --- |
-| [ ] | **B0** | Rules debt: `forcedCapture`, the RPS restriction on checkers leaps, `rulesVersion` stamping. Makes §1 and §2 true. `sideHasCapture(board, colour, cfg)` plus obligation-aware filtering in `isLegal()`/`allMoves()`, recomputed **before each action**. `presetOf()` compares fifteen fields. Independent **Forced captures** checkbox. Tests: obligation filtering, per-action recomputation, a blocked non-beaten leap, a 1.0 record replaying unchanged, preset round-trips. | `engine.js` `notation.js` `game.js` `index.html` `docs/JPGN.md` tests | — |
+| [x] | **B0** | Rules debt: `forcedCapture`, the RPS restriction on checkers leaps, `rulesVersion` stamping. Makes §1 and §2 true. `sideHasCapture(board, colour, cfg)` plus obligation-aware filtering in `isLegal()`/`allMoves()`, recomputed **before each action**. `presetOf()` compares fifteen fields. Independent **Forced captures** checkbox. Tests: obligation filtering, per-action recomputation, a blocked non-beaten leap, a 1.0 record replaying unchanged, preset round-trips. | `engine.js` `notation.js` `game.js` `index.html` `docs/JPGN.md` tests | — |
 | [x] | **B1** | GIF export: two palettes, the two-entry last-move wash, the `drawPiece` hook (§6c). | `gif.js` `game.js` tests | A2 |
 | [x] | **B2** | Analysis tablebase verdicts: whenever the analysis position is a solved 3×3 archetype, show win/loss/draw, distance to mate, and the ranked move list, sourced from A3 and never re-derived. | `game.js` `index.html` `style.css` | A3 |
 | [x] | **B3** | Perfect bot tier: a difficulty option that plays a top-valued tablebase move, breaking ties by shortest DTM when winning and longest when losing. Offered only when A3 resolves the ruleset. | `game.js` | A3 |
@@ -431,21 +493,21 @@ before the previous one settles. `needs` names the blocking item. Ownership is b
 | [x] | **C7** | Background: RPS shapes alongside the tetrominoes, subtly animated, reduced-motion aware. |
 | [x] | **C8** | Dynamic favicon following theme and game state. |
 | [x] | **C9** | Interaction polish: pieces fill their squares, drag follows the pointer without layout thrash. |
-| [ ] | **C10** | Theatre beside the play card (§3), opening on the newest completed online game then previewing the active ruleset from the first hover, focus, selection or edit. Every ruleset change **restarts** the game rather than mutating one in flight, debounced so a dragged slider starts one game rather than ten. `/api/showcase` is fetched at most once per visit and never on restart. |
+| [x] | **C10** | Theatre beside the play card (§3), opening on the newest completed online game then previewing the active ruleset from the first hover, focus, selection or edit. Every ruleset change **restarts** the game rather than mutating one in flight, debounced so a dragged slider starts one game rather than ten. `/api/showcase` is fetched at most once per visit and never on restart. |
 
 ### Tier D, larger work and dreams
 
 | | ID | Item | Notes |
 | --- | --- | --- | --- |
 | [ ] | **D1** | Stronger default bot | Today it is one-ply greedy material plus centre plus noise. Give it a small alpha-beta over `applyBoardMove()` with a tuned eval, and measure it against the tablebase, which is a perfect oracle for exactly this. Needs A3 for scoring, D6 to stop reimplementing move application. |
-| [ ] | **D2** | Atlas as laboratory: 5×5 prospects and 9×9 combinatorics | State-space arithmetic for 5×5 (and what a solve would cost in bytes and hours), plus the 9×9 count and what is knowable without solving it. Cheap to compute, high value, and it is what makes the atlas about the game rather than about one board. |
+| [x] | **D2** | Atlas as laboratory: 5×5 prospects and 9×9 combinatorics | State-space arithmetic for 5×5 (and what a solve would cost in bytes and hours), plus the 9×9 count and what is knowable without solving it. Cheap to compute, high value, and it is what makes the atlas about the game rather than about one board. |
 | [ ] | **D3** | Login coherence | Usernames and passwords, create-account and login pages, no email verification. The D1 `accounts` table and `secret_hash` already exist, so this is UX plus a password KDF, not new infrastructure, and it stays inside the Cloudflare free tier. |
 | [ ] | **D4** | Start position as a first-class choice | The 3×3 result says orientation matters, and cramming permutations into the parameters menu would be clunky. Promote the analysis board instead: set up a position, see its verdict live beside it, play it. That is the same surface the setup variant needs, so build it once. |
 | [ ] | **D5** | `npx rps-3x3` CLI | Ships as `cli/` in **this** repo publishing `rps-tablebase`, not a separate repo: invariant 11 ties a solved table to the shipped `engine.js`, and a version boundary between them would let the tables rot silently. Terminal board, probe by position, best-move list, DTM ladder, opening grid, W/D/L aggregates. |
 | [ ] | **D6** | Topology adapter and the two validators | `public/topology.js` with a square adapter over the current arrays, `engine.js` stops indexing boards directly, `cellCount` replaces `size × size` in the no-progress bound and enclosure majority, the bot calls the shared `applyBoardMove()`, and `validatePlayableCfg()` / `isRatedEligible()` arrive. **Golden fixtures are the acceptance test**, generated from the post-B0/B1 engine *before* the refactor: every preset's start layers, a full legal-destination map per archetype, repetition keys, one byte-for-byte JPGN 1.1 record, a fallback-path GIF frame, a room lifecycle transcript. Done when they still match exactly. |
 | [ ] | **D7** | Gold general (§8.1), hex lattice (§8.2), setup play (§8.3) | In that order. All three ship unrated. |
 | [ ] | **D8** | `scripts/simulate.mjs` and `docs/BALANCE.md` | Deterministic seeded self-play with no network or D1, reporting per condition: branching factor, first-player win rate, capture rate, enclosure frequency, draw/threefold/stall distribution, median and tail length, dead starts, per-archetype survival value. A fast smoke keeps it honest in CI; long runs are manual. Then, and only then, an in-site bot tourney simulator for the games no tablebase can settle. |
-| [ ] | **D9** | 5×5 tablebase, if D2 says it is affordable | Same method, and the answer may well be that it is not. Report the arithmetic either way. |
+| [x] | **D9** | 5×5 tablebase, if D2 says it is affordable | Answered, and the answer is no: 179 TB and ~700 core-years (§6f). The arithmetic is published on `/atlas` with its CSV. Reopen only if the reachable subset turns out to be small enough to enumerate directly — under bishops it is 4.5% of the 3×3, which is the one hint that a reachability-first solve might be a different question. |
 | [ ] | **D10** | Four-player, later six-player on hex | Sketch only. Turn order, elimination and the RPS cycle with four armies all need design before any code. |
 | [ ] | **D11** | Structural consolidation | Lichess-shaped compartments as the site grows: analysis, atlas, profile and play as separate surfaces over one engine rather than one page that keeps absorbing features. The repo stays single: one engine, one tablebase, one deploy. |
 | [ ] | **D12** | External: a JANKEN entry in the subsurfaces.net arcade | Lives in the `digital-garden` project, not here. |
@@ -642,13 +704,16 @@ Decided in advance, because a sweep has no natural place to discover them.
 1. **Fixture ordering.** D6's goldens must come from the post-B0/B1 engine. Capture them before
    touching geometry, or the refactor bakes in pre-B0 checkers semantics, and a GIF frame captured
    before the palette change is a fixture of a colour scheme that no longer exists.
-2. **`presetOf()` grows three times** (B0, hex, setup). Every preset must spell out every compared
-   field or a variant silently reports an earlier preset's name, and the round-trip test catches it
-   only if new presets are added to it.
+2. **`presetOf()` grows twice more** (hex, setup); B0 already took it to fifteen fields. Every
+   preset must spell out every compared field or a variant silently reports an earlier preset's
+   name, and the round-trip test catches it only if new presets are added to it. `rulesVersion`
+   stays out of the comparison on purpose — it is an edition, not a variant.
 3. **Keep the validators separate.** Every rejection belongs in `validatePlayableCfg()`. A throw
    inside `sanitizeCfg()` breaks restored browser state and every historical record.
-4. **Forced capture is per action, not per turn**, and the client must consult the same predicate
-   the server enforces, never its own copy.
+4. **Forced capture is per action, not per turn**, and the client consults the same predicate the
+   server enforces: the obligation is filtered inside `legalDest()`, so nothing downstream — the
+   bot, the previews, `hasMove()`, the tablebase walk — can hold a second opinion. `sideHasCapture()`
+   calls the raw geometry, not `legalDest()`, or it would recurse.
 5. **`rulesVersion` is one-way.** The unrestricted leap is reachable from migration and replay
    only. No UI path may produce it.
 6. **`size × size` is a hex bug.** The no-progress bound and the enclosure majority both assume a
@@ -688,6 +753,22 @@ Decided in advance, because a sweep has no natural place to discover them.
     show them, or two players' exports of one game stop being comparable.
 20. **A retired piece style must still resolve.** `pieceStyle` is persisted in browsers and named
     in nothing else, so dropping an ID means falling back to `line`, never rendering blank.
+
+## 9b. What the atlas may assert
+
+Every figure printed on `/atlas` is read at render time out of `public/tablebase/manifest.json`,
+a `.tb` file, or `public/atlas/lab.json`. None is typed into the markup, so a regenerated dataset
+moves the page and a stale one cannot hide behind prose. Two consequences are rules, not habits:
+
+1. **Every chart exports what it drew.** A `csv` button on each section emits exactly the rows on
+   screen, and the data pack carries all seven tables, the manifest, `lab.json`, the format note
+   and every aggregate CSV. A page that makes numeric claims and cannot produce the numbers is
+   asking to be trusted instead of checked.
+2. **Exact and measured are labelled differently.** Counting (state space, openings, reachability,
+   every tablebase verdict) is exact and says so. Self-play is a sample, carries a 95% interval,
+   and is calibrated in public against the one board where the truth is known: perfect play draws
+   all 192 openings, the same board under self-play does not, and that gap is the stated size of
+   the error in every larger row.
 
 ## 10. Rating gates
 

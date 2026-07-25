@@ -21,6 +21,8 @@ describe('shared rules engine', () => {
       scissorsMove: 'king',
       moveStyle: 'kings',
       capture: 'rps',
+      forcedCapture: false,
+      rulesVersion: E.RULES_VERSION,
       territory: false,
       retread: false,
       trail: false,
@@ -30,6 +32,22 @@ describe('shared rules engine', () => {
       actionsPerTurn: 3,
       first: E.BLUE,
     });
+    // An absent obligation is off and an absent edition is current, so nothing a browser or a
+    // network payload leaves out can quietly change what is legal.
+    expect(E.sanitizeCfg({}).forcedCapture).toBe(false);
+    expect(E.sanitizeCfg({ forcedCapture: 1 }).forcedCapture).toBe(true);
+    expect(E.sanitizeCfg({}).rulesVersion).toBe('1.1');
+    expect(E.sanitizeCfg({ rulesVersion: '0.9' }).rulesVersion).toBe('1.1');
+    expect(E.sanitizeCfg({ rulesVersion: '1.0' }).rulesVersion).toBe('1.0');
+    // Azel's wall deals its own material and needs room for two files a side, so the layout
+    // constrains the board rather than the other way round.
+    expect(E.sanitizeCfg({ size: 3, perType: 4, layout: 'azel' })).toMatchObject({
+      size: 4,
+      perType: 2,
+      layout: 'azel',
+    });
+    expect(E.startingMaterial({ layout: 'azel' })).toEqual({ rock: 2, paper: 1, scissors: 3 });
+    expect(E.startingMaterial({ size: 9, perType: 2 })).toEqual({ rock: 2, paper: 2, scissors: 2 });
     // Standard does not paint, so an absent territory flag must not turn painting on.
     expect(E.sanitizeCfg({}).territory).toBe(false);
     expect(E.sanitizeCfg({}).retread).toBe(false);
@@ -145,7 +163,7 @@ describe('shared rules engine', () => {
   });
 
   it('builds symmetric starting boards for every layout', () => {
-    for (const layout of ['rows', 'corners', 'scattered']) {
+    for (const layout of ['rows', 'corners', 'scattered', 'azel']) {
       const board = E.blocksBoard(9, 2, layout);
       const counts = E.pieceCounts(board);
       expect(counts).toEqual({ B: 6, R: 6 });
@@ -171,14 +189,18 @@ describe('shared rules engine', () => {
 
     // Every supported size/layout clamps to a formation that keeps all pieces and
     // never overlaps its mirror.
-    for (let size = 3; size <= 13; size++) for (const layout of ['rows', 'corners', 'scattered']) {
+    for (let size = 4; size <= 13; size++) for (const layout of ['rows', 'corners', 'scattered', 'azel']) {
       for (let requested = 1; requested <= 4; requested++) {
         const cfg = E.sanitizeCfg({ size, perType: requested, layout });
-        expect(cfg.perType).toBe(Math.min(requested, E.maxPerTypeForBoard(size, layout)));
-        expect(E.pieceCounts(E.blocksBoard(cfg.size, cfg.perType, layout, () => 0.5))).toEqual({
-          B: cfg.perType * 3,
-          R: cfg.perType * 3,
-        });
+        // A named formation deals its own material, so it ignores the request in both
+        // directions rather than merely clamping it down.
+        expect(cfg.perType).toBe(layout === 'azel'
+          ? E.AZEL_PER_TYPE
+          : Math.min(requested, E.maxPerTypeForBoard(size, layout)));
+        const material = E.startingMaterial(cfg);
+        const pieces = material.rock + material.paper + material.scissors;
+        expect(E.pieceCounts(E.blocksBoard(cfg.size, cfg.perType, layout, () => 0.5)))
+          .toEqual({ B: pieces, R: pieces });
       }
     }
   });
@@ -384,29 +406,112 @@ describe('shared rules engine', () => {
     expect(game.acts).toBe(0);
   });
 
-  it('captures checkers-style by leaping an adjacent enemy', () => {
+  it('leaps only what it beats, and only where a leap is on offer', () => {
     const cfg = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
+    expect(cfg.forcedCapture).toBe(true);
     const board = E.emptyBoard(6);
     board[4][2].piece = { type: 'rock', color: E.BLUE };
-    board[3][2].piece = { type: 'paper', color: E.RED };
-    board[3][3].piece = { type: 'scissors', color: E.RED };
+    board[3][2].piece = { type: 'scissors', color: E.RED };   // rock beats scissors: leapable
+    board[4][4].piece = { type: 'paper', color: E.RED };       // paper beats rock: a wall
     board[0][5].piece = { type: 'rock', color: E.RED };
 
     const destinations = E.legalDest(board, 4, 2, cfg);
-    expect(destinations).toContainEqual([2, 2]);     // enemy between, empty landing
-    expect(destinations).not.toContainEqual([4, 4]); // no free two-square jumps
-    expect(destinations).not.toContainEqual([3, 3]); // ordinary landing captures are disabled
+    expect(destinations).toContainEqual([2, 2]);     // beaten enemy between, empty landing
+    // Every other destination is gone: a non-beaten enemy blocks the leap over it exactly as it
+    // blocks a landing capture, and with a capture on offer the obligation forbids the rest.
+    expect(destinations).toEqual([[2, 2]]);
     expect(E.captureTarget(board, { fr: 4, fc: 2, tr: 2, tc: 2 }, cfg)).toMatchObject({
       row: 3,
       col: 2,
-      piece: { type: 'paper', color: E.RED },
+      piece: { type: 'scissors', color: E.RED },
     });
+    // The paper is unleapable however it is approached.
+    board[4][3].piece = { type: 'paper', color: E.RED };
+    expect(E.captureTarget(board, { fr: 4, fc: 2, tr: 4, tc: 4 }, cfg)).toBeNull();
+    board[4][3].piece = null;
 
     const game = E.newGame(cfg, board);
     expect(E.applyMove(game, { fr: 4, fc: 2, tr: 2, tc: 2 })).toBe(true);
     expect(game.board[3][2].piece).toBeNull();
     expect(game.board[2][2].piece).toEqual({ type: 'rock', color: E.BLUE });
-    expect(game.moves.at(-1)).toMatchObject({ piece: 'rock', capture: 'paper' });
+    expect(game.moves.at(-1)).toMatchObject({ piece: 'rock', capture: 'scissors' });
+  });
+
+  // The 1.0 leap took anything it jumped. That rule is reachable only from a stamped config, and
+  // a game persisted or recorded under it has to keep finishing under it.
+  it('keeps the unrestricted leap alive for rulesVersion 1.0 only', () => {
+    const board = E.emptyBoard(6);
+    board[4][2].piece = { type: 'rock', color: E.BLUE };
+    board[3][2].piece = { type: 'paper', color: E.RED };       // paper beats rock
+    const leap = { fr: 4, fc: 2, tr: 2, tc: 2 };
+
+    const current = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1 });
+    expect(E.captureTarget(board, leap, current)).toBeNull();
+    expect(E.legalDest(board, 4, 2, current)).not.toContainEqual([2, 2]);
+
+    const legacy = E.sanitizeCfg({ ...E.PRESETS.checkers, size: 6, perType: 1, rulesVersion: '1.0' });
+    expect(legacy.rulesVersion).toBe('1.0');
+    expect(E.captureTarget(board, leap, legacy)).toMatchObject({ piece: { type: 'paper' } });
+    expect(E.legalDest(board, 4, 2, legacy)).toContainEqual([2, 2]);
+    // Type alone can never lock a 1.0 game, because anything could be jumped. Under 1.1 a board
+    // of one type against the same type is as dead under checkers as it is under RPS.
+    const locked = E.emptyBoard(6);
+    locked[4][2].piece = { type: 'rock', color: E.BLUE };
+    locked[3][2].piece = { type: 'rock', color: E.RED };
+    expect(E.capturesPossible(locked, legacy)).toBe(true);
+    expect(E.capturesPossible(locked, current)).toBe(false);
+  });
+
+  // The obligation is a property of the position, so it is asked again before the second action
+  // of a turn rather than decided once when the turn began.
+  it('forces a capture when one is available, rechecked before every action', () => {
+    const cfg = E.sanitizeCfg({ ...E.PRESETS.standard, size: 5, forcedCapture: true, actionsPerTurn: 2 });
+    const board = E.emptyBoard(5);
+    board[2][2].piece = { type: 'rock', color: E.BLUE };
+    board[2][3].piece = { type: 'scissors', color: E.RED };    // rock takes scissors
+    board[0][0].piece = { type: 'paper', color: E.BLUE };
+    board[4][4].piece = { type: 'rock', color: E.RED };
+
+    expect(E.sideHasCapture(board, E.BLUE, cfg)).toBe(true);
+    expect(E.legalDest(board, 2, 2, cfg)).toEqual([[2, 3]]);
+    expect(E.legalDest(board, 0, 0, cfg)).toEqual([]);         // the paper may not wander instead
+    expect(E.allMoves(board, E.BLUE, cfg)).toEqual([{ fr: 2, fc: 2, tr: 2, tc: 3 }]);
+
+    // Without the obligation both pieces move freely, so this is the flag and not the geometry.
+    const free = E.sanitizeCfg({ ...cfg, forcedCapture: false });
+    expect(E.legalDest(board, 0, 0, free).length).toBeGreaterThan(0);
+    expect(E.allMoves(board, E.BLUE, free).length).toBeGreaterThan(1);
+
+    // Take the scissors; the second action of the same turn has nothing to take, so it is free.
+    const game = E.newGame(cfg, board);
+    E.applyMove(game, { fr: 2, fc: 2, tr: 2, tc: 3 });
+    expect(game.turn).toBe(E.BLUE);
+    expect(game.acts).toBe(1);
+    expect(E.sideHasCapture(game.board, E.BLUE, cfg)).toBe(false);
+    expect(E.legalDest(game.board, 0, 0, cfg).length).toBeGreaterThan(0);
+  });
+
+  // Alone among the layouts, Azel's wall is a named formation with lopsided material.
+  it("deals Azel's wall as a scissors screen in front of rock, paper, rock", () => {
+    const cfg = E.sanitizeCfg(E.PRESETS.azel);
+    expect(cfg.size).toBe(5);
+    expect(E.presetOf(cfg)).toBe('azel');
+    const board = E.blocksBoard(cfg.size, cfg.perType, cfg.layout);
+    expect(E.encodePos(board)).toBe('.....RS.srPS.spRS.sr.....');
+    expect(E.pieceCounts(board)).toEqual({ B: 6, R: 6 });
+    // Exactly 180-degree rotationally symmetric, like every other layout.
+    const swapCase = (code) => code.split('')
+      .map((ch) => (ch === '.' ? '.' : ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase()))
+      .join('');
+    expect(swapCase(E.encodePos(E.rotateBoard(board)))).toBe(E.encodePos(board));
+    // The material is 2/1/3, not perType of each, and the prose says so.
+    const summary = E.rulesSummary(cfg).find((part) => part.h === 'Board');
+    expect(summary.p).toContain('2 rocks, 1 paper and 3 scissors');
+    // Larger boards keep the wall against the edge and centred.
+    const wide = E.blocksBoard(9, 2, 'azel');
+    expect(wide[3][0].piece).toMatchObject({ type: 'rock', color: E.BLUE });
+    expect(wide[4][1].piece).toMatchObject({ type: 'scissors', color: E.BLUE });
+    expect(wide[4][7].piece).toMatchObject({ type: 'scissors', color: E.RED });
   });
 
   it('ends the moment either player has no move, scoring by territory', () => {
@@ -597,7 +702,10 @@ describe('rules summary', () => {
 
     // Chess capture always leaves a capture available while both sides have pieces.
     expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'chess' }))).toBe(true);
-    expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'checkers' }))).toBe(true);
+    // A 1.1 leap obeys the same cycle as a landing capture, so rocks facing rocks is as dead
+    // under checkers as under RPS. Only the 1.0 leap, which took anything, kept it alive.
+    expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'checkers' }))).toBe(false);
+    expect(E.capturesPossible(board, E.sanitizeCfg({ capture: 'checkers', rulesVersion: '1.0' }))).toBe(true);
     // A full Standard opening is never captureless.
     expect(E.capturesPossible(E.blocksBoard(9, 2, 'rows'), cfg)).toBe(true);
   });

@@ -215,6 +215,46 @@ function startCensus(value) {
   return census;
 }
 
+// Which of the 415,550 positions a real game can actually enter. The table covers every position
+// the pieces can form; play begins from one of the 192 deals and only ever moves forward, so most
+// of the table describes positions no game will ever visit. Forward reachability is the honest
+// denominator for any claim about how the game behaves, as opposed to how the board behaves.
+//
+// Like every other figure here this ignores the clock: a state is reachable if some sequence of
+// legal moves arrives at it, not if a game that has not already drawn arrives at it.
+function reachability(graph, value) {
+  const seen = new Uint8Array(STATES);
+  const stack = [];
+  for (const placement of FAIR_STARTS) {
+    const state = placement * 2;                    // every deal has Blue to move
+    if (!seen[state]) { seen[state] = 1; stack.push(state); }
+  }
+  while (stack.length) {
+    const state = stack.pop();
+    for (let e = graph.offsets[state]; e < graph.offsets[state + 1]; e++) {
+      const child = graph.succ[e];
+      if (!seen[child]) { seen[child] = 1; stack.push(child); }
+    }
+  }
+
+  const layers = Array.from({ length: 7 }, (_, m) => ({ m, states: 0, reached: 0, W: 0, D: 0, L: 0 }));
+  const placementSeen = new Uint8Array(PLACEMENTS);
+  let states = 0, W = 0, D = 0, L = 0;
+  for (let s = 0; s < STATES; s++) {
+    const layer = layers[graph.pieceB[s >> 1] + graph.pieceR[s >> 1]];
+    layer.states++;
+    if (!seen[s]) continue;
+    states++;
+    placementSeen[s >> 1] = 1;
+    layer.reached++;
+    layer[value[s] === 1 ? 'W' : value[s] === -1 ? 'L' : 'D']++;
+    if (value[s] === 1) W++; else if (value[s] === -1) L++; else D++;
+  }
+  let placements = 0;
+  for (let p = 0; p < PLACEMENTS; p++) if (placementSeen[p]) placements++;
+  return { states, placements, wdl: { W, D, L }, layers };
+}
+
 function layerStats({ pieceB, pieceR }, value) {
   const layers = Array.from({ length: 7 }, (_, m) => ({ m, states: 0, W: 0, D: 0, L: 0 }));
   for (let s = 0; s < STATES; s++) {
@@ -271,6 +311,7 @@ for (const variant of selected) {
   }
 
   const start = { value: solved.value[startPlacement * 2], dtm: solved.dtm[startPlacement * 2] };
+  const reached = reachability(graph, solved.value);
   solvedNow.set(variant.id, {
     id: variant.id,
     label: variant.label,
@@ -284,14 +325,15 @@ for (const variant of selected) {
     wdl: { W, D, L },
     start,
     fairStarts: startCensus(solved.value),
+    reachable: reached,
     layers: layerStats(graph, solved.value),
     lineups: lineups(solved.value),
   });
   const fair = startCensus(solved.value);
   console.log(
     `${(graph.succ.length / 1e6).toFixed(2)}M moves · W ${W} D ${D} L ${L} · dtm≤${maxDtm} · `
-    + `fair starts ${fair.W}/${fair.D}/${fair.L} · ${(packed.length / 1024).toFixed(0)} KB · `
-    + `${((Date.now() - started) / 1000).toFixed(1)}s`,
+    + `fair starts ${fair.W}/${fair.D}/${fair.L} · reachable ${(100 * reached.states / STATES).toFixed(1)}% · `
+    + `${(packed.length / 1024).toFixed(0)} KB · ${((Date.now() - started) / 1000).toFixed(1)}s`,
   );
 }
 

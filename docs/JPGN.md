@@ -27,7 +27,7 @@ writer, parser, and legality-checked replayer are in `public/notation.js`.
 [Result "*"]
 [Variant "6×6 · R rook / P knight / S bishop · RPS · territory+"]
 [Ruleset "Custom"]
-[RulesetVersion "1.0"]
+[RulesetVersion "1.1"]
 [Board "6x6"]
 [StartLayout "rows"]
 [Rules "size=6;perType=1;rockMove=rook;paperMove=knight;scissorsMove=bishop;capture=rps;territory=1;retread=1;trail=0;enclosure=0;threefold=1;layout=rows;actionsPerTurn=2;first=B"]
@@ -82,7 +82,7 @@ forward-compatible.
 | --- | --- |
 | `Variant` | Human-readable summary; informative, not authoritative. |
 | `Ruleset` | `Standard`, `King's Field`, `Painters`, or `Custom`. |
-| `RulesetVersion` | Version of the named preset definition; currently `1.0`. |
+| `RulesetVersion` | Which edition of the rules the game finishes under. `1.1` restricts the checkers leap to the RPS cycle; an absent or `1.0` tag replays under the original unrestricted leap, so historical records stay legal. Never a setting: no UI path produces `1.0`. |
 | `Board` | Dimensions as `NxN`. Must match `Rules.size`. |
 | `StartLayout` | Human-readable layout identifier. The exact position layers remain authoritative. |
 | `Rules` | Canonical machine-readable rules from section 4. |
@@ -115,15 +115,26 @@ rockMove=king|rook|bishop|knight|queen|cross|longking
 paperMove=king|rook|bishop|knight|queen|cross|longking
 scissorsMove=king|rook|bishop|knight|queen|cross|longking
 capture=rps|chess|checkers
+forcedCapture=0|1
 territory=0|1
 retread=0|1
 trail=0|1
 enclosure=0|1
 threefold=0|1
-layout=rows|corners|scattered
+layout=rows|corners|scattered|azel
 actionsPerTurn=1..3
 first=B|R
 ```
+
+`forcedCapture` was added after JPGN 1.1 shipped. An absent field is `0`, so every record written
+before it keeps the legality it was played under. When it is `1`, a side holding any capture may
+play nothing else, rechecked before each action of a multi-action turn.
+
+`layout=azel` is a named formation rather than a generated one: three scissors screening rock,
+paper, rock, on the two files nearest each player, vertically centred. It deals a fixed **two
+rocks, one paper and three scissors** a side whatever `perType` says, and needs a board of at
+least 4×4 to keep the two walls disjoint. `perType` is written as `2` for it — six pieces, stated
+as 3 × 2 — so the field stays comparable across records.
 
 Movement meanings:
 

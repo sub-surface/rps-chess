@@ -6,16 +6,23 @@
 //   rockMove/paperMove/      movement archetype assigned to each RPS piece
 //   scissorsMove
 //   capture                  'rps' (only what you beat) | 'chess' (always)
-//                            | 'checkers' (leap an adjacent enemy)
+//                            | 'checkers' (leap an adjacent enemy you beat)
+//   forcedCapture            when a capture is available to you, you must play one
 //   territory                true = paint squares & race for area; false = elimination
 //   retread                  (territory only) may stop on already-claimed squares
 //   trail                    (territory only) sliders ink unclaimed squares they pass over
 //   enclosure                (territory only) closed regions flip; enemy pieces inside are removed
 //   threefold                third occurrence of the same playable state is an automatic draw
-//   layout                   'rows' (centred facing blocks) | 'corners' | 'scattered' (random, symmetric)
+//   layout                   'rows' (centred facing blocks) | 'corners' | 'scattered' (random,
+//                            symmetric) | 'azel' (a scissors screen in front of rock/paper/rock)
+//   rulesVersion             which edition of the rules this game finishes under (see below)
 //   first                    'B' | 'R'
 
 export const BLUE = 'B', RED = 'R';
+// Rules editions, not a setting. 1.1 restricted the checkers leap to the RPS cycle, so a game
+// persisted or recorded before the field existed must finish under 1.0 or its history stops
+// replaying. Only migration and replay code ever names '1.0'; no UI path can produce it.
+export const RULES_VERSION = '1.1';
 export const other = (c) => (c === BLUE ? RED : BLUE);
 // One source for the piece budget: sanitizeCfg clamps perType to it, and decodePos
 // rejects anything larger, so a custom position can always express a legal start.
@@ -107,17 +114,37 @@ export const axisLabels = (r, c, size, style = 'chess') =>
 export const emptyBoard = (S) => Array.from({ length: S }, () => Array.from({ length: S }, () => ({ owner: null, piece: null })));
 export const cloneBoard = (b) => b.map(row => row.map(c => ({ owner: c.owner, piece: c.piece ? { ...c.piece } : null })));
 
-const normalizedBoardSize = (raw) => {
+export const LAYOUTS = Object.freeze(['rows', 'corners', 'scattered', 'azel']);
+// Azel's wall is a named formation rather than a generated one: three scissors screening
+// rock, paper, rock. Its material is fixed at six pieces a side, so perType stops being a
+// dial there and becomes a constant — six pieces is 3 × 2 however they are distributed.
+export const AZEL_PER_TYPE = 2;
+const AZEL_MATERIAL = Object.freeze({ rock: 2, paper: 1, scissors: 3 });
+// Two files a side, so the two walls only stay disjoint from 4×4 upwards.
+const AZEL_MIN_SIZE = 4;
+
+const normalizedBoardSize = (raw, layout = 'rows') => {
   const value = Math.floor(+raw);
-  return Number.isFinite(value) ? Math.max(3, Math.min(13, value)) : 9;
+  const floor = layout === 'azel' ? AZEL_MIN_SIZE : 3;
+  return Number.isFinite(value) ? Math.max(floor, Math.min(13, value)) : Math.max(floor, 9);
 };
+
+// How many of each piece a side actually starts with. Uniform for every generated layout;
+// Azel's wall is the one formation that is not, so prose, previews and the JPGN header all
+// ask here rather than assuming `perType` describes the board.
+export function startingMaterial(cfg) {
+  const safe = sanitizeCfg(cfg);
+  if (safe.layout === 'azel') return { ...AZEL_MATERIAL };
+  return { rock: safe.perType, paper: safe.perType, scissors: safe.perType };
+}
 
 // The smallest boards cannot hold four of every piece without a formation crossing
 // its 180-degree mirror. Keep this geometry-derived limit beside blocksBoard so the UI,
 // restored configs and the server all agree on what can actually be placed.
 export function maxPerTypeForBoard(rawSize, rawLayout = 'rows') {
-  const size = normalizedBoardSize(rawSize);
-  const layout = ['rows', 'corners', 'scattered'].includes(rawLayout) ? rawLayout : 'rows';
+  const layout = LAYOUTS.includes(rawLayout) ? rawLayout : 'rows';
+  const size = normalizedBoardSize(rawSize, layout);
+  if (layout === 'azel') return AZEL_PER_TYPE;
   if (layout === 'rows') {
     return Math.min(MAX_PER_TYPE, Math.max(1, Math.floor((size * Math.floor(size / 2)) / 3)));
   }
@@ -184,8 +211,8 @@ export function rotateBoard(board) {
 // randomises within each player's near half — fair because the whole board is shared
 // state, not re-derived.
 export function blocksBoard(size, per, layout = 'rows', random = Math.random) {
-  size = normalizedBoardSize(size);
-  layout = ['rows', 'corners', 'scattered'].includes(layout) ? layout : 'rows';
+  layout = LAYOUTS.includes(layout) ? layout : 'rows';
+  size = normalizedBoardSize(size, layout);
   const requested = Math.floor(+per);
   per = Number.isFinite(requested) ? Math.max(1, Math.min(maxPerTypeForBoard(size, layout), requested)) : 1;
   const b = emptyBoard(size);
@@ -194,6 +221,15 @@ export function blocksBoard(size, per, layout = 'rows', random = Math.random) {
     b[size - 1 - r][size - 1 - c] = { owner: RED, piece: { type, color: RED } };
   };
   const rows = ['rock', 'paper', 'scissors'];
+  if (layout === 'azel') {
+    // A screen of scissors in front of rock, paper, rock — deliberately not three of each.
+    // The front rank is the whole idea: scissors cannot be taken by the paper behind them, so
+    // the wall answers a paper advance while the rocks behind answer the scissors that would.
+    const top = Math.floor((size - 3) / 2);
+    const back = ['rock', 'paper', 'rock'];
+    for (let i = 0; i < 3; i++) { put(top + i, 0, back[i]); put(top + i, 1, 'scissors'); }
+    return b;
+  }
   if (layout === 'scattered') {
     const cells = [];
     for (let r = Math.floor(size / 2) + 1; r < size; r++) for (let c = 0; c < size; c++) cells.push([r, c]);
@@ -374,7 +410,12 @@ export function captureTarget(board, m, cfg) {
     if (!isLeap || landing.piece) return null;
     const row = m.fr + dr / 2, col = m.fc + dc / 2;
     const piece = board[row][col].piece;
-    return piece && piece.color !== moving.color ? { row, col, piece } : null;
+    if (!piece || piece.color === moving.color) return null;
+    // A leap is a capture, so it obeys the capture cycle like any other: paper leaps rock,
+    // rock leaps scissors, scissors leaps paper. An enemy you cannot beat blocks the leap
+    // exactly as it blocks a landing capture. Games that began under 1.0 keep the old rule.
+    if (cfg.rulesVersion !== '1.0' && BEATS[moving.type] !== piece.type) return null;
+    return { row, col, piece };
   }
   const piece = landing.piece;
   return piece && piece.color !== moving.color && canCap(moving, piece, cfg.capture)
@@ -385,7 +426,11 @@ export function captureTarget(board, m, cfg) {
 // Landing rule: with territory & no re-tread you may only stop on an UNCLAIMED empty
 // square (or capture) — sliders glide over painted squares. Otherwise any empty square
 // is a valid stop (classic chess movement). Pieces always block a slide.
-export function legalDest(board, r, c, cfg) {
+//
+// This is geometry only. `legalDest` applies the capture obligation on top of it, and asking
+// the obligation costs a scan of the army — so the two are separate functions rather than one
+// with a flag, and `sideHasCapture` can call this without recursing through itself.
+function rawDest(board, r, c, cfg) {
   const p = board[r][c].piece;
   if (!p) return [];
   const S = board.length, inB = (a, b) => a >= 0 && a < S && b >= 0 && b < S, out = [];
@@ -433,6 +478,32 @@ export function legalDest(board, r, c, cfg) {
   return out;
 }
 
+// Whether this side has any capture at all, asked fresh before **every** action: an obligation
+// is a property of the position, not of the turn, so the second action of a multi-action turn
+// can be obliged where the first was not.
+export function sideHasCapture(board, color, cfg) {
+  for (let r = 0; r < board.length; r++) for (let c = 0; c < board.length; c++) {
+    const p = board[r][c].piece;
+    if (!p || p.color !== color) continue;
+    for (const [tr, tc] of rawDest(board, r, c, cfg)) {
+      if (captureTarget(board, { fr: r, fc: c, tr, tc }, cfg)) return true;
+    }
+  }
+  return false;
+}
+
+// Where this piece may actually go. With `forcedCapture` on, a side holding any capture
+// anywhere may play nothing else — including a leap, which is a capture like any other. The
+// obligation is filtered here rather than in isLegal() so the client's highlights, the bot's
+// search and the server's validation all read one answer.
+export function legalDest(board, r, c, cfg) {
+  const raw = rawDest(board, r, c, cfg);
+  const p = board[r][c].piece;
+  if (!cfg.forcedCapture || !p || !raw.length) return raw;
+  if (!sideHasCapture(board, p.color, cfg)) return raw;
+  return raw.filter(([tr, tc]) => captureTarget(board, { fr: r, fc: c, tr, tc }, cfg));
+}
+
 // Whether a capture remains possible for anyone, judged on surviving piece types rather than
 // geometry: under RPS rules, rocks facing only rocks can never take each other however they
 // move. This is what ends a Standard game — not an immediate "nothing is en prise", which
@@ -441,7 +512,9 @@ export function capturesPossible(board, cfg) {
   const types = { [BLUE]: new Set(), [RED]: new Set() };
   for (const row of board) for (const cell of row) if (cell.piece) types[cell.piece.color].add(cell.piece.type);
   if (!types[BLUE].size || !types[RED].size) return false;
-  if (cfg.capture === 'chess' || cfg.capture === 'checkers') return true;
+  if (cfg.capture === 'chess') return true;
+  // A 1.0 leap took anything it jumped, so type alone could never lock that game.
+  if (cfg.capture === 'checkers' && cfg.rulesVersion === '1.0') return true;
   for (const type of types[BLUE]) if (types[RED].has(BEATS[type])) return true;
   for (const type of types[RED]) if (types[BLUE].has(BEATS[type])) return true;
   return false;
@@ -616,22 +689,34 @@ export function replayFrames(record) {
 export const PRESETS = {
   standard: {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
-    moveStyle: 'kings', capture: 'rps', territory: false, retread: false, trail: false, enclosure: false,
+    moveStyle: 'kings', capture: 'rps', forcedCapture: false,
+    territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   kings: {
     size: 9, perType: 2, rockMove: 'rook', paperMove: 'knight', scissorsMove: 'bishop',
-    moveStyle: 'custom', capture: 'rps', territory: false, retread: false, trail: false, enclosure: false,
+    moveStyle: 'custom', capture: 'rps', forcedCapture: false,
+    territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   checkers: {
     size: 8, perType: 2, rockMove: 'longking', paperMove: 'longking', scissorsMove: 'longking',
-    moveStyle: 'custom', capture: 'checkers', territory: false, retread: false, trail: false, enclosure: false,
+    moveStyle: 'custom', capture: 'checkers', forcedCapture: true,
+    territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+  },
+  // Azel's wall, from a player who went looking for lopsided openings worth playing. Six pieces
+  // a side, but not two of each: the scissors screen is the variant.
+  azel: {
+    size: 5, perType: AZEL_PER_TYPE, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
+    moveStyle: 'kings', capture: 'rps', forcedCapture: false,
+    territory: false, retread: false, trail: false, enclosure: false,
+    threefold: true, layout: 'azel', actionsPerTurn: 1, first: BLUE,
   },
   painters: {
     size: 9, perType: 2, rockMove: 'queen', paperMove: 'queen', scissorsMove: 'queen',
-    moveStyle: 'queens', capture: 'rps', territory: true, retread: false, trail: true, enclosure: false,
+    moveStyle: 'queens', capture: 'rps', forcedCapture: false,
+    territory: true, retread: false, trail: true, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
   },
   // Every preset spells out every compared field, so presetOf() can recognise one
@@ -648,7 +733,8 @@ export const PRESETS = {
     melee: { enclosure: true },
   }).map(([key, over]) => [key, {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
-    capture: 'rps', territory: true, retread: true, trail: false, enclosure: false,
+    capture: 'rps', forcedCapture: false,
+    territory: true, retread: true, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE, ...over,
   }])),
 };
@@ -657,6 +743,7 @@ export const PRESETS = {
 export const PRESET_INFO = {
   standard: { label: 'Standard', tagline: 'Everything moves one square. Take what you beat; most pieces standing wins.' },
   skirmish: { label: 'Skirmish', tagline: 'A pocket 3×3 with one of each piece. Decided in a hurry.' },
+  azel: { label: "Azel's wall", tagline: 'A 5×5 with three scissors screening rock, paper, rock. Lopsided on purpose.' },
   triple: { label: 'Triple step', tagline: 'Three moves a turn. Ground changes hands three times as fast.' },
   cavalry: { label: 'Cavalry', tagline: 'All knights. Nothing blocks a jump, so nothing is ever safe.' },
   painters: { label: 'Painters', tagline: 'Queens that ink every unclaimed square they glide across.' },
@@ -674,9 +761,11 @@ export const presetLabel = (key) => PRESET_INFO[key]?.label || 'Custom';
 export function presetOf(cfg) {
   const safe = sanitizeCfg(cfg);
   const fields = [
-    'size', 'perType', 'rockMove', 'paperMove', 'scissorsMove', 'capture',
+    'size', 'perType', 'rockMove', 'paperMove', 'scissorsMove', 'capture', 'forcedCapture',
     'territory', 'retread', 'trail', 'enclosure', 'threefold', 'layout', 'actionsPerTurn', 'first',
   ];
+  // `rulesVersion` is deliberately absent: it says which edition a game finishes under, not what
+  // variant it is, and comparing it would rename every legacy record Custom.
   for (const k in PRESETS) if (fields.every((field) => PRESETS[k][field] === safe[field])) return k;
   return 'custom';
 }
@@ -699,6 +788,7 @@ export function variantLabel(cfg) {
     ? 'RPS'
     : safe.capture === 'checkers' ? 'checkers-capture' : 'chess-capture';
   const parts = [`${safe.size}×${safe.size}`, movementLabel(safe), capture];
+  if (safe.forcedCapture) parts.push('forced');
   parts.push(safe.territory ? (safe.retread ? 'territory+' : 'territory') : 'elimination');
   if (safe.trail) parts.push('ink');
   if (safe.enclosure) parts.push('enclosure');
@@ -713,19 +803,21 @@ const LAYOUT_PROSE = {
   rows: 'facing blocks near the centre',
   corners: 'blocks anchored to opposite corners',
   scattered: 'scattered at random within each half',
+  azel: "Azel's wall — a screen of scissors in front of rock, paper, rock",
 };
 // The whole game, stated as briefly as it can be stated, for exactly these rules — used by
 // the in-game rules flap and the how-to-play dialog, so a player is never told about a
 // variant they are not playing.
 export function rulesSummary(cfg) {
   const safe = sanitizeCfg(cfg);
-  const n = safe.perType, s = n === 1 ? '' : 's';
+  const material = startingMaterial(safe);
   const moves = ['rock', 'paper', 'scissors'].map((type) => movementFor(safe, type));
   const slides = moves.some((move) => MOVEMENT_PATTERNS[move].slide);
   const jumps = moves.some((move) => move === 'knight' || move === 'longking');
   const out = [{
     h: 'Board',
-    p: `${safe.size}×${safe.size}. ${n} rock${s}, ${n} paper${s} and ${n} scissors a side, `
+    p: `${safe.size}×${safe.size}. ${material.rock} rock${material.rock === 1 ? '' : 's'}, `
+      + `${material.paper} paper${material.paper === 1 ? '' : 's'} and ${material.scissors} scissors a side, `
       + `in ${LAYOUT_PROSE[safe.layout]}. ${safe.first === BLUE ? 'Blue' : 'Red'} opens.`,
   }, {
     h: 'Moving',
@@ -744,9 +836,20 @@ export function rulesSummary(cfg) {
     p: safe.capture === 'rps'
       ? 'Take only what you beat — rock takes scissors, scissors takes paper, paper takes rock. Anything else blocks you.'
       : safe.capture === 'checkers'
-        ? 'Leap exactly two squares straight over an adjacent enemy onto an empty square to take it. Ordinary moves cannot capture.'
+        ? 'Leap exactly two squares straight over an adjacent enemy onto an empty square to take it.'
+          + (safe.rulesVersion === '1.0'
+            ? ' Any enemy may be jumped.'
+            : ' You may only jump what you beat — an enemy you cannot take blocks the leap.')
+          + ' Ordinary moves cannot capture.'
         : 'Take any enemy piece. The RPS cycle is off.',
   }];
+  if (safe.forcedCapture) {
+    out.push({
+      h: 'Forced captures',
+      p: 'If a capture is available to you anywhere on the board, you must play one. This is '
+        + 'checked before every action, so the second move of a turn can be obliged where the first was not.',
+    });
+  }
   if (safe.territory) {
     out.push({
       h: 'Painting',
@@ -793,8 +896,10 @@ export function sanitizeCfg(raw) {
     return Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : d));
   };
   const one = (v, set, d) => set.includes(v) ? v : d;
-  const size = clamp(raw.size, 3, 13, 9);
-  const layout = one(raw.layout, ['rows', 'corners', 'scattered'], 'rows');
+  // Layout is read first because it constrains the board: Azel's wall needs two clear files a
+  // side, so a 3×3 request for it becomes the smallest board that can actually hold it.
+  const layout = one(raw.layout, LAYOUTS, 'rows');
+  const size = clamp(raw.size, layout === 'azel' ? 4 : 3, 13, 9);
   // Territory is opt-in: an absent flag means Standard, which does not paint.
   const territory = !!raw.territory;
   const legacy = LEGACY_MOVES[raw.moveStyle] || LEGACY_MOVES.kings;
@@ -813,12 +918,19 @@ export function sanitizeCfg(raw) {
         : 'custom';
   return {
     size,
-    perType: clamp(raw.perType, 1, maxPerTypeForBoard(size, layout), 2),
+    // Azel's wall deals a fixed six pieces a side, so perType stops being a dial and reports
+    // the six as 3 × 2 — a stored 1 there would describe a board the layout never builds.
+    perType: layout === 'azel' ? AZEL_PER_TYPE : clamp(raw.perType, 1, maxPerTypeForBoard(size, layout), 2),
     rockMove,
     paperMove,
     scissorsMove,
     moveStyle,
     capture,
+    // Independent of the capture mechanism: an absent flag is off, so every historical room
+    // and record keeps the legality it was played under.
+    forcedCapture: !!raw.forcedCapture,
+    // Only migration and replay name '1.0'; everything else, including any UI path, is current.
+    rulesVersion: raw.rulesVersion === '1.0' ? '1.0' : RULES_VERSION,
     territory,
     retread: territory && raw.retread !== false,
     trail: territory && !!raw.trail,

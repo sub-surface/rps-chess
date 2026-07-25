@@ -14,6 +14,8 @@
         "scissorsMove": "king",
         "moveStyle": "kings",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -43,6 +45,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 413622,
+        "placements": 207774,
+        "wdl": {
+          "W": 197280,
+          "D": 142080,
+          "L": 74262
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 54,
+            "W": 0,
+            "D": 0,
+            "L": 54
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1728,
+            "W": 432,
+            "D": 432,
+            "L": 864
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 19152,
+            "W": 6048,
+            "D": 6048,
+            "L": 7056
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 90576,
+            "W": 35520,
+            "D": 29760,
+            "L": 25296
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 181440,
+            "W": 86592,
+            "D": 58608,
+            "L": 36240
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 120672,
+            "W": 68688,
+            "D": 47232,
+            "L": 4752
+          }
+        ]
       },
       "layers": [
         {
@@ -157,6 +226,8 @@
         "scissorsMove": "rook",
         "moveStyle": "custom",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -186,6 +257,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 411462,
+        "placements": 207774,
+        "wdl": {
+          "W": 153432,
+          "D": 192984,
+          "L": 65046
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 54,
+            "W": 0,
+            "D": 0,
+            "L": 54
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1728,
+            "W": 216,
+            "D": 1080,
+            "L": 432
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 19008,
+            "W": 4368,
+            "D": 10608,
+            "L": 4032
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 89712,
+            "W": 26496,
+            "D": 44304,
+            "L": 18912
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 180576,
+            "W": 75936,
+            "D": 71088,
+            "L": 33552
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 120384,
+            "W": 46416,
+            "D": 65904,
+            "L": 8064
+          }
+        ]
       },
       "layers": [
         {
@@ -300,6 +438,8 @@
         "scissorsMove": "bishop",
         "moveStyle": "custom",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -329,6 +469,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 18720,
+        "placements": 10272,
+        "wdl": {
+          "W": 0,
+          "D": 18720,
+          "L": 0
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 2880,
+            "W": 0,
+            "D": 2880,
+            "L": 0
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 14208,
+            "W": 0,
+            "D": 14208,
+            "L": 0
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 1632,
+            "W": 0,
+            "D": 1632,
+            "L": 0
+          }
+        ]
       },
       "layers": [
         {
@@ -443,6 +650,8 @@
         "scissorsMove": "knight",
         "moveStyle": "custom",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -472,6 +681,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 50496,
+        "placements": 27096,
+        "wdl": {
+          "W": 9792,
+          "D": 33888,
+          "L": 6816
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 48,
+            "W": 0,
+            "D": 0,
+            "L": 48
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1248,
+            "W": 96,
+            "D": 912,
+            "L": 240
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 12384,
+            "W": 2400,
+            "D": 7392,
+            "L": 2592
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 22752,
+            "W": 4320,
+            "D": 15072,
+            "L": 3360
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 12864,
+            "W": 2880,
+            "D": 9408,
+            "L": 576
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 1200,
+            "W": 96,
+            "D": 1104,
+            "L": 0
+          }
+        ]
       },
       "layers": [
         {
@@ -586,6 +862,8 @@
         "scissorsMove": "queen",
         "moveStyle": "queens",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -615,6 +893,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 413622,
+        "placements": 207774,
+        "wdl": {
+          "W": 187776,
+          "D": 166848,
+          "L": 58998
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 54,
+            "W": 0,
+            "D": 0,
+            "L": 54
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1728,
+            "W": 432,
+            "D": 432,
+            "L": 864
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 19152,
+            "W": 6048,
+            "D": 6048,
+            "L": 7056
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 90576,
+            "W": 36000,
+            "D": 31392,
+            "L": 23184
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 181440,
+            "W": 88800,
+            "D": 65520,
+            "L": 27120
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 120672,
+            "W": 56496,
+            "D": 63456,
+            "L": 720
+          }
+        ]
       },
       "layers": [
         {
@@ -729,6 +1074,8 @@
         "scissorsMove": "cross",
         "moveStyle": "custom",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -758,6 +1105,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 351222,
+        "placements": 207438,
+        "wdl": {
+          "W": 145416,
+          "D": 118752,
+          "L": 87054
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 54,
+            "W": 0,
+            "D": 0,
+            "L": 54
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1728,
+            "W": 240,
+            "D": 864,
+            "L": 624
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 18960,
+            "W": 5904,
+            "D": 6648,
+            "L": 6408
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 89712,
+            "W": 33552,
+            "D": 28656,
+            "L": 27504
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 180576,
+            "W": 78432,
+            "D": 56352,
+            "L": 45792
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 60192,
+            "W": 27288,
+            "D": 26232,
+            "L": 6672
+          }
+        ]
       },
       "layers": [
         {
@@ -872,6 +1286,8 @@
         "scissorsMove": "longking",
         "moveStyle": "custom",
         "capture": "rps",
+        "forcedCapture": false,
+        "rulesVersion": "1.1",
         "territory": false,
         "retread": false,
         "trail": false,
@@ -901,6 +1317,73 @@
         "W": 0,
         "D": 192,
         "L": 0
+      },
+      "reachable": {
+        "states": 414054,
+        "placements": 207774,
+        "wdl": {
+          "W": 183504,
+          "D": 174864,
+          "L": 55686
+        },
+        "layers": [
+          {
+            "m": 0,
+            "states": 2,
+            "reached": 0,
+            "W": 0,
+            "D": 0,
+            "L": 0
+          },
+          {
+            "m": 1,
+            "states": 108,
+            "reached": 54,
+            "W": 0,
+            "D": 0,
+            "L": 54
+          },
+          {
+            "m": 2,
+            "states": 2160,
+            "reached": 1728,
+            "W": 432,
+            "D": 432,
+            "L": 864
+          },
+          {
+            "m": 3,
+            "states": 20160,
+            "reached": 19152,
+            "W": 6048,
+            "D": 6048,
+            "L": 7056
+          },
+          {
+            "m": 4,
+            "states": 90720,
+            "reached": 90720,
+            "W": 35808,
+            "D": 32064,
+            "L": 22848
+          },
+          {
+            "m": 5,
+            "states": 181440,
+            "reached": 181440,
+            "W": 87840,
+            "D": 70176,
+            "L": 23424
+          },
+          {
+            "m": 6,
+            "states": 120960,
+            "reached": 120960,
+            "W": 53376,
+            "D": 66144,
+            "L": 1440
+          }
+        ]
       },
       "layers": [
         {

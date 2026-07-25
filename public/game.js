@@ -1471,9 +1471,12 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
     : safe.territory
       ? (safe.retread ? 'territory + re-tread' : 'new territory only')
       : 'elimination';
+  // A layout with lopsided material must not report "2 / type" — the deal is the variant.
+  const material = E.startingMaterial(safe);
+  const uniform = material.rock === material.paper && material.paper === material.scissors;
   const facts = [
     `${safe.size}×${safe.size}`,
-    `${safe.perType} / type`,
+    uniform ? `${safe.perType} / type` : `${material.rock}R ${material.paper}P ${material.scissors}S`,
     `${'●'.repeat(safe.actionsPerTurn)} ${safe.actionsPerTurn} action${safe.actionsPerTurn === 1 ? '' : 's'}`,
     `${safe.first === BLUE ? 'Blue' : 'Red'} first`,
     capture,
@@ -1483,19 +1486,82 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
   ];
   if (safe.trail) facts.push('ink trail');
   if (safe.enclosure) facts.push('surround capture');
+  if (safe.forcedCapture) facts.push('forced captures');
   $('preview-facts').innerHTML = facts.map((fact) => `<span>${fact}</span>`).join('');
+  theatreVariant(safe);
 }
 for (const tab of $('preview-tabs').children) {
   tab.onclick = () => { previewPiece = tab.dataset.previewPiece; renderVariantPreview(); };
 }
 
 let lobbyTimer = null, lobbyRequest = null, lobbyFailures = 0;
+// Today's tablebase puzzle, on the home page. It is derived rather than fetched: the atlas seeds
+// the same puzzle from the same day and variant, so `/atlas#puzzle=daily` opens exactly the
+// position shown here without either page passing the other a board.
+let dailyPuzzleStarted = false;
+function renderDailyPuzzle(puzzle, day) {
+  const size = puzzle.board.length, span = 96, cell = span / size;
+  const squares = [], pieces = [];
+  for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) {
+    squares.push(`<rect class="dp-sq ${(row + col) % 2 ? 'dark' : 'light'}" x="${col * cell}" `
+      + `y="${row * cell}" width="${cell}" height="${cell}"/>`);
+    const piece = puzzle.board[row][col].piece;
+    if (piece) {
+      const glyphSize = cell * 0.74;
+      pieces.push(previewGlyph(piece.type, piece.color,
+        col * cell + (cell - glyphSize) / 2, row * cell + (cell - glyphSize) / 2, glyphSize));
+    }
+  }
+  const grid = [];
+  for (let index = 0; index <= size; index++) {
+    grid.push(`M${index * cell},0 V${span} M0,${index * cell} H${span}`);
+  }
+  $('dp-board').innerHTML = `${squares.join('')}<path class="dp-grid" d="${grid.join(' ')}"/>${pieces.join('')}`;
+  const side = puzzle.turn === BLUE ? 'Blue' : 'Red';
+  $('dp-ask').textContent = `${side} to play and win in ${puzzle.dtm}`;
+  $('dp-note').textContent = `${puzzle.legal} legal moves · `
+    + `${puzzle.best.length === 1 ? 'one keeps' : `${puzzle.best.length} keep`} the win`;
+  $('dp-date').textContent = day;
+  $('dailypuzzle').hidden = false;
+}
+function ensureDailyPuzzle() {
+  if (dailyPuzzleStarted) return;
+  dailyPuzzleStarted = true;
+  const load = async () => {
+    try {
+      const TB = await import('/tablebase.js');
+      // Skirmish is the solved ruleset; oracleFor answers null for anything else and costs nothing.
+      const oracle = await TB.oracleFor(E.sanitizeCfg(E.PRESETS.skirmish));
+      if (!oracle) return;
+      const day = TB.puzzleDay();
+      const puzzle = TB.dailyPuzzle(oracle.table, oracle.variant.cfg, oracle.id, day);
+      if (puzzle) renderDailyPuzzle(puzzle, day);
+    } catch { /* the home page is complete without it */ }
+  };
+  // Later than the theatre: this one pulls a tablebase down, and nothing on the page waits for it.
+  if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 4000 });
+  else setTimeout(load, 1200);
+}
+
 let showcaseStarted = false;
+let showcaseModule = null;
+// The theatre and the variant stage preview are driven from one place — renderVariantPreview —
+// so they can never disagree about which ruleset is on show. Calls made before the lazy import
+// resolves are not lost: showcase.js remembers the last request and honours it on start.
+function theatreVariant(rules) {
+  if (showcaseModule) showcaseModule.showcaseVariant(rules);
+  else pendingTheatreVariant = rules;
+}
+let pendingTheatreVariant = null;
 function ensureShowcase() {
   if (showcaseStarted) return;
   showcaseStarted = true;
   const load = () => import('/showcase.js')
-    .then(({ initShowcase }) => initShowcase())
+    .then((module) => {
+      showcaseModule = module;
+      if (pendingTheatreVariant) module.showcaseVariant(pendingTheatreVariant);
+      return module.initShowcase();
+    })
     .catch(() => { showcaseStarted = false; });
   if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 1200 });
   else setTimeout(load, 80);
@@ -1506,7 +1572,7 @@ function showHome(options = {}) {
     analysisDraft = null;
     $('analysis-btn').textContent = 'analysis';
   }
-  gen++; leaveOnline(); toggleRulesFlap(false); Object.assign(cfg, ownRules); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); ensureShowcase();
+  gen++; leaveOnline(); toggleRulesFlap(false); Object.assign(cfg, ownRules); editing = false; currentProfile = null; $('editpanel').hidden = true; $('panel').hidden = false; document.body.dataset.screen = 'home'; $('home').hidden = false; $('game').hidden = true; $('profilepage').hidden = true; if (location.hash) location.hash = ''; fillHome(); renderAccountUI(); startLobbyPoll(); ensureShowcase(); ensureDailyPuzzle();
 }
 
 // ── profile screen ───────────────────────────────────────────────────────────
@@ -1657,11 +1723,19 @@ function setMovementInputs(moves) {
 
 function syncBoardInputs() {
   const perMax = E.maxPerTypeForBoard(cfg.size, cfg.layout);
+  const material = E.startingMaterial(cfg);
+  const fixed = cfg.layout === 'azel';
+  $('s-size').min = fixed ? 4 : 3;
   $('s-size').value = cfg.size;
   $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
   $('s-per').max = perMax;
   $('s-per').value = cfg.perType;
-  $('s-per-v').textContent = cfg.perType;
+  // A named formation deals its own material, so the dial reports rather than sets.
+  $('s-per').disabled = fixed;
+  $('s-per-v').textContent = fixed
+    ? `${material.rock}/${material.paper}/${material.scissors}`
+    : String(cfg.perType);
+  $('s-per-v').title = fixed ? 'Azel\'s wall deals two rocks, one paper and three scissors' : '';
 }
 
 function fillHome() {
@@ -1672,6 +1746,7 @@ function fillHome() {
   $('s-move-scissors').value = E.movementFor(cfg, 'scissors');
   $('s-move-preset').value = movementPresetOf(cfg);
   $('s-cap').value = cfg.capture;
+  $('s-forced').checked = cfg.forcedCapture;
   $('s-threefold').checked = cfg.threefold;
   $('s-terr').value = cfg.territory ? 'territory' : 'elimination';
   $('s-retread').checked = cfg.retread; $('s-trail').checked = cfg.trail; $('s-enclosure').checked = cfg.enclosure;
@@ -1692,6 +1767,7 @@ function readHome() {
   cfg.paperMove = $('s-move-paper').value;
   cfg.scissorsMove = $('s-move-scissors').value;
   cfg.capture = $('s-cap').value; cfg.layout = $('s-layout').value;
+  cfg.forcedCapture = $('s-forced').checked;
   cfg.threefold = $('s-threefold').checked;
   cfg.territory = $('s-terr').value === 'territory'; cfg.retread = $('s-retread').checked && cfg.territory;
   cfg.trail = $('s-trail').checked && cfg.territory;
@@ -1719,7 +1795,7 @@ function markPreset() {
 $('s-size').oninput = () => { $('s-size-v').textContent = `${$('s-size').value}×${$('s-size').value}`; readHome(); };
 $('s-per').oninput = () => { $('s-per-v').textContent = $('s-per').value; readHome(); };
 $('s-acts').oninput = () => { $('s-acts-v').textContent = $('s-acts').value; readHome(); };
-for (const id of ['s-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout']) $(id).onchange = readHome;
+for (const id of ['s-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout', 's-forced']) $(id).onchange = readHome;
 for (const id of ['s-move-rock', 's-move-paper', 's-move-scissors']) $(id).onchange = () => {
   if ($('s-cap').value === 'checkers' && movementPresetOf({
     rockMove: $('s-move-rock').value,

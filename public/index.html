@@ -83,6 +83,37 @@
             <button id="acct-chip" class="tbtn" title="Your profile" hidden>★ 1200</button>
           </div>
         </div>
+        <div class="lead-side">
+          <!-- The theatre sits beside the play card so the first thing on screen is the game
+               moving. It follows the variant stage: hover a preset and it restarts on that one. -->
+          <aside class="showcase" id="showcase" aria-labelledby="showcase-label">
+            <div class="showcase-head">
+              <span id="showcase-label">Variant theatre</span>
+              <button id="showcase-toggle" type="button" aria-label="Pause replay" title="Pause replay">Ⅱ</button>
+            </div>
+            <svg id="showcase-board" class="showcase-board" viewBox="0 0 180 180" role="img" aria-label="Autoplaying recent game"></svg>
+            <div class="showcase-caption" aria-live="polite">
+              <b id="showcase-players">Preparing a game…</b>
+              <span id="showcase-variant">recent games and bot variations</span>
+            </div>
+          </aside>
+          <!-- Hidden until the tablebase answers. A puzzle nobody can mark is worse than none,
+               so the card never appears on a promise. -->
+          <aside class="dailypuzzle" id="dailypuzzle" hidden aria-labelledby="dp-label">
+            <div class="dp-head">
+              <span id="dp-label">Daily puzzle</span>
+              <span class="dp-date mono" id="dp-date"></span>
+            </div>
+            <a class="dp-body" id="dp-link" href="/atlas#puzzle=daily" title="Solve it on the tablebase atlas">
+              <svg class="dp-board" id="dp-board" viewBox="0 0 96 96" role="img" aria-label="Today's tablebase puzzle position"></svg>
+              <span class="dp-copy">
+                <b id="dp-ask">…</b>
+                <span id="dp-note"></span>
+                <span class="dp-go">solve it on the atlas →</span>
+              </span>
+            </a>
+          </aside>
+        </div>
       </section>
 
       <section class="config">
@@ -142,6 +173,9 @@
                   <option value="checkers">Checkers — leap an enemy (sets Long kings)</option>
                 </select>
               </label>
+              <div class="frow" title="When any capture is available to you, every other move is illegal. Rechecked before each action."><span>Forced captures</span>
+                <label class="chk"><input type="checkbox" id="s-forced"> a capture on offer must be played</label>
+              </div>
               <label class="frow" title="Paint the most squares, or wipe out the enemy army."><span>Goal</span>
                 <select id="s-terr">
                   <option value="territory">Territory — paint the most squares</option>
@@ -162,6 +196,7 @@
                   <option value="rows">Centre — facing blocks</option>
                   <option value="corners">Corners — diagonal stand-off</option>
                   <option value="scattered">Scattered — random, symmetric</option>
+                  <option value="azel">Azel's wall — scissors screen, fixed six</option>
                 </select>
               </label>
               <label class="frow" title="Which colour opens."><span>First move</span>
@@ -180,18 +215,6 @@
         <ul class="games" id="games"></ul>
         <p class="lobby-empty" id="lobby-empty" aria-live="polite">No open games right now — create one and share the link.</p>
       </section>
-
-        <aside class="showcase" id="showcase" aria-labelledby="showcase-label">
-        <div class="showcase-head">
-          <span id="showcase-label">Variant theatre</span>
-          <button id="showcase-toggle" type="button" aria-label="Pause replay" title="Pause replay">Ⅱ</button>
-        </div>
-        <svg id="showcase-board" class="showcase-board" viewBox="0 0 180 180" role="img" aria-label="Autoplaying recent game"></svg>
-        <div class="showcase-caption" aria-live="polite">
-          <b id="showcase-players">Preparing a game…</b>
-          <span id="showcase-variant">recent games and bot variations</span>
-        </div>
-      </aside>
     </div>
   </main>
 

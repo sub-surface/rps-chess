@@ -109,7 +109,10 @@ export class GameRoom extends DurableObject {
       }
       if (!saved) return;
       this.game = saved.game;
-      this.game.cfg = E.sanitizeCfg(this.game.cfg);
+      // A room persisted before `rulesVersion` existed was played under the unrestricted leap,
+      // so it finishes under it. Only this migration path names 1.0; the rematch, which builds a
+      // fresh config from the client, starts under the current rule.
+      this.game.cfg = E.sanitizeCfg({ rulesVersion: '1.0', ...this.game.cfg });
       E.seedRepetitions(this.game);
       this.game.startPos = this.game.startPos || this.game.pos
         || (this.game.moves?.length ? null : E.encodePos(this.game.board));

@@ -7,6 +7,7 @@
 import * as E from './engine.js';
 import { glyph, PIECE_STYLE_IDS } from './pieces.js';
 import * as TB from './tablebase.js';
+import * as L from './lab.js';
 import { mountFact } from './facts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -45,6 +46,11 @@ const state = {
   lens: 'moves',
   graphDepth: 2,
   graphBest: true,
+  puzzle: null,
+  pendingPuzzle: false,
+  spoilers: (() => {
+    try { return localStorage.getItem('janken-spoilers') !== '0'; } catch { return true; }
+  })(),
 };
 
 const variantOf = (id) => manifest.variants.find((v) => v.id === id);
@@ -165,6 +171,67 @@ const CSV_SOURCES = {
       { 1: 'win', 0: 'draw', '-1': 'loss' }[String(value)],
     ])),
   }),
+  reach: () => {
+    const reach = variantOf(state.variant).reachable;
+    if (!reach) return null;
+    return {
+      name: `janken-3x3-${state.variant}-reachable.csv`,
+      header: ['pieces_on_board', 'states', 'reachable_states', 'reachable_win', 'reachable_draw', 'reachable_loss'],
+      rows: reach.layers.map((layer) => [layer.m, layer.states, layer.reached, layer.W, layer.D, layer.L]),
+    };
+  },
+  simplex: () => {
+    const grid = simplexData();
+    if (!grid) return null;
+    const rows = [];
+    for (let blue = 0; blue < 8; blue++) for (let red = 0; red < 8; red++) {
+      const cell = grid[blue][red];
+      if (cell.states) rows.push([MASK_LABEL(blue), MASK_LABEL(red), cell.states, cell.W, cell.D, cell.L]);
+    }
+    return {
+      name: `janken-3x3-${state.variant}-material.csv`,
+      header: ['blue_types', 'red_types', 'states', 'blue_win', 'blue_draw', 'blue_loss'],
+      rows,
+    };
+  },
+  squares: () => {
+    const maps = heatData();
+    if (!maps) return null;
+    const rows = [];
+    TYPES.forEach((type, slot) => maps[slot].forEach((cell, i) => {
+      rows.push([type, square((i / TB.SIZE) | 0, i % TB.SIZE), cell.states, cell.W, cell.D, cell.L]);
+    }));
+    return { name: `janken-3x3-${state.variant}-squares.csv`, header: ['piece', 'square', 'states', 'blue_win', 'blue_draw', 'blue_loss'], rows };
+  },
+  // The two lab sections are about every board size, not about one solved variant, so their
+  // exports are named for the game rather than for the archetype on show.
+  ladder: () => (lab ? {
+    name: 'janken-state-space.csv',
+    header: ['board', 'cells', 'pieces', 'placements', 'positions', 'legal_openings', 'table_bytes', 'solve_seconds'],
+    rows: lab.ladder.map((rung) => [`${rung.size}x${rung.size}`, rung.cells, rung.pieces,
+      rung.placements, rung.states, rung.openings, rung.solvedBytes, Math.round(rung.solveSeconds)]),
+  } : null),
+  blocking: () => (lab ? {
+    name: 'janken-mobility.csv',
+    header: ['board', 'cells', 'king_destinations_total', 'mean_per_cell', 'measured_takeable_share', 'random_games'],
+    rows: lab.blocking.ceiling.map((entry) => {
+      const measured = runsShown().find((run) => run.size === entry.size && run.policy === 'random');
+      return [`${entry.size}x${entry.size}`, entry.cells, entry.total, entry.mean.toFixed(4),
+        measured ? measured.contactRatio.toFixed(4) : '', measured ? measured.games : ''];
+    }),
+  } : null),
+  measured: () => (lab ? {
+    name: 'janken-selfplay.csv',
+    header: ['board', 'policy', 'games', 'blue_wins', 'red_wins', 'draws', 'first_player_rate',
+      'ci_low', 'ci_high', 'mean_plies', 'median_plies', 'mean_branching', 'capture_rate',
+      'takeable_contact_share'],
+    // median_plies is blank on a pooled run, because a median cannot be recovered from two
+    // summaries. Blank is the honest cell; a weighted average of medians would not be.
+    rows: runsShown().map((run) => [`${run.size}x${run.size}`, run.policy, run.games,
+      run.blue, run.red, run.draws, run.firstPlayer.p.toFixed(4), run.firstPlayer.lo.toFixed(4),
+      run.firstPlayer.hi.toFixed(4), run.meanPlies.toFixed(2), run.medianPlies ?? '',
+      run.meanBranching.toFixed(3), run.captureRate.toFixed(4), run.contactRatio.toFixed(4)]),
+  } : null),
 };
 
 // One button per section that has data behind it, injected rather than written into the markup so
@@ -205,6 +272,7 @@ async function downloadDataPack(button) {
       // page itself reads.
       members.push({ name: `${variant.id}.tb`, bytes: new Uint8Array(await response.arrayBuffer()) });
     }
+    if (lab) members.push({ name: 'lab.json', bytes: new TextEncoder().encode(`${JSON.stringify(lab, null, 2)}\n`) });
     for (const [key, source] of Object.entries(CSV_SOURCES)) {
       if (key === 'moves') continue;                 // position-specific, not an aggregate
       const data = source();
@@ -230,6 +298,7 @@ function setPosition(board, turn, { push = true, reason = '' } = {}) {
 }
 
 function playMove(move) {
+  judgePuzzle(move);
   state.history.push({ board: E.cloneBoard(state.board), turn: state.turn });
   state.board = move.board;
   state.turn = E.other(state.turn);
@@ -250,6 +319,9 @@ function readHash() {
   const params = new URLSearchParams(window.location.hash.slice(1));
   const variant = params.get('v');
   if (variant && manifest.variants.some((v) => v.id === variant)) state.variant = variant;
+  // `#puzzle=daily` carries no position: the seed is the day and the variant, so the home page
+  // and this one derive the same puzzle rather than passing one between them and risking drift.
+  if (params.get('puzzle') === 'daily') { state.pendingPuzzle = true; return; }
   // An absent parameter must not read as placement zero — that is the empty board.
   const raw = params.get('p');
   if (raw === null) return;
@@ -325,11 +397,13 @@ function renderBoard(ranked) {
     }
 
     const move = selectedMoves.find((m) => m.tr === row && m.tc === col);
-    const dotKey = move ? `${OUTCOME[moverValue(move) + 1]}${move.captured ? 'c' : ''}` : '';
+    // With answers hidden a destination is still a destination — it just stops saying how it ends.
+    const tone = move ? (state.spoilers ? OUTCOME[moverValue(move) + 1] : 'N') : '';
+    const dotKey = move ? `${tone}${move.captured ? 'c' : ''}` : '';
     if (cell.dataset.dot !== dotKey) {
       cell.dataset.dot = dotKey;
       cell.dotHost.innerHTML = move
-        ? `<span class="dest ${OUTCOME[moverValue(move) + 1]}${move.captured ? ' cap' : ''}"></span>`
+        ? `<span class="dest ${tone}${move.captured ? ' cap' : ''}"></span>`
         : '';
     }
 
@@ -371,6 +445,12 @@ function renderArrows(list) {
   const group = $('arrow-group');
   const note = $('tb-key-note');
   group.innerHTML = '';
+  if (!state.spoilers) {
+    note.textContent = list.length
+      ? 'Answers hidden: destinations are shown, but not which of them wins. Turn them back on beside the board.'
+      : '';
+    return;
+  }
   if (state.selected || !list.length) {
     note.textContent = state.selected
       ? 'Dots mark this piece\'s legal squares, coloured the same way. A ring means a capture.'
@@ -465,16 +545,19 @@ function renderMoveList(ranked) {
       : 'No legal moves from here.';
     return;
   }
-  for (const move of ranked) {
+  const listed = state.spoilers ? ranked : [...ranked].sort((a, b) => a.san.localeCompare(b.san));
+  for (const move of listed) {
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = `move-row${isBest(move, ranked) ? ' best' : ''}`;
+    row.className = `move-row${state.spoilers && isBest(move, ranked) ? ' best' : ''}`;
     const letter = OUTCOME[moverValue(move) + 1];
     const word = { W: 'WIN', D: 'DRAW', L: 'LOSS' }[letter];
     row.innerHTML = `${pieceGlyph(move.piece.type, move.piece.color)}`
       + `<span class="san">${move.san}</span>`
       + `<span class="tag">${move.captured ? `takes ${move.captured.type}` : 'quiet'}</span>`
-      + `<span class="out ${letter}">${word}${letter === 'D' ? '' : ` · ${move.after.dtm}`}</span>`;
+      + (state.spoilers
+        ? `<span class="out ${letter}">${word}${letter === 'D' ? '' : ` · ${move.after.dtm}`}</span>`
+        : '<span class="out N">·</span>');
     const highlight = () => { state.selected = { r: move.fr, c: move.fc }; renderSelection(); };
     row.addEventListener('mouseenter', highlight);
     row.addEventListener('focus', highlight);
@@ -482,8 +565,11 @@ function renderMoveList(ranked) {
     host.appendChild(row);
   }
   const best = ranked.filter((m) => isBest(m, ranked)).length;
-  $('movelist-note').textContent = `${best} of ${ranked.length} ${best === 1 ? 'move keeps' : 'moves keep'} `
-    + 'the best result available; the rest give something away.';
+  $('movelist-note').textContent = state.spoilers
+    ? `${best} of ${ranked.length} ${best === 1 ? 'move keeps' : 'moves keep'} `
+      + 'the best result available; the rest give something away.'
+    : `${ranked.length} legal moves. Answers are hidden, so the order here is alphabetical rather `
+      + 'than ranked — nothing on this page is telling you which one is right.';
 }
 
 // ── mini boards, used by every gallery on the page ──────────────────────────
@@ -593,6 +679,11 @@ async function selectVariant(id) {
   renderPosition();
   renderOpeningGrid();
   renderHistogram();
+  renderReach();
+  // These two are per-variant and cached, so re-rendering is a lookup unless this is the first
+  // time the archetype has been looked at through them.
+  if (simplexCache.has(id) || $('simplex-grid').childElementCount) renderSimplex();
+  if (heatCache.has(id) || $('heatgrid').childElementCount) renderHeatmap();
 }
 
 let crossLoading = null;
@@ -955,16 +1046,427 @@ function wireGraphViewport() {
   svg.addEventListener('pointercancel', stop);
 }
 
+// ── 08 puzzles ───────────────────────────────────────────────────────────────
+// A solved game can set its own exercises, and mark them. Nothing here evaluates anything: the
+// question comes from a won entry in the table and the answer is whatever `topMoves` says, so a
+// puzzle cannot be wrong in the way a generated-by-an-engine puzzle can.
+const puzzleStore = () => {
+  try { return JSON.parse(localStorage.getItem('janken-puzzle') || '{}') || {}; } catch { return {}; }
+};
+const savePuzzle = (data) => {
+  try { localStorage.setItem('janken-puzzle', JSON.stringify(data)); } catch { /* optional */ }
+};
+const todayKey = () => TB.puzzleDay();
+
+// The board tells you the answer: destinations are tinted by result and the arrows point at the
+// best move. That is the whole point of the page and exactly wrong while a puzzle is open, so it
+// is a toggle rather than a special case — a reader can also just turn it off and try any position.
+function setSpoilers(on) {
+  state.spoilers = !!on;
+  try { localStorage.setItem('janken-spoilers', on ? '1' : '0'); } catch { /* optional */ }
+  const button = $('spoiler-btn');
+  if (button) {
+    button.classList.toggle('on', state.spoilers);
+    button.textContent = state.spoilers ? 'answers shown' : 'answers hidden';
+    button.setAttribute('aria-pressed', String(state.spoilers));
+    button.title = state.spoilers
+      ? 'Hide the result colouring, the best-move arrows and the ranking'
+      : 'Show which moves win, lose and draw';
+  }
+  if (manifest) renderPosition();
+}
+
+function loadPuzzle(kind, { scroll = true } = {}) {
+  const table = tables.get(state.variant);
+  const cfg = activeCfg();
+  const puzzle = kind === 'daily'
+    ? TB.dailyPuzzle(table, cfg, state.variant)
+    : TB.findPuzzle(table, cfg, TB.rngFrom((Math.random() * 0xffffffff) >>> 0));
+  if (!puzzle) { $('puzzle-state').textContent = 'No puzzle in this variant yet — pick another rule set.'; return; }
+  state.puzzle = {
+    kind, dtm: puzzle.dtm, turn: puzzle.turn, moves: puzzle.best.length, done: false, failed: false,
+  };
+  // Answers off while a puzzle is live, or the board is already pointing at the solution.
+  setSpoilers(false);
+  setPosition(puzzle.board, puzzle.turn);
+  renderPuzzle();
+  if (scroll) document.getElementById('puzzles').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Marking happens on the way through playMove, so a puzzle move and an exploring move are the
+// same action — you are never asked to press "submit".
+function judgePuzzle(move) {
+  const puzzle = state.puzzle;
+  if (!puzzle || puzzle.done || state.turn !== puzzle.turn) return;
+  const correct = isBest(move, ranked);
+  puzzle.done = true;
+  puzzle.failed = !correct;
+  setSpoilers(true);                              // the answer is no longer worth hiding
+  if (puzzle.kind !== 'daily') return;
+  const store = puzzleStore();
+  if (store.day === todayKey()) return;                 // today already counted
+  const streak = correct ? (store.streak || 0) + 1 : 0;
+  savePuzzle({ day: todayKey(), streak, best: Math.max(streak, store.best || 0) });
+}
+
+function renderPuzzle() {
+  const puzzle = state.puzzle;
+  const store = puzzleStore();
+  $('puzzle-tag').textContent = puzzle?.kind === 'daily' ? `daily · ${todayKey()}` : 'random';
+  if (!puzzle) {
+    $('puzzle-ask').textContent = 'Pick a puzzle';
+    $('puzzle-state').textContent = 'The board holds whatever you left on it.';
+  } else {
+    const side = puzzle.turn === E.BLUE ? 'Blue' : 'Red';
+    $('puzzle-ask').textContent = `${side} to play and win in ${puzzle.dtm}`;
+    $('puzzle-state').textContent = !puzzle.done
+      ? `${puzzle.moves === 1 ? 'One move' : `${puzzle.moves} moves`} keeps the win. Play it on the board.`
+      : puzzle.failed
+        ? 'That move gives the win away. The board has moved on — undo to try again.'
+        : 'Correct: the win survives.';
+  }
+  $('puzzle-state').className = `puzzle-state${puzzle?.done ? (puzzle.failed ? ' wrong' : ' right') : ''}`;
+  $('puzzle-streak').textContent = store.streak
+    ? `daily streak ${store.streak}${store.best > store.streak ? ` · best ${store.best}` : ''}`
+    : '';
+}
+
+// ── 09 reachable play ────────────────────────────────────────────────────────
+function renderReach() {
+  const variant = variantOf(state.variant);
+  const reach = variant.reachable;
+  if (!reach) return;
+  const share = reach.states / TB.STATES;
+  $('reach-headline').textContent = `${nf.format(reach.states)}, ${pct(share)}`;
+  $('reach-deals').textContent = nf.format(variant.fairStarts.count);
+
+  const whole = variant.wdl;
+  const decided = (set) => (set.W + set.L) / (set.W + set.D + set.L);
+  // The spread across archetypes is the real finding here, and it is not subtle: a king can walk
+  // its army anywhere, so almost every arrangement is reachable, while a bishop never leaves its
+  // colour complex and a knight never leaves its parity. Same board, same pieces, and one game
+  // can enter twenty times as much of it as another.
+  const ranked = manifest.variants
+    .filter((entry) => entry.reachable)
+    .sort((a, b) => b.reachable.states - a.reachable.states);
+  const spread = ranked.length > 1
+    ? ` Across the seven archetypes this ranges from ${pct(ranked[0].reachable.states / TB.STATES)} `
+      + `(${ranked[0].label.toLowerCase()}) down to ${pct(ranked.at(-1).reachable.states / TB.STATES)} `
+      + `(${ranked.at(-1).label.toLowerCase()}), which is what movement geometry costs: a piece bound `
+      + `to one colour complex or one parity can never assemble most of the positions the board allows.`
+    : '';
+  $('reach-verdicts').textContent = `Across the whole table ${pct(decided(whole))} of positions are `
+    + `decided; across the reachable ones ${pct(decided(reach.wdl))}. `
+    + (decided(reach.wdl) < decided(whole)
+      ? 'The wins concentrate in positions no deal can produce.'
+      : 'Reachable play is the more decisive half of the table.')
+    + spread;
+
+  const widest = Math.max(...reach.layers.map((layer) => layer.states)) || 1;
+  $('reachbars').innerHTML = reach.layers.map((layer) => {
+    const total = layer.states;
+    const hit = total ? layer.reached / total : 0;
+    return `<div class="reachrow">
+      <span class="rr-label">${layer.m} piece${layer.m === 1 ? '' : 's'}</span>
+      <span class="rr-track" style="--w:${(100 * total / widest).toFixed(2)}%">
+        <span class="rr-total"></span>
+        <span class="rr-hit" style="--h:${(100 * hit).toFixed(2)}%"></span>
+      </span>
+      <span class="rr-figure">${pct(hit)}</span>
+      <span class="rr-count mono">${nf.format(layer.reached)} / ${nf.format(total)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── material census, shared by 10 and 11 ─────────────────────────────────────
+// Which types each side still holds, per placement. Built once and reused: the two sections that
+// need it both walk the whole table, and rebuilding a 200k-entry index twice would be felt.
+let censusCache = null;
+function census() {
+  if (censusCache) return censusCache;
+  const blue = new Uint8Array(TB.PLACEMENTS), red = new Uint8Array(TB.PLACEMENTS);
+  for (let p = 0; p < TB.PLACEMENTS; p++) {
+    const positions = TB.positionsFromKey(keys[p]);
+    let b = 0, r = 0;
+    for (let slot = 0; slot < 6; slot++) {
+      if (positions[slot] < 0) continue;
+      if (slot < 3) b |= 1 << slot; else r |= 1 << (slot - 3);
+    }
+    blue[p] = b; red[p] = r;
+  }
+  return (censusCache = { blue, red });
+}
+const MASK_LABEL = (mask) => (mask ? TYPES.filter((_, i) => mask & (1 << i)).map((t) => LETTER[t]).join('') : '—');
+
+// ── 10 the shape of material ─────────────────────────────────────────────────
+const simplexCache = new Map();
+function simplexData(id = state.variant) {
+  if (simplexCache.has(id)) return simplexCache.get(id);
+  const table = tables.get(id);
+  if (!table) return null;
+  const { blue, red } = census();
+  const grid = Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => ({ states: 0, W: 0, D: 0, L: 0, sample: -1 })));
+  for (let p = 0; p < TB.PLACEMENTS; p++) {
+    const cell = grid[blue[p]][red[p]];
+    const value = TB.valueOf(table[p * 2]);                 // always Blue to move, so the grid reads one way
+    cell.states++;
+    cell[value === 1 ? 'W' : value === -1 ? 'L' : 'D']++;
+    if (cell.sample < 0 || (p % 977) === 0) cell.sample = p;
+  }
+  simplexCache.set(id, grid);
+  return grid;
+}
+
+function renderSimplex() {
+  const grid = simplexData();
+  if (!grid) return;
+  const masks = [7, 3, 5, 6, 1, 2, 4, 0];                   // richest first, so the live game sits top-left
+  const head = `<span class="sx-corner">Blue \\ Red</span>`
+    + masks.map((mask) => `<span class="sx-head">${MASK_LABEL(mask)}</span>`).join('');
+  const body = masks.map((blueMask) => `<span class="sx-head row">${MASK_LABEL(blueMask)}</span>`
+    + masks.map((redMask) => {
+      const cell = grid[blueMask][redMask];
+      if (!cell.states) return '<span class="sx-cell empty"></span>';
+      const edge = (cell.W - cell.L) / cell.states;
+      const tone = edge >= 0 ? 'win' : 'loss';
+      return `<button type="button" class="sx-cell ${tone}" data-placement="${cell.sample}"
+        style="--k:${Math.abs(edge).toFixed(3)}"
+        title="Blue ${MASK_LABEL(blueMask)} vs Red ${MASK_LABEL(redMask)} — ${nf.format(cell.states)} positions, Blue wins ${pct(cell.W / cell.states)}, draws ${pct(cell.D / cell.states)}, loses ${pct(cell.L / cell.states)}"
+        >${(100 * edge).toFixed(0)}</button>`;
+    }).join('')).join('');
+  $('simplex-grid').innerHTML = head + body;
+  for (const button of $('simplex-grid').querySelectorAll('[data-placement]')) {
+    button.addEventListener('click', () => {
+      setPosition(TB.boardOf(TB.positionsFromKey(keys[+button.dataset.placement])), E.BLUE);
+    });
+  }
+  const dead = grid[1][1].states + grid[2][2].states + grid[4][4].states;
+  $('simplex-note').textContent = `Each cell is Blue's win share minus its loss share, over every position `
+    + `with that material and Blue to move. The three cells on the diagonal where both sides hold one `
+    + `matching type — R vs R, P vs P, S vs S — are ${nf.format(dead)} positions in which no capture is `
+    + `possible at all, and the game is over before it starts.`;
+}
+
+// ── 11 what a square is worth ────────────────────────────────────────────────
+const heatCache = new Map();
+function heatData(id = state.variant) {
+  if (heatCache.has(id)) return heatCache.get(id);
+  const table = tables.get(id);
+  if (!table) return null;
+  const maps = TYPES.map(() => Array.from({ length: TB.CELLS }, () => ({ states: 0, W: 0, D: 0, L: 0 })));
+  for (let p = 0; p < TB.PLACEMENTS; p++) {
+    const positions = TB.positionsFromKey(keys[p]);
+    const value = TB.valueOf(table[p * 2]);
+    for (let slot = 0; slot < 3; slot++) {
+      if (positions[slot] < 0) continue;
+      const cell = maps[slot][positions[slot]];
+      cell.states++;
+      cell[value === 1 ? 'W' : value === -1 ? 'L' : 'D']++;
+    }
+  }
+  heatCache.set(id, maps);
+  return maps;
+}
+
+function renderHeatmap() {
+  const maps = heatData();
+  if (!maps) return;
+  const all = maps.flat();
+  const edges = all.map((cell) => (cell.states ? (cell.W - cell.L) / cell.states : 0));
+  const span = Math.max(...edges.map(Math.abs)) || 1;
+  $('heatgrid').innerHTML = TYPES.map((type, slot) => {
+    const squares = maps[slot].map((cell, i) => {
+      const edge = cell.states ? (cell.W - cell.L) / cell.states : 0;
+      return `<button type="button" class="ht-sq ${edge >= 0 ? 'win' : 'loss'}"
+        style="--k:${(Math.abs(edge) / span).toFixed(3)}"
+        title="${PIECE_WORD[type]} on ${square((i / TB.SIZE) | 0, i % TB.SIZE)} — ${nf.format(cell.states)} positions, Blue wins ${pct(cell.W / (cell.states || 1))}"
+        >${(100 * edge).toFixed(0)}</button>`;
+    }).join('');
+    return `<figure class="heat"><figcaption>${pieceGlyph(type, E.BLUE)}<span>${PIECE_WORD[type]}</span></figcaption>
+      <div class="ht-board">${squares}</div></figure>`;
+  }).join('');
+  const best = edges.indexOf(Math.max(...edges));
+  const type = TYPES[(best / TB.CELLS) | 0], at = best % TB.CELLS;
+  const nine = lab?.ladder.find((rung) => rung.size === 9);
+  $('heat-note').textContent = `Blue's win share minus its loss share, over every position with that `
+    + `piece on that square and Blue to move. The strongest square in these rules is `
+    + `${PIECE_WORD[type].toLowerCase()} on ${square((at / TB.SIZE) | 0, at % TB.SIZE)}, and the `
+    + `spread across the whole board is ${(100 * (Math.max(...edges) - Math.min(...edges))).toFixed(0)} `
+    + `points. A value map this small is complete rather than estimated`
+    + (nine ? `: the same picture on a 9×9 needs the table from section 12, which is ${HUMAN_TIME(nine.solveSeconds)} of solving.` : '.');
+}
+const PIECE_WORD = { rock: 'Rock', paper: 'Paper', scissors: 'Scissors' };
+
+// ── 12 beyond the pocket board ───────────────────────────────────────────────
+let lab = null;
+// Decimal units, from an exact decimal string: these numbers pass 2^53 four sizes in, so the
+// magnitude comes from the digit count rather than from a float that has already lost it.
+const HUMAN_BYTES = (decimal) => {
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const power = L.log10Of(decimal);
+  const step = Math.min(units.length - 1, Math.floor(power / 3));
+  const scaled = 10 ** (power - step * 3);
+  return `${scaled.toFixed(scaled < 10 ? 1 : 0)} ${units[step]}`;
+};
+const HUMAN_TIME = (seconds) => {
+  if (seconds < 90) return `${seconds.toFixed(0)} s`;
+  if (seconds < 5400) return `${(seconds / 60).toFixed(0)} min`;
+  if (seconds < 129_600) return `${(seconds / 3600).toFixed(1)} hours`;
+  if (seconds < 3.1e7) return `${(seconds / 86_400).toFixed(0)} days`;
+  const years = seconds / 3.156e7;
+  return years > 1e6 ? `${years.toExponential(1)} years` : `${nf.format(Math.round(years))} years`;
+};
+
+function renderLadder() {
+  if (!lab) return;
+  const top = Math.max(...lab.ladder.map((rung) => rung.log10States));
+  $('ladder').innerHTML = lab.ladder.map((rung) => {
+    const notable = rung.size === 3 || rung.size === 5 || rung.size === 9;
+    return `<div class="rung${rung.solved ? ' solved' : ''}${notable ? ' notable' : ''}">
+      <span class="rg-label">${rung.size}×${rung.size}</span>
+      <span class="rg-track"><span class="rg-fill" style="--w:${(100 * rung.log10States / top).toFixed(2)}%"></span></span>
+      <span class="rg-value mono">10<sup>${rung.log10States.toFixed(1)}</sup></span>
+      <span class="rg-tag">${rung.solved ? 'solved' : HUMAN_BYTES(rung.states)}</span>
+    </div>`;
+  }).join('');
+
+  const rows = lab.ladder.filter((rung) => [3, 5, 7, 9, 13].includes(rung.size));
+  $('ladder-table').innerHTML = `<table><thead><tr>
+      <th>board</th><th>pieces</th><th>positions</th><th>legal openings</th><th>moves a position</th>
+      <th>table</th><th>one core</th>
+    </tr></thead><tbody>${rows.map((rung) => `<tr${rung.solved ? ' class="solved"' : ''}>
+      <td>${rung.size}×${rung.size}</td>
+      <td>${rung.pieces}</td>
+      <td class="mono">10<sup>${rung.log10States.toFixed(1)}</sup></td>
+      <td class="mono">${nf.format(Number(rung.openings))}</td>
+      <td class="mono">${rung.branching.toFixed(1)}${rung.branchingMeasured ? '' : '*'}</td>
+      <td class="mono">${HUMAN_BYTES(rung.solvedBytes)}</td>
+      <td class="mono">${HUMAN_TIME(rung.solveSeconds)}</td>
+    </tr>`).join('')}</tbody></table>`;
+
+  const five = lab.ladder.find((rung) => rung.size === 5);
+  const nine = lab.ladder.find((rung) => rung.size === 9);
+  const three = lab.ladder.find((rung) => rung.size === 3);
+  $('ladder-note').textContent = `Positions and openings are exact. The last two columns are `
+    + `priced from the run that produced this site's tables — ${nf.format(lab.method.solverEdgesPerSecond)} `
+    + `moves a second on one core, which puts the 3×3 at ${HUMAN_TIME(three.solveSeconds)} against the `
+    + `21 seconds it really took. On that rate the 5×5 is ${HUMAN_BYTES(five.solvedBytes)} of table and `
+    + `${HUMAN_TIME(five.solveSeconds)} of walking: not impossible, but not a static asset either. The `
+    + `9×9 is ${HUMAN_BYTES(nine.solvedBytes)}, which is more storage than has ever been manufactured. `
+    + `A star marks a branching factor interpolated between measured sizes rather than measured.`;
+}
+
+// ── 13 measured play ─────────────────────────────────────────────────────────
+let liveRuns = new Map();                                   // size|policy → extra games run here
+const runKey = (run) => `${run.size}|${run.policy}`;
+const runsShown = () => (lab?.play || []).map((run) => L.mergeSummaries(run, liveRuns.get(runKey(run)) || null));
+// A median survives only until two batches are pooled, so a run that has been extended in this
+// browser reports the mean it can still compute exactly rather than an average of two medians.
+const plies = (run) => (run.medianPlies === null
+  ? `${run.meanPlies.toFixed(0)} plies mean`
+  : `${run.medianPlies} plies median`);
+
+function renderRuns() {
+  if (!lab) return;
+  $('runs').innerHTML = runsShown().map((run) => {
+    const { p, lo, hi } = run.firstPlayer;
+    return `<div class="run">
+      <span class="run-name">${run.size}×${run.size} <em>${run.policy}</em></span>
+      <span class="run-bar" title="Blue wins ${pct(p)} of decisive games (95% CI ${pct(lo)}–${pct(hi)})">
+        <span class="run-mid"></span>
+        <span class="run-ci" style="--lo:${(100 * lo).toFixed(2)}%;--hi:${(100 * hi).toFixed(2)}%"></span>
+        <span class="run-dot" style="--p:${(100 * p).toFixed(2)}%"></span>
+      </span>
+      <span class="run-figure mono">${pct(p)}</span>
+      <span class="run-meta mono">${pct(run.drawRate.p)} drawn · ${plies(run)} · b=${run.meanBranching.toFixed(1)} · ${nf.format(run.games)} games</span>
+    </div>`;
+  }).join('');
+
+  const check = runsShown().find((run) => run.size === 3 && run.policy === 'greedy');
+  if (check) {
+    $('runs-note').textContent = `The calibration: perfect play draws all 192 legal 3×3 openings — `
+      + `100%, from the table above. The same board under this self-play draws ${pct(check.drawRate.p)}, `
+      + `and hands Blue ${pct(check.firstPlayer.p)} of the decisive games rather than the nothing it is `
+      + `entitled to. Nobody here is playing well. Read every row below as what happens between two `
+      + `impatient players, not as what the game is worth.`;
+  }
+}
+
+function renderLengths() {
+  if (!lab) return;
+  const runs = runsShown().filter((run) => run.policy === 'greedy');
+  const labels = L.PLY_BUCKETS.map((edge, i) => (edge === Infinity ? '240+' : `≤${edge}`));
+  $('lengths').innerHTML = runs.map((run) => {
+    const top = Math.max(...run.plyBuckets) || 1;
+    return `<figure class="len"><figcaption>${run.size}×${run.size}</figcaption>
+      <div class="len-bars">${run.plyBuckets.map((count, i) => `<span class="len-bar"
+        style="--h:${(100 * count / top).toFixed(2)}%"
+        title="${labels[i]} plies — ${count} of ${run.games} games"></span>`).join('')}</div>
+      <div class="len-axis"><span>10</span><span>240+</span></div></figure>`;
+  }).join('');
+}
+
+async function runMoreGames(button) {
+  if (!lab) return;
+  button.disabled = true;
+  $('lab-status').textContent = 'playing…';
+  await new Promise((resolve) => setTimeout(resolve, 16));   // let the label paint before we block
+  for (const run of lab.play) {
+    const key = runKey(run);
+    const already = liveRuns.get(key);
+    const extra = L.measure(L.labCfg(run.size), {
+      games: 200,
+      seed: lab.method.seed,
+      policy: run.policy,
+      offset: lab.method.games + (already?.games || 0),
+    });
+    liveRuns.set(key, L.mergeSummaries(already, extra));
+  }
+  renderRuns();
+  renderLengths();
+  const added = [...liveRuns.values()].reduce((sum, run) => sum + run.games, 0);
+  $('lab-status').textContent = `${nf.format(added)} games added in this browser — intervals narrowed`;
+  button.disabled = false;
+}
+
+// ── 14 the blocking law ──────────────────────────────────────────────────────
+function renderBlocking() {
+  if (!lab) return;
+  const ceiling = lab.blocking.ceiling;
+  const top = Math.max(...ceiling.map((entry) => entry.mean));
+  $('blocklaw').innerHTML = `<div class="bl-chart">${ceiling.map((entry) => {
+    const measured = runsShown().find((run) => run.size === entry.size && run.policy === 'random');
+    return `<div class="bl-row${measured ? ' measured' : ''}">
+      <span class="bl-label">${entry.size}×${entry.size}</span>
+      <span class="bl-track"><span class="bl-fill" style="--w:${(100 * entry.mean / top).toFixed(2)}%"></span></span>
+      <span class="bl-value mono">${entry.mean.toFixed(2)}</span>
+      <span class="bl-measured mono">${measured ? `${pct(measured.contactRatio)} takeable` : ''}</span>
+    </div>`;
+  }).join('')}</div>`;
+  const measured = runsShown().filter((run) => run.policy === 'random');
+  const mean = measured.reduce((sum, run) => sum + run.contactRatio, 0) / (measured.length || 1);
+  $('block-note').textContent = `The bars are the average number of squares a king can reach on an `
+    + `empty board of that size — 3 in a corner, 5 on an edge, 8 inside. Beside them is the share of `
+    + `adjacent enemies that were actually takeable across ${nf.format(measured.reduce((sum, run) => sum + run.games, 0))} `
+    + `random games: ${pct(mean)}, against a predicted one in three. Contact in this game is mostly wall.`;
+}
+
 // ── static panels ────────────────────────────────────────────────────────────
 function renderHero() {
   $('hero-states').textContent = nf.format(TB.STATES);
   const king = variantOf('king');
+  const bishop = variantOf('bishop');
   $('hero-figures').innerHTML = [
     ['positions solved', nf.format(TB.STATES)],
     ['movement archetypes', manifest.variants.length],
     ['legal openings, all drawn', '192'],
     ['longest forced win', `${Math.max(...manifest.variants.map((v) => v.maxDtm))} plies`],
     ['moves walked, king rules', nf.format(king.edges)],
+    // The spread between these two is the finding, not either number on its own.
+    ...(king.reachable && bishop.reachable
+      ? [['reachable in play, kings vs bishops',
+        `${pct(king.reachable.states / TB.STATES)} · ${pct(bishop.reachable.states / TB.STATES)}`]]
+      : []),
   ].map(([label, figure]) => `<div class="hero-figure"><span>${label}</span><b>${figure}</b></div>`).join('');
 }
 
@@ -996,6 +1498,7 @@ function renderPosition() {
   renderCrossCheck();
   renderSymmetry();
   renderGraph();
+  renderPuzzle();
   $('turn-blue').classList.toggle('on', state.turn === E.BLUE);
   $('turn-red').classList.toggle('on', state.turn === E.RED);
   $('undo-btn').disabled = !state.history.length;
@@ -1078,7 +1581,37 @@ function wireControls() {
     renderGraph();
   });
   $('graph-fit').addEventListener('click', fitGraph);
+  setSpoilers(state.spoilers);
+  $('spoiler-btn').addEventListener('click', () => setSpoilers(!state.spoilers));
+  $('puzzle-daily').addEventListener('click', () => loadPuzzle('daily'));
+  $('puzzle-next').addEventListener('click', () => loadPuzzle('random'));
+  $('puzzle-give').addEventListener('click', () => {
+    if (!ranked.length) return;
+    const best = TB.topMoves(ranked);
+    $('puzzle-state').textContent = best.length
+      ? `Winning: ${best.map((move) => move.san).join(', ')}.`
+      : 'Nothing wins here.';
+    $('puzzle-state').className = 'puzzle-state shown';
+    if (state.puzzle) { state.puzzle.done = true; state.puzzle.failed = true; }
+    setSpoilers(true);
+  });
+  $('lab-more').addEventListener('click', (event) => runMoreGames(event.currentTarget));
   window.addEventListener('hashchange', () => { readHash(); renderPosition(); });
+}
+
+// The lab data is a second, smaller artifact beside the tablebase: exact arithmetic for boards
+// nobody will solve, plus a seeded self-play run. It is not needed to read a position, so it
+// loads after the page is usable and its sections simply stay quiet until it lands.
+async function loadLab() {
+  try {
+    const response = await fetch('/atlas/lab.json');
+    if (!response.ok) return;
+    lab = await response.json();
+    renderLadder();
+    renderRuns();
+    renderLengths();
+    renderBlocking();
+  } catch { /* the solved sections do not depend on it */ }
 }
 
 // The lens label tracks the section in view, so the board always says what it is being used for.
@@ -1089,11 +1622,19 @@ function wireScrollLens() {
       if (!entry.isIntersecting) continue;
       const id = entry.target.id;
       state.lens = entry.target.dataset.lens || 'position';
-      $('stage-lens').textContent = { moves: 'legal moves', openings: 'openings', variants: 'rule sets', layers: 'material', depth: 'depth', symmetry: 'symmetry', graph: 'continuations' }[state.lens] || 'position';
+      $('stage-lens').textContent = {
+        moves: 'legal moves', openings: 'openings', variants: 'rule sets', layers: 'material',
+        depth: 'depth', symmetry: 'symmetry', graph: 'continuations', puzzles: 'puzzle',
+        reach: 'reachable play', simplex: 'material', squares: 'square value',
+        beyond: 'state space', measured: 'measured play', blocking: 'mobility',
+      }[state.lens] || 'position';
       for (const link of $('atlas-nav').children) link.classList.toggle('on', link.getAttribute('href') === `#${id}`);
       if (id === 'variants') loadAllTables();
       if (id === 'openings') renderGallery();
       if (id === 'graph') fitGraph();
+      // Both walk all 415,550 states, so they are built when first looked at rather than on load.
+      if (id === 'simplex') renderSimplex();
+      if (id === 'squares') renderHeatmap();
     }
   }, { rootMargin: '-25% 0px -60% 0px' });
   for (const section of sections) observer.observe(section);
@@ -1123,10 +1664,13 @@ async function start() {
   renderPosition();
 
   await ensureTable(state.variant);
+  if (state.pendingPuzzle) { state.pendingPuzzle = false; loadPuzzle('daily', { scroll: true }); }
   renderPosition();
   renderHistogram();
   renderGallery();
+  renderReach();
   wireScrollLens();
+  loadLab();
 }
 
 start();

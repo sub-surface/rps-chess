@@ -1,0 +1,631 @@
+{
+  "rules": {
+    "label": "9×9 · all kings · RPS · elimination",
+    "note": "All kings, RPS captures, elimination, centred blocks — the shipped Standard, scaled."
+  },
+  "method": {
+    "games": 600,
+    "seed": 444292845,
+    "solverEdgesPerSecond": 128000,
+    "interval": "95% Wilson"
+  },
+  "ladder": [
+    {
+      "size": 3,
+      "perType": 1,
+      "cells": 9,
+      "pieces": 6,
+      "placements": "207775",
+      "states": "415550",
+      "log10States": 5.6186232866463826,
+      "openings": "192",
+      "log10Openings": 2.2833012287035497,
+      "branching": 6.05679674615377,
+      "branchingMeasured": true,
+      "solvedBytes": "415550",
+      "solveRam": "12466500",
+      "solveSeconds": 19.663295998939056,
+      "mobilityCeiling": 4.444444444444445,
+      "solved": true
+    },
+    {
+      "size": 4,
+      "perType": 2,
+      "cells": 16,
+      "pieces": 12,
+      "placements": "105227436937",
+      "states": "210454873874",
+      "log10States": 11.323158987922357,
+      "openings": "161280",
+      "log10Openings": 5.207580514765431,
+      "branching": 11.069102171057907,
+      "branchingMeasured": false,
+      "solvedBytes": "210454873874",
+      "solveRam": "10522743693700",
+      "solveSeconds": 18199582.041471962,
+      "mobilityCeiling": 5.25,
+      "solved": false
+    },
+    {
+      "size": 5,
+      "perType": 2,
+      "cells": 25,
+      "pieces": 12,
+      "placements": "89468736775051",
+      "states": "178937473550102",
+      "log10States": 14.25270130116982,
+      "openings": "5322240",
+      "log10Openings": 6.726094454643318,
+      "branching": 16.081407595962045,
+      "branchingMeasured": true,
+      "solvedBytes": "178937473550102",
+      "solveRam": "12525623148507140",
+      "solveSeconds": 22480987862.116154,
+      "mobilityCeiling": 5.76,
+      "solved": false
+    },
+    {
+      "size": 6,
+      "perType": 2,
+      "cells": 36,
+      "pieces": 12,
+      "placements": "15067880678886427",
+      "states": "30135761357772854",
+      "log10States": 16.479082168072143,
+      "openings": "106928640",
+      "log10Openings": 8.029094043170204,
+      "branching": 21.67067689431375,
+      "branchingMeasured": false,
+      "solvedBytes": "30135761357772854",
+      "solveRam": "2802625806272875422",
+      "solveSeconds": 5102049588659.698,
+      "mobilityCeiling": 6.111111111111111,
+      "solved": false
+    },
+    {
+      "size": 7,
+      "perType": 2,
+      "cells": 49,
+      "pieces": 12,
+      "placements": "945646716467217871",
+      "states": "1891293432934435742",
+      "log10States": 18.27675891457634,
+      "openings": "775272960",
+      "log10Openings": 8.889454636894078,
+      "branching": 27.25994619266546,
+      "branchingMeasured": true,
+      "solvedBytes": "1891293432934435742",
+      "solveRam": "217498744787460110330",
+      "solveSeconds": 402785603252611.4,
+      "mobilityCeiling": 6.36734693877551,
+      "solved": false
+    },
+    {
+      "size": 8,
+      "perType": 2,
+      "cells": 64,
+      "pieces": 12,
+      "placements": "30810099594196361761",
+      "states": "61620199188392723522",
+      "log10States": 19.789723097847848,
+      "openings": "5219665920",
+      "log10Openings": 9.717642707265947,
+      "branching": 30.397634779920992,
+      "branchingMeasured": false,
+      "solvedBytes": "61620199188392723522",
+      "solveRam": "7887385496114268610816",
+      "solveSeconds": 14633658671833952,
+      "mobilityCeiling": 6.5625,
+      "solved": false
+    },
+    {
+      "size": 9,
+      "perType": 2,
+      "cells": 81,
+      "pieces": 12,
+      "placements": "628170030594871251967",
+      "states": "1256340061189742503934",
+      "log10States": 21.09910720843683,
+      "openings": "22109068800",
+      "log10Openings": 10.344570451147773,
+      "branching": 33.535323367176524,
+      "branchingMeasured": true,
+      "solvedBytes": "1256340061189742503934",
+      "solveRam": "175887608566563950550760",
+      "solveSeconds": 329154454774502800,
+      "mobilityCeiling": 6.716049382716049,
+      "solved": false
+    },
+    {
+      "size": 10,
+      "perType": 2,
+      "cells": 100,
+      "pieces": 12,
+      "placements": "8995566551859273291451",
+      "states": "17991133103718546582902",
+      "log10States": 22.255058516608223,
+      "openings": "91530432000",
+      "log10Openings": 10.961565512124698,
+      "branching": 36.673011954432056,
+      "branchingMeasured": false,
+      "solvedBytes": "17991133103718546582902",
+      "solveRam": "2752643364868937627184006",
+      "solveSeconds": 5154601870206629000,
+      "mobilityCeiling": 6.84,
+      "solved": false
+    },
+    {
+      "size": 11,
+      "perType": 2,
+      "cells": 121,
+      "pieces": 12,
+      "placements": "97684602267913958033947",
+      "states": "195369204535827916067894",
+      "log10States": 23.290856108235477,
+      "openings": "288367833600",
+      "log10Openings": 11.459946814753604,
+      "branching": 39.81070054168759,
+      "branchingMeasured": false,
+      "solvedBytes": "195369204535827916067894",
+      "solveRam": "32235918748411606151202510",
+      "solveSeconds": 60763944506590290000,
+      "mobilityCeiling": 6.9421487603305785,
+      "solved": false
+    },
+    {
+      "size": 12,
+      "perType": 2,
+      "cells": 144,
+      "pieces": 12,
+      "placements": "848725942574588556855241",
+      "states": "1697451885149177113710482",
+      "log10States": 24.229797472902252,
+      "openings": "899936110080",
+      "log10Openings": 11.954211678300862,
+      "branching": 42.94838912894312,
+      "branchingMeasured": false,
+      "solvedBytes": "1697451885149177113710482",
+      "solveRam": "302146435556553526240465796",
+      "solveSeconds": 569553313211288500000,
+      "mobilityCeiling": 7.027777777777778,
+      "solved": false
+    },
+    {
+      "size": 13,
+      "perType": 2,
+      "cells": 169,
+      "pieces": 12,
+      "placements": "6135454160935620404305891",
+      "states": "12270908321871240808611782",
+      "log10States": 25.0888767114292,
+      "openings": "2341333693440",
+      "log10Openings": 12.36946331497465,
+      "branching": 46.08607771619865,
+      "branchingMeasured": false,
+      "solvedBytes": "12270908321871240808611782",
+      "solveRam": "2331472581155535753636238580",
+      "solveSeconds": 4.418109645078959e+21,
+      "mobilityCeiling": 7.100591715976331,
+      "solved": false
+    }
+  ],
+  "play": [
+    {
+      "size": 3,
+      "rules": "3×3 · all kings · RPS · elimination",
+      "policy": "greedy",
+      "games": 600,
+      "blue": 172,
+      "red": 236,
+      "draws": 192,
+      "plyBuckets": [
+        111,
+        315,
+        119,
+        38,
+        16,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "firstPlayer": {
+        "p": 0.4215686274509804,
+        "lo": 0.3746020101334552,
+        "hi": 0.46999843819425136
+      },
+      "drawRate": {
+        "p": 0.32,
+        "lo": 0.28392058546090415,
+        "hi": 0.35836971053725175
+      },
+      "meanPlies": 17.98,
+      "medianPlies": 16,
+      "meanBranching": 6.045678632898786,
+      "captureRate": 0.2203374119391917,
+      "contactRatio": 0.3560289036771725,
+      "meanSurvivors": 2.0383333333333336,
+      "endings": {
+        "nocaptures": 184,
+        "elimination": 408,
+        "repetition": 8
+      }
+    },
+    {
+      "size": 3,
+      "rules": "3×3 · all kings · RPS · elimination",
+      "policy": "random",
+      "games": 600,
+      "blue": 144,
+      "red": 207,
+      "draws": 249,
+      "plyBuckets": [
+        18,
+        106,
+        172,
+        117,
+        130,
+        49,
+        8,
+        0,
+        0,
+        0
+      ],
+      "firstPlayer": {
+        "p": 0.41025641025641024,
+        "lo": 0.36003903045492136,
+        "hi": 0.46241696117627407
+      },
+      "drawRate": {
+        "p": 0.415,
+        "lo": 0.37623668324937615,
+        "hi": 0.45484484541641973
+      },
+      "meanPlies": 34.43333333333333,
+      "medianPlies": 31,
+      "meanBranching": 6.05679674615377,
+      "captureRate": 0.1137947725072604,
+      "contactRatio": 0.3398119296831114,
+      "meanSurvivors": 2.0816666666666666,
+      "endings": {
+        "nocaptures": 217,
+        "elimination": 340,
+        "repetition": 31,
+        "stall": 12
+      }
+    },
+    {
+      "size": 5,
+      "rules": "5×5 · all kings · RPS · elimination",
+      "policy": "greedy",
+      "games": 600,
+      "blue": 241,
+      "red": 246,
+      "draws": 113,
+      "plyBuckets": [
+        0,
+        15,
+        86,
+        160,
+        218,
+        85,
+        35,
+        1,
+        0,
+        0
+      ],
+      "firstPlayer": {
+        "p": 0.4948665297741273,
+        "lo": 0.4506751038027589,
+        "hi": 0.5391383105451693
+      },
+      "drawRate": {
+        "p": 0.18833333333333332,
+        "lo": 0.1590680739414678,
+        "hi": 0.22156419783311684
+      },
+      "meanPlies": 47.306666666666665,
+      "medianPlies": 43,
+      "meanBranching": 15.00240039474801,
+      "captureRate": 0.19130496054114995,
+      "contactRatio": 0.3143429788807724,
+      "meanSurvivors": 2.95,
+      "endings": {
+        "elimination": 426,
+        "nocaptures": 160,
+        "stall": 8,
+        "repetition": 6
+      }
+    },
+    {
+      "size": 5,
+      "rules": "5×5 · all kings · RPS · elimination",
+      "policy": "random",
+      "games": 600,
+      "blue": 252,
+      "red": 214,
+      "draws": 134,
+      "plyBuckets": [
+        0,
+        0,
+        0,
+        0,
+        3,
+        14,
+        97,
+        187,
+        274,
+        25
+      ],
+      "firstPlayer": {
+        "p": 0.5407725321888412,
+        "lo": 0.49537684949241423,
+        "hi": 0.5855014720525491
+      },
+      "drawRate": {
+        "p": 0.22333333333333333,
+        "lo": 0.19182770872738192,
+        "hi": 0.258359227714228
+      },
+      "meanPlies": 160.69833333333332,
+      "medianPlies": 160,
+      "meanBranching": 16.081407595962045,
+      "captureRate": 0.04729358321492652,
+      "contactRatio": 0.33342211897738594,
+      "meanSurvivors": 4.4,
+      "endings": {
+        "stall": 385,
+        "elimination": 113,
+        "nocaptures": 96,
+        "repetition": 6
+      }
+    },
+    {
+      "size": 7,
+      "rules": "7×7 · all kings · RPS · elimination",
+      "policy": "greedy",
+      "games": 600,
+      "blue": 276,
+      "red": 221,
+      "draws": 103,
+      "plyBuckets": [
+        0,
+        0,
+        1,
+        7,
+        104,
+        178,
+        247,
+        62,
+        1,
+        0
+      ],
+      "firstPlayer": {
+        "p": 0.5553319919517102,
+        "lo": 0.5113843801716081,
+        "hi": 0.5984307789525539
+      },
+      "drawRate": {
+        "p": 0.17166666666666666,
+        "lo": 0.14360566764626623,
+        "hi": 0.20390533523925877
+      },
+      "meanPlies": 85.485,
+      "medianPlies": 82,
+      "meanBranching": 18.753997924620332,
+      "captureRate": 0.10664639020490925,
+      "contactRatio": 0.2938723449229818,
+      "meanSurvivors": 2.8833333333333333,
+      "endings": {
+        "elimination": 411,
+        "nocaptures": 141,
+        "repetition": 11,
+        "stall": 37
+      }
+    },
+    {
+      "size": 7,
+      "rules": "7×7 · all kings · RPS · elimination",
+      "policy": "random",
+      "games": 600,
+      "blue": 120,
+      "red": 159,
+      "draws": 321,
+      "plyBuckets": [
+        0,
+        0,
+        0,
+        0,
+        243,
+        24,
+        97,
+        82,
+        110,
+        44
+      ],
+      "firstPlayer": {
+        "p": 0.43010752688172044,
+        "lo": 0.37334985976096,
+        "hi": 0.4887637755741533
+      },
+      "drawRate": {
+        "p": 0.535,
+        "lo": 0.49499367306723496,
+        "hi": 0.5745609915997903
+      },
+      "meanPlies": 120.28166666666667,
+      "medianPlies": 95.5,
+      "meanBranching": 27.25994619266546,
+      "captureRate": 0.017763859829012456,
+      "contactRatio": 0.3379276446975902,
+      "meanSurvivors": 9.863333333333333,
+      "endings": {
+        "stall": 594,
+        "nocaptures": 3,
+        "elimination": 3
+      }
+    },
+    {
+      "size": 9,
+      "rules": "9×9 · all kings · RPS · elimination",
+      "policy": "greedy",
+      "games": 600,
+      "blue": 241,
+      "red": 237,
+      "draws": 122,
+      "plyBuckets": [
+        0,
+        0,
+        0,
+        11,
+        70,
+        177,
+        238,
+        85,
+        19,
+        0
+      ],
+      "firstPlayer": {
+        "p": 0.50418410041841,
+        "lo": 0.4595071790851055,
+        "hi": 0.548794304223932
+      },
+      "drawRate": {
+        "p": 0.20333333333333334,
+        "lo": 0.17306289772762545,
+        "hi": 0.23737851604711285
+      },
+      "meanPlies": 91.22833333333334,
+      "medianPlies": 86,
+      "meanBranching": 22.61787814817559,
+      "captureRate": 0.09996894239728155,
+      "contactRatio": 0.2936564580184019,
+      "meanSurvivors": 2.88,
+      "endings": {
+        "elimination": 409,
+        "stall": 30,
+        "nocaptures": 150,
+        "repetition": 11
+      }
+    },
+    {
+      "size": 9,
+      "rules": "9×9 · all kings · RPS · elimination",
+      "policy": "random",
+      "games": 600,
+      "blue": 100,
+      "red": 120,
+      "draws": 380,
+      "plyBuckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        363,
+        101,
+        80,
+        56
+      ],
+      "firstPlayer": {
+        "p": 0.45454545454545453,
+        "lo": 0.39008995082951875,
+        "hi": 0.5205611524506578
+      },
+      "drawRate": {
+        "p": 0.6333333333333333,
+        "lo": 0.5940389855552635,
+        "hi": 0.6709311655572137
+      },
+      "meanPlies": 130.22166666666666,
+      "medianPlies": 81,
+      "meanBranching": 33.535323367176524,
+      "captureRate": 0.0099573803642507,
+      "contactRatio": 0.32667000512343514,
+      "meanSurvivors": 10.703333333333333,
+      "endings": {
+        "stall": 593,
+        "plycap": 7
+      }
+    }
+  ],
+  "blocking": {
+    "takeableShare": 0.3333333333333333,
+    "measured": {
+      "3": 0.3398119296831114,
+      "5": 0.33342211897738594,
+      "7": 0.3379276446975902,
+      "9": 0.32667000512343514
+    },
+    "ceiling": [
+      {
+        "size": 3,
+        "cells": 9,
+        "total": 40,
+        "mean": 4.444444444444445
+      },
+      {
+        "size": 4,
+        "cells": 16,
+        "total": 84,
+        "mean": 5.25
+      },
+      {
+        "size": 5,
+        "cells": 25,
+        "total": 144,
+        "mean": 5.76
+      },
+      {
+        "size": 6,
+        "cells": 36,
+        "total": 220,
+        "mean": 6.111111111111111
+      },
+      {
+        "size": 7,
+        "cells": 49,
+        "total": 312,
+        "mean": 6.36734693877551
+      },
+      {
+        "size": 8,
+        "cells": 64,
+        "total": 420,
+        "mean": 6.5625
+      },
+      {
+        "size": 9,
+        "cells": 81,
+        "total": 544,
+        "mean": 6.716049382716049
+      },
+      {
+        "size": 10,
+        "cells": 100,
+        "total": 684,
+        "mean": 6.84
+      },
+      {
+        "size": 11,
+        "cells": 121,
+        "total": 840,
+        "mean": 6.9421487603305785
+      },
+      {
+        "size": 12,
+        "cells": 144,
+        "total": 1012,
+        "mean": 7.027777777777778
+      },
+      {
+        "size": 13,
+        "cells": 169,
+        "total": 1200,
+        "mean": 7.100591715976331
+      }
+    ]
+  }
+}
