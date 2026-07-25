@@ -152,10 +152,37 @@ export class GameRoom extends DurableObject {
   seatIsOnline(role, excluding = null) {
     const token = this.seats[role];
     if (!token) return false;
-    return this.ctx.getWebSockets(role).some((socket) => {
+    return this.ctx.getWebSockets().some((socket) => {
       if (socket === excluding || socket.readyState !== 1) return false;
       const attachment = socket.deserializeAttachment() || {};
       return attachment.role === role && attachment.token === token;
+    });
+  }
+
+  socketsForRole(role) {
+    return this.ctx.getWebSockets().filter((socket) => {
+      if (socket.readyState !== 1) return false;
+      const attachment = socket.deserializeAttachment() || {};
+      return attachment.role === role;
+    });
+  }
+
+  alternateSeats() {
+    const swap = (values) => ({ B: values.R, R: values.B });
+    this.seats = swap(this.seats);
+    this.names = swap(this.names);
+    this.disconnected = swap(this.disconnected);
+    this.accounts = swap(this.accounts);
+    this.ratings = swap(this.ratings);
+
+    return this.ctx.getWebSockets().flatMap((socket) => {
+      const attachment = socket.deserializeAttachment() || {};
+      if (attachment.role !== E.BLUE && attachment.role !== E.RED) return [];
+      const role = E.other(attachment.role);
+      const token = this.seats[role];
+      const next = { ...attachment, role, token };
+      socket.serializeAttachment(next);
+      return [{ socket, role, token }];
     });
   }
 
@@ -253,7 +280,7 @@ export class GameRoom extends DurableObject {
       this.seats[role] = token;
       this.names[role] = name;
       this.disconnected[role] = null;
-    } else if (this.ctx.getWebSockets('S').filter((socket) => socket.readyState === 1).length >= MAX_SPECTATORS) {
+    } else if (this.socketsForRole('S').length >= MAX_SPECTATORS) {
       return new Response('spectator limit reached', { status: 503 });
     }
     this.touch(now);
@@ -264,7 +291,7 @@ export class GameRoom extends DurableObject {
 
     // A reconnect fences an older tab using the same seat token.
     if (role !== 'S') {
-      for (const socket of this.ctx.getWebSockets(role)) {
+      for (const socket of this.ctx.getWebSockets()) {
         if (socket === server || socket.readyState !== 1) continue;
         const attachment = socket.deserializeAttachment() || {};
         if (attachment.token === token) {
@@ -377,6 +404,7 @@ export class GameRoom extends DurableObject {
       const own = attachment.role === E.BLUE
         ? (typeof message.own === 'string' ? message.own : null)
         : this.game.own;
+      const rematchSockets = this.alternateSeats();
       const pieceBoard = pos ? E.decodePos(pos, config.size) : null;
       const ownedBoard = pieceBoard && own ? E.decodeOwners(own, pieceBoard) : null;
       this.game = E.newGame(config, ownedBoard || pieceBoard || undefined);
@@ -390,6 +418,9 @@ export class GameRoom extends DurableObject {
       await this.persist();
       await this.scheduleAlarm();
       await this.syncLobby();
+      for (const { socket, role, token } of rematchSockets) {
+        socket.send(JSON.stringify({ type: 'welcome', role, token, state: this.stateMsg() }));
+      }
       this.broadcast();
     } else if (message.type === 'resign') {
       if (!seated || !this.seats.B || !this.seats.R || this.game.gameOver) return;

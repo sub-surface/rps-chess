@@ -342,7 +342,10 @@ empty, `R/P/S` Blue, `r/p/s` Red) — plus `own`, a matching paint layer (`B`, `
 Both are validated by the shared engine; positions require both sides and at most
 `engine.MAX_PIECES_PER_SIDE` each — one constant derived from the `perType` clamp, so the piece
 budget cannot drift between what `blocksBoard` generates and what `decodePos` accepts.
-Challenge rooms keep both exact layers across rematches.
+Challenge rooms keep both exact layers across rematches. When an online rematch starts, the two
+seated players swap colours (and their server-issued seat tokens move with them), so the first
+mover alternates fairly between games. Existing sockets receive a fresh `welcome` message with
+their new role and token before the rematch state is broadcast.
 
 The server replies:
 

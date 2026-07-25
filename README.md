@@ -83,7 +83,8 @@ The zero-build vanilla-JS client is served by a Cloudflare Worker. Online play u
 - `GameRoom` owns authoritative state, validates every move, hibernates with WebSockets, tracks
   presence, preserves disconnected seats for a short reconnect window, mints its own seat
   capabilities, and expires idle rooms — resetting all instance state, since a Durable Object
-  outlives the room it hosted.
+  outlives the room it hosted. Online rematches alternate the seated colours so first move
+  advantage rotates between players.
 - `Lobby` stores open games as indexed SQLite rows rather than rewriting one shared object.
 - **D1** holds accounts, rated-match history, a bounded recent-replay feed, and signup-throttle
   buckets; `GameRoom` records each rated result transactionally and queues the compact public

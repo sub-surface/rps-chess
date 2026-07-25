@@ -428,6 +428,37 @@ describe('room lifecycle', () => {
     guest.socket.close(1000, 'done');
   });
 
+  it('alternates seated colours and tokens on rematch', async () => {
+    const room = 'alternating-rematch';
+    const stub = env.ROOM.getByName(room);
+    const host = await connect(stub, room, { name: 'Host' });
+    const guest = await connect(stub, room, { name: 'Guest' });
+    expect(host.welcome.role).toBe(E.BLUE);
+    expect(guest.welcome.role).toBe(E.RED);
+
+    const move = E.allMoves(host.welcome.state.board, E.BLUE, host.welcome.state.cfg)[0];
+    const started = nextMessage(guest.socket, (m) => m.type === 'state' && m.state.moves.length === 1);
+    host.socket.send(JSON.stringify({ type: 'move', from: [move.fr, move.fc], to: [move.tr, move.tc] }));
+    await started;
+
+    const over = nextMessage(host.socket, (m) => m.type === 'state' && m.state.gameOver);
+    guest.socket.send(JSON.stringify({ type: 'resign' }));
+    await over;
+
+    const hostRematch = nextMessage(host.socket, (m) => m.type === 'welcome' && m.state.moves.length === 0);
+    const guestRematch = nextMessage(guest.socket, (m) => m.type === 'welcome' && m.state.moves.length === 0);
+    host.socket.send(JSON.stringify({ type: 'new' }));
+    const [nextHost, nextGuest] = await Promise.all([hostRematch, guestRematch]);
+    expect(nextHost.role).toBe(E.RED);
+    expect(nextGuest.role).toBe(E.BLUE);
+    expect(nextHost.token).toBe(host.welcome.token);
+    expect(nextGuest.token).toBe(guest.welcome.token);
+    expect(nextHost.state.names).toEqual({ B: 'Guest', R: 'Host' });
+
+    host.socket.close(1000, 'done');
+    guest.socket.close(1000, 'done');
+  });
+
   it('clears every trace of the last occupants when a room expires', async () => {
     const ana = await createAccount('AnaLife');
     const bo = await createAccount('BoLife');
