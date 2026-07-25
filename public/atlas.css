@@ -1,0 +1,355 @@
+/* Tablebase atlas. Inherits every colour and the page chrome from style.css; everything
+   here is layout for the one screen where a board and a long argument share the viewport. */
+
+:root {
+  --win: var(--accent);
+  --draw: var(--muted);
+  --loss: var(--red);
+  --stage-w: 400px;
+}
+
+body[data-screen="atlas"] { display: block; min-height: 100dvh; }
+.atlas { width: min(1240px, 100%); margin: 0 auto; padding: 0 22px 90px; }
+.atlas code {
+  font: 12.5px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 3px; color: var(--text);
+}
+.mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+
+/* ── hero ───────────────────────────────────────────── */
+.atlas-hero {
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
+  gap: 44px; align-items: end; padding: 26px 0 40px;
+}
+.atlas-hero h1 {
+  margin: 0 0 20px; font-size: clamp(32px, 5.4vw, 60px); line-height: .98;
+  letter-spacing: -.045em; font-weight: 680;
+}
+.atlas-hero p { margin: 0 0 12px; max-width: 60ch; color: var(--muted); font-size: 14.5px; }
+.atlas-hero b { color: var(--text); font-variant-numeric: tabular-nums; }
+.hero-figures { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.hero-figure {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline;
+  background: var(--bg); padding: 11px 14px;
+}
+.hero-figure span { color: var(--muted); font-size: 11.5px; }
+.hero-figure b { font: 600 15px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ── section nav ────────────────────────────────────── */
+.atlas-nav {
+  position: sticky; top: 0; z-index: 60; display: flex; gap: 22px; overflow-x: auto;
+  padding: 12px 0; margin-bottom: 26px; scrollbar-width: none;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.atlas-nav::-webkit-scrollbar { display: none; }
+.atlas-nav a {
+  flex: none; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
+  letter-spacing: .04em; padding: 2px 0; border-bottom: 2px solid transparent; transition: color .15s;
+}
+.atlas-nav a:hover, .atlas-nav a.on { color: var(--text); border-color: var(--accent); }
+
+/* ── split ──────────────────────────────────────────── */
+.atlas-split {
+  display: grid; grid-template-columns: var(--stage-w) minmax(0, 1fr);
+  gap: 48px; align-items: start;
+}
+
+/* ── the stage: board, verdict, controls ────────────── */
+.atlas-stage { position: sticky; top: 62px; display: grid; gap: 12px; }
+.stage-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .14em;
+}
+.stage-lens { color: var(--accent); font-weight: 700; }
+.stage-rules { color: var(--muted); text-transform: none; letter-spacing: .01em; font-size: 10.5px; }
+
+.boardwrap { position: relative; width: 100%; aspect-ratio: 1; }
+.tb-board {
+  width: 100%; height: 100%; display: grid; grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--hair); background: var(--sq-dark); user-select: none;
+}
+.tb-sq {
+  position: relative; border: 0; padding: 0; margin: 0; background: var(--sq-dark);
+  cursor: pointer; display: grid; place-items: center; transition: background .12s;
+}
+.tb-sq:nth-child(even) { background: var(--sq-light); }
+.tb-sq::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.tb-sq:nth-child(3n)::after { border-right: 0; }
+.tb-sq:nth-child(n+7)::after { border-bottom: 0; }
+.tb-sq .tb-coord {
+  position: absolute; left: 5px; top: 4px; font: 9px ui-monospace, monospace;
+  color: var(--muted); opacity: .55; pointer-events: none;
+}
+/* Both layers fill the square so the glyph and the destination marker can size against it;
+   an inline wrapper would leave percentage heights undefined. */
+.tb-sq .pcwrap, .tb-sq .dotwrap { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.tb-sq .pc { width: 74%; height: 74%; }
+.tb-sq.sel { box-shadow: inset 0 0 0 3px var(--accent); }
+.tb-sq.from { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* Destination dots carry the verdict of the position the move creates. */
+.tb-sq .dest {
+  position: absolute; width: 26%; height: 26%; border-radius: 50%; pointer-events: none; z-index: 2;
+}
+.tb-sq .dest.cap { width: 82%; height: 82%; border-radius: 4px; background: none !important; border: 3px solid; }
+.tb-sq .dest.W { background: var(--win); border-color: var(--win); }
+.tb-sq .dest.D { background: var(--draw); border-color: var(--draw); }
+.tb-sq .dest.L { background: var(--loss); border-color: var(--loss); }
+.tb-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+/* paint-order puts the outline behind the fill, so an arrow keeps a clean edge against the
+   piece it crosses instead of smearing into it. */
+.garrow {
+  fill: currentColor; stroke: var(--bg); stroke-width: 2.4;
+  stroke-linejoin: round; paint-order: stroke fill;
+}
+.garrow.W { color: var(--win); }
+.garrow.D { color: var(--draw); }
+.garrow.L { color: var(--loss); }
+
+.verdict {
+  border: 1px solid var(--line); border-left: 3px solid var(--draw); background: var(--surface);
+  padding: 12px 14px; display: grid; gap: 10px;
+}
+.verdict.win { border-left-color: var(--blue); }
+.verdict.loss { border-left-color: var(--red); }
+.verdict.void { border-left-color: var(--hair); }
+.verdict-main { display: grid; gap: 3px; }
+.verdict-word { font-size: 21px; font-weight: 660; letter-spacing: -.02em; line-height: 1.1; }
+.verdict-detail { color: var(--muted); font-size: 12px; }
+.verdict-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; }
+.verdict-facts > div { display: grid; gap: 2px; }
+.verdict-facts dt {
+  color: var(--muted); font: 8.5px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.verdict-facts dd { margin: 0; font: 600 13px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+.stage-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tb-seg { display: flex; border: 1px solid var(--line); overflow: hidden; }
+.tb-seg-btn {
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px;
+  padding: 5px 12px; cursor: pointer; transition: all .15s;
+}
+.tb-seg-btn.blue.on { color: var(--blue); background: color-mix(in srgb, var(--blue) 18%, transparent); font-weight: 620; }
+.tb-seg-btn.red.on { color: var(--red); background: color-mix(in srgb, var(--red) 18%, transparent); font-weight: 620; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.mini {
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--muted);
+  font: inherit; font-size: 11.5px; padding: 5px 9px; cursor: pointer; transition: all .15s;
+}
+.mini:hover:not(:disabled) { color: var(--text); border-color: var(--hair); }
+.mini.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.mini:disabled { opacity: .4; cursor: default; }
+
+.editor summary {
+  cursor: pointer; color: var(--muted); font-size: 11.5px; list-style: none;
+  padding: 4px 0; border-top: 1px solid var(--line);
+}
+.editor summary::-webkit-details-marker { display: none; }
+.editor summary::before { content: "+ "; color: var(--accent); }
+.editor[open] summary::before { content: "− "; }
+.tb-palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin: 8px 0 6px; }
+.tb-pal {
+  aspect-ratio: 1; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted);
+  cursor: pointer; padding: 5px; display: grid; place-items: center; font-size: 11px; transition: all .15s;
+}
+.tb-pal:hover { border-color: var(--hair); }
+.tb-pal.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.tb-pal .pc { width: 100%; height: 100%; }
+.tb-hint { margin: 0; color: var(--muted); font-size: 10.5px; }
+
+/* ── the stream ─────────────────────────────────────── */
+.atlas-stream { display: grid; gap: 76px; padding-bottom: 40vh; }
+.atlas-section { scroll-margin-top: 76px; }
+.eyebrow {
+  margin: 0 0 8px; color: var(--accent); font: 9.5px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: .16em;
+}
+.atlas-section h2 { margin: 0 0 12px; font-size: 25px; letter-spacing: -.02em; line-height: 1.15; }
+.atlas-section h3 { margin: 38px 0 10px; font-size: 15px; letter-spacing: .01em; }
+.lede { margin: 0 0 18px; max-width: 62ch; color: var(--muted); font-size: 13.5px; }
+.lede b { color: var(--text); font-variant-numeric: tabular-nums; }
+.note { margin: 12px 0 0; color: var(--muted); font-size: 11.5px; max-width: 62ch; }
+
+.facts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.fact { display: grid; grid-template-columns: 1fr auto; gap: 14px; background: var(--bg); padding: 8px 12px; font-size: 12.5px; }
+.fact span { color: var(--muted); }
+.fact b { font: 600 12.5px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* stacked win/draw/loss bar, used everywhere a distribution appears */
+.tb-bar { display: flex; height: 100%; width: 100%; background: var(--surface-2); overflow: hidden; }
+.tb-bar i { height: 100%; display: block; transition: width .35s ease; }
+.tb-bar .w { background: var(--win); }
+.tb-bar .d { background: var(--draw); opacity: .45; }
+.tb-bar .l { background: var(--loss); }
+.tb-legend { display: flex; gap: 16px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+.tb-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; }
+.tb-legend .w { background: var(--win); } .tb-legend .d { background: var(--draw); } .tb-legend .l { background: var(--loss); }
+
+/* ── 01 move list ───────────────────────────────────── */
+.movelist { display: grid; gap: 3px; }
+.move-row {
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center;
+  padding: 8px 11px; border: 1px solid transparent; background: var(--surface); color: var(--text);
+  text-align: left; cursor: pointer; transition: all .12s; font: inherit;
+}
+.move-row:hover { background: var(--surface-2); border-color: var(--line); }
+.move-row.best { border-left: 3px solid var(--accent); padding-left: 8px; }
+.move-row .pc { width: 19px; height: 19px; }
+.move-row .san { font: 12.5px ui-monospace, monospace; }
+.move-row .tag { font: 9px ui-monospace, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.move-row .out { font: 700 10.5px ui-monospace, monospace; letter-spacing: .06em; min-width: 76px; text-align: right; }
+.move-row .out.W { color: var(--win); } .move-row .out.D { color: var(--draw); } .move-row .out.L { color: var(--loss); }
+
+/* ── 02 openings ────────────────────────────────────── */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 5px; }
+.mini-board {
+  display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 1; padding: 0; cursor: pointer;
+  border: 1px solid var(--line); background: var(--sq-dark); transition: all .12s;
+}
+.mini-board:hover { border-color: var(--accent); transform: scale(1.12); }
+.mini-board.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.mini-board i {
+  display: grid; place-items: center; font: 700 7px ui-monospace, monospace; font-style: normal;
+  color: transparent; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.mini-board i:nth-child(3n) { border-right: 0; }
+.mini-board i:nth-child(n+7) { border-bottom: 0; }
+.mini-board i.b { color: var(--blue); } .mini-board i.r { color: var(--red); }
+
+.opening-grid { display: grid; grid-template-columns: auto repeat(6, minmax(0, 1fr)); gap: 2px; max-width: 460px; }
+.opening-grid .oh { font: 9.5px ui-monospace, monospace; color: var(--muted); display: grid; place-items: center; padding: 4px; }
+.opening-cell {
+  aspect-ratio: 1; border: 1px solid var(--line); background: var(--surface); cursor: pointer;
+  font: 700 11px ui-monospace, monospace; display: grid; place-items: center; transition: all .12s; color: var(--muted);
+}
+.opening-cell.W { color: var(--win); } .opening-cell.D { color: var(--draw); } .opening-cell.L { color: var(--loss); }
+.opening-cell.legal { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); border-color: var(--hair); }
+.opening-cell:hover { border-color: var(--accent); }
+.opening-cell.shipped { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* ── 03 variants ────────────────────────────────────── */
+.variant-list { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.variant-row {
+  display: grid; grid-template-columns: 108px minmax(90px, 1fr) auto; gap: 16px; align-items: center;
+  background: var(--bg); border: 0; color: var(--text); font: inherit; text-align: left;
+  padding: 11px 13px; cursor: pointer; transition: background .12s;
+}
+.variant-row:hover { background: var(--surface); }
+.variant-row.on { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.variant-row .name { font-size: 13px; font-weight: 600; }
+.variant-row .name small { display: block; color: var(--muted); font-weight: 400; font-size: 10px; }
+.variant-row .track { height: 15px; }
+.variant-row .figs { font: 10.5px ui-monospace, monospace; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.crosscheck { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.cc-cell { background: var(--bg); padding: 11px 12px; display: grid; gap: 4px; }
+.cc-cell .cc-name { font-size: 11.5px; color: var(--muted); }
+.cc-cell .cc-out { font: 700 13px ui-monospace, monospace; letter-spacing: .04em; }
+.cc-cell .cc-out.W { color: var(--win); } .cc-cell .cc-out.D { color: var(--draw); } .cc-cell .cc-out.L { color: var(--loss); }
+.cc-cell.pending .cc-out { color: var(--hair); }
+
+/* ── 04 material waterfall ──────────────────────────── */
+.waterfall { display: grid; gap: 4px; }
+.layer-row {
+  display: grid; grid-template-columns: 74px minmax(90px, 1fr) auto; gap: 14px; align-items: center;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit;
+  padding: 9px 12px; cursor: pointer; text-align: left; transition: all .12s;
+}
+.layer-row:hover { border-color: var(--accent); background: var(--surface-2); }
+.layer-row .lname { font: 11.5px ui-monospace, monospace; color: var(--muted); }
+.layer-row .track { height: 14px; }
+.layer-row .lcount { font: 10.5px ui-monospace, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── 05 depth histogram ─────────────────────────────── */
+.histogram { display: flex; align-items: flex-end; gap: 2px; height: 150px; border-bottom: 1px solid var(--line); }
+.hbar {
+  flex: 1 1 0; min-width: 0; background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;
+}
+.hbar i { display: block; width: 100%; background: var(--win); opacity: .75; transition: opacity .12s, background .12s; }
+.hbar:hover i { opacity: 1; }
+.hbar.tall i { background: var(--accent); }
+.hbar span {
+  position: absolute; bottom: -17px; left: 0; right: 0; text-align: center;
+  font: 8.5px ui-monospace, monospace; color: var(--muted);
+}
+.deepest { margin-top: 30px; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.deep-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  background: var(--bg); border: 0; color: var(--text); font: inherit; text-align: left;
+  padding: 9px 12px; cursor: pointer; transition: background .12s;
+}
+.deep-row:hover { background: var(--surface); }
+.deep-row .dname { font-size: 12.5px; }
+.deep-row .dname small { display: block; color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+.deep-row .dply { font: 700 12px ui-monospace, monospace; color: var(--accent); }
+
+/* ── 06 symmetry ────────────────────────────────────── */
+.sym-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin-bottom: 20px; }
+.sym-cell { display: grid; gap: 4px; }
+.sym-cell .mini-board { width: 100%; }
+.sym-cell .sym-label { font: 8px ui-monospace, monospace; color: var(--muted); text-align: center; letter-spacing: .02em; }
+.sym-cell.same .mini-board { border-color: var(--accent); }
+
+/* ── 07 graph ───────────────────────────────────────── */
+.graph-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.range { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+.range input { accent-color: var(--accent); width: 120px; }
+.range b { font: 600 12px ui-monospace, monospace; color: var(--text); }
+.graph-frame {
+  position: relative; border: 1px solid var(--line); background: var(--surface);
+  height: min(60vh, 520px); overflow: hidden; touch-action: none;
+}
+#graph-svg { width: 100%; height: 100%; display: block; cursor: grab; }
+#graph-svg.dragging { cursor: grabbing; }
+.gnode { cursor: pointer; }
+.gnode .plate { fill: var(--surface-2); stroke: var(--hair); stroke-width: 1; transition: stroke .12s; }
+.gnode:hover .plate { stroke: var(--accent); }
+.gnode.root .plate { stroke: var(--accent); stroke-width: 2; }
+/* Value reads twice: a tinted plate for the glance, a solid bar for the certainty. */
+.gnode.W .plate { fill: color-mix(in srgb, var(--win) 13%, var(--surface-2)); }
+.gnode.L .plate { fill: color-mix(in srgb, var(--loss) 13%, var(--surface-2)); }
+.gnode.W .rim { fill: var(--win); } .gnode.D .rim { fill: var(--draw); } .gnode.L .rim { fill: var(--loss); }
+.gnode .cellb { fill: var(--blue); } .gnode .cellr { fill: var(--red); }
+.gnode .grid { fill: none; stroke: var(--line); stroke-width: .5; }
+.gedge { fill: none; stroke: var(--hair); stroke-width: 1.2; opacity: .55; }
+.gedge.cap { stroke: var(--accent); opacity: .8; }
+.gedge.lit { stroke: var(--accent); opacity: 1; stroke-width: 2; }
+.glabel { font: 7px ui-monospace, monospace; fill: var(--muted); text-anchor: middle; pointer-events: none; }
+.graph-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 12.5px; }
+
+/* ── loading / errors ───────────────────────────────── */
+.loading { color: var(--muted); font-size: 12.5px; padding: 14px 0; }
+.loading::after { content: "…"; animation: dots 1.2s steps(4, end) infinite; }
+@keyframes dots { 0% { opacity: .3 } 50% { opacity: 1 } 100% { opacity: .3 } }
+
+/* ── narrow ─────────────────────────────────────────── */
+@media (max-width: 1040px) {
+  .atlas-split { grid-template-columns: 1fr; gap: 30px; }
+  .atlas-hero { grid-template-columns: 1fr; gap: 26px; align-items: start; }
+  .atlas-stage {
+    position: sticky; top: 46px; z-index: 50; grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+    gap: 12px 16px; padding: 12px 0 14px; background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .stage-head { grid-column: 1 / -1; }
+  .boardwrap { grid-row: span 3; }
+  .stage-controls, .verdict { align-self: start; }
+  .editor { grid-column: 1 / -1; }
+  .atlas-stream { gap: 60px; padding-bottom: 20vh; }
+  /* The stage is much taller when it sits across the top, so anchors must clear all of it. */
+  .atlas-section { scroll-margin-top: 330px; }
+}
+@media (max-width: 620px) {
+  .atlas { padding: 0 14px 60px; }
+  .atlas-stage { grid-template-columns: minmax(0, 150px) minmax(0, 1fr); }
+  .verdict-facts { grid-template-columns: repeat(3, 1fr); }
+  .atlas-section h2 { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-bar i, .mini-board, .tb-sq { transition: none; }
+}

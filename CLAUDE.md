@@ -32,8 +32,9 @@ npm run tail           # live production logs
 | Path | Responsibility |
 | --- | --- |
 | `public/engine.js` | Pure rules. **Single source of truth**, imported by browser *and* Worker. |
-| `public/tablebase.js` | 3×3 tablebase addressing and artifact decoding. Shared with the generator. |
+| `public/tablebase.js` | 3×3 tablebase addressing, symmetry, decoding. Shared with the generator. |
 | `public/tablebase/` | Generated: one solved `.tb` per movement archetype, plus `manifest.json`. |
+| `public/atlas.html`, `atlas.css`, `atlas.js` | `/atlas` — the tablebase page. Board is the hero; every chart loads it. |
 | `public/notation.js` | JPGN writer, parser, and strict legality-checked replayer. |
 | `public/gif.js` | Dependency-free indexed GIF encoder + deterministic board renderer. |
 | `public/showcase.js` | Lazy replay theatre (recent games, bot variations). |
@@ -84,7 +85,14 @@ refactor.
    move-log key before touching the DOM. Don't replace subtrees every frame.
 9. **Untrusted text is inert.** Chat and names are rendered with `textContent`, capped and
    stripped server-side. CSP forbids inline script; keep it that way.
-10. **Comments explain why.** The codebase's comments carry reasoning that isn't recoverable from
+10. **The atlas namespaces its CSS.** `public/style.css` is loaded first for the shared chrome and
+    palette, so every board-ish class in `atlas.css` carries a `tb-` prefix. `.sq`, `.pal`,
+    `.seg`, `.legend` and `.palette` already mean something else there; an unprefixed name
+    silently inherits the game's rules.
+11. **A solved tablebase describes the shipped rules.** Changing a preset or a movement archetype
+    invalidates `public/tablebase/`. Rerun `npm run tablebase` in the same commit — the suite
+    recounts the small material layers against `engine.js` and fails on stale artifacts.
+12. **Comments explain why.** The codebase's comments carry reasoning that isn't recoverable from
     the code (why elimination ends on `capturesPossible()` and not "nothing en prise"; why the
     lobby fingerprints its metadata). Match that register — skip the ones that restate the line.
 

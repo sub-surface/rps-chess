@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>JANKEN — 3×3 tablebase atlas</title>
+  <meta name="description" content="The 3x3 JANKEN board solved exactly: 415,550 positions, seven movement archetypes, and a proof that every legal opening is drawn." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="JANKEN — 3×3 tablebase atlas" />
+  <meta property="og:description" content="Every position on the 3x3 board, solved. Play against perfect knowledge and read the whole game at once." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/atlas.css" />
+</head>
+<body data-screen="atlas">
+  <header class="top">
+    <a class="brand" href="/" aria-label="Janken home">
+      <svg class="mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+        <g fill="none" stroke-width="3.4" stroke-linecap="square">
+          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
+          <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
+          <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
+        </g>
+      </svg>
+      <span class="word">JANKEN<em>tablebase atlas</em></span>
+    </a>
+    <div class="tools">
+      <a class="tbtn" href="/">play</a>
+      <button class="tbtn" id="theme-btn" type="button">theme</button>
+    </div>
+  </header>
+
+  <main class="atlas">
+    <section class="atlas-hero">
+      <div class="hero-copy">
+        <h1>The 3×3 board,<br />solved exactly.</h1>
+        <p>
+          JANKEN's smallest variant is small enough to know completely. Every arrangement of one
+          rock, one paper and one scissors a side — <b id="hero-states">…</b> positions counting
+          the side to move — has been evaluated backwards from every possible ending, for each of
+          the seven ways a piece can move.
+        </p>
+        <p>
+          Nothing here is an estimate, and nothing here is a second opinion: the solver imports the
+          same <code>engine.js</code> the game itself plays by, so a verdict on this page is a
+          verdict about the real thing.
+        </p>
+      </div>
+      <div class="hero-figures" id="hero-figures"></div>
+    </section>
+
+    <nav class="atlas-nav" id="atlas-nav" aria-label="Sections">
+      <a href="#reading">moves</a>
+      <a href="#openings">openings</a>
+      <a href="#variants">variants</a>
+      <a href="#layers">material</a>
+      <a href="#depth">depth</a>
+      <a href="#symmetry">symmetry</a>
+      <a href="#graph">graph</a>
+      <a href="#method">method</a>
+    </nav>
+
+    <div class="atlas-split">
+      <aside class="atlas-stage">
+        <div class="stage-head">
+          <span class="stage-lens" id="stage-lens">position</span>
+          <span class="stage-rules mono" id="stage-rules">…</span>
+        </div>
+
+        <div class="boardwrap">
+          <div class="tb-board" id="tb-board" role="group" aria-label="Editable 3 by 3 board"></div>
+          <svg class="tb-arrows" id="arrows" viewBox="0 0 300 300" aria-hidden="true">
+            <g id="arrow-group"></g>
+          </svg>
+        </div>
+
+        <div class="verdict" id="verdict" aria-live="polite">
+          <div class="verdict-main">
+            <span class="verdict-word" id="verdict-word">…</span>
+            <span class="verdict-detail" id="verdict-detail"></span>
+          </div>
+          <dl class="verdict-facts" id="verdict-facts"></dl>
+        </div>
+
+        <div class="stage-controls">
+          <div class="tb-seg" role="group" aria-label="Side to move">
+            <button type="button" id="turn-blue" class="tb-seg-btn blue">Blue</button>
+            <button type="button" id="turn-red" class="tb-seg-btn red">Red</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="mini" id="undo-btn" disabled>undo</button>
+            <button type="button" class="mini" id="reset-btn">start</button>
+            <button type="button" class="mini" id="random-btn">random</button>
+            <button type="button" class="mini" id="share-btn">share</button>
+          </div>
+        </div>
+
+        <details class="editor">
+          <summary>edit the position</summary>
+          <div class="tb-palette" id="tb-palette"></div>
+          <p class="tb-hint">Pick a piece, then a square. Each side holds at most one of each.</p>
+        </details>
+      </aside>
+
+      <div class="atlas-stream">
+        <section class="atlas-section" id="reading" data-lens="moves">
+          <p class="eyebrow">01 — reading a position</p>
+          <h2>Every move, ranked</h2>
+          <p class="lede">
+            The board on the left is live. Click a piece to see where it can go, and each
+            destination is tinted by what the position becomes: violet if the mover still wins,
+            red if the move throws it away, grey for a draw. The list below is the same
+            information ordered — best first, with the number of plies perfect play still needs.
+          </p>
+          <div class="movelist" id="movelist"></div>
+          <p class="note" id="movelist-note"></p>
+        </section>
+
+        <section class="atlas-section" id="openings" data-lens="openings">
+          <p class="eyebrow">02 — openings</p>
+          <h2>Every legal opening is drawn</h2>
+          <p class="lede">
+            JANKEN deals armies with 180° rotational symmetry, so Red's pieces always sit on the
+            antipodes of Blue's. On a 3×3 board that permits exactly <b>192</b> starting
+            positions — and under perfect play every single one of them is a draw, in all seven
+            movement archetypes. There is no first-move advantage here, and no zugzwang either.
+          </p>
+          <div class="gallery" id="fair-gallery"></div>
+          <p class="note">
+            All 192 legal starts, each drawn. Hover to preview on the board, click to load.
+          </p>
+
+          <h3>The opening grid</h3>
+          <p class="lede">
+            Line Blue's column up against Red's and you get 36 pairings. They split evenly
+            — but only the six shaded cells are ones the game can actually deal. The other 30
+            face armies at each other that no layout produces, which is why an even three-way
+            split is a fact about the grid rather than about the game.
+          </p>
+          <div class="opening-grid" id="opening-grid"></div>
+        </section>
+
+        <section class="atlas-section" id="variants" data-lens="variants">
+          <p class="eyebrow">03 — seven ways to move</p>
+          <h2>The same board, seven games</h2>
+          <p class="lede">
+            Give every piece a different archetype and the 3×3 board becomes a different game with
+            the same furniture. Select one to re-rule the board on the left: the position stays,
+            the legal moves and the verdict change.
+          </p>
+          <div class="variant-list" id="variant-list"></div>
+          <h3>This position, under every rule set</h3>
+          <p class="lede" id="crosscheck-lede">
+            The position currently on the board, evaluated by all seven tablebases at once.
+          </p>
+          <div class="crosscheck" id="crosscheck"></div>
+        </section>
+
+        <section class="atlas-section" id="layers" data-lens="layers">
+          <p class="eyebrow">04 — material</p>
+          <h2>Down to the last piece</h2>
+          <p class="lede">
+            Captures only ever remove pieces, so the game falls into seven layers that drain into
+            one another. Each bar is one layer's verdicts from the mover's point of view; the
+            smaller layers are the endgames, and they are where the draws concentrate. Click a
+            layer to drop a position from it onto the board.
+          </p>
+          <div class="waterfall" id="waterfall"></div>
+        </section>
+
+        <section class="atlas-section" id="depth" data-lens="depth">
+          <p class="eyebrow">05 — depth</p>
+          <h2>How long is forced?</h2>
+          <p class="lede">
+            Distance to mate counts the plies perfect play still needs — the winner racing to
+            finish, the loser stalling as long as possible. Click a bar to load a position that
+            deep.
+          </p>
+          <div class="histogram" id="histogram"></div>
+          <div class="deepest" id="deepest"></div>
+        </section>
+
+        <section class="atlas-section" id="symmetry" data-lens="symmetry">
+          <p class="eyebrow">06 — symmetry</p>
+          <h2>Twenty-four positions, one answer</h2>
+          <p class="lede">
+            A square board maps onto itself eight ways, and because every piece here shares one
+            movement archetype, advancing rock→paper→scissors on both sides at once is a symmetry
+            too. That is a group of 24. Apply any of them to the board and the verdict is
+            obliged not to move — the strip below is the current position's whole orbit.
+          </p>
+          <div class="sym-strip" id="sym-strip"></div>
+          <div class="facts" id="sym-facts"></div>
+          <p class="note">
+            Symmetry could have stored this table 24× smaller. It is not used that way: a solved
+            variant is 406 KB flat, which compresses to less than a photograph, and a flat table
+            answers in one arithmetic step instead of a search. Symmetry earns its keep here as
+            something to look at rather than as a compression trick.
+          </p>
+        </section>
+
+        <section class="atlas-section" id="graph" data-lens="graph">
+          <p class="eyebrow">07 — the graph</p>
+          <h2>What follows from here</h2>
+          <p class="lede">
+            Every move from the board, and every reply to those, laid out by depth and merged
+            wherever two lines reach the same position up to symmetry. Scroll to zoom, drag to
+            pan, click any node to make it the board.
+          </p>
+          <div class="graph-controls">
+            <label class="range">
+              depth
+              <input type="range" id="graph-depth" min="1" max="4" value="2" />
+              <b id="graph-depth-value">2</b>
+            </label>
+            <div class="btn-row">
+              <button type="button" class="mini on" id="graph-best">best play</button>
+              <button type="button" class="mini" id="graph-all">every move</button>
+              <button type="button" class="mini" id="graph-fit">fit</button>
+            </div>
+          </div>
+          <div class="graph-frame">
+            <svg id="graph-svg" role="img" aria-label="Move graph from the current position">
+              <g id="graph-view">
+                <g id="graph-edges"></g>
+                <g id="graph-nodes"></g>
+              </g>
+            </svg>
+            <p class="graph-empty" id="graph-empty" hidden></p>
+          </div>
+          <p class="note" id="graph-note"></p>
+        </section>
+
+        <section class="atlas-section" id="method">
+          <p class="eyebrow">08 — method</p>
+          <h2>How this was built, and what it does not claim</h2>
+          <p class="lede">
+            Six labelled pieces, each captured or on one of nine squares, give
+            <b>207,775</b> placements — <b>415,550</b> counting whose turn it is. The solver walks
+            every legal move with <code>engine.js</code>, then works backwards from the endings:
+            a position is won when some move reaches a lost one, lost when every move reaches a
+            won one, and drawn when it never resolves at all.
+          </p>
+          <div class="facts" id="method-facts"></div>
+          <h3>Two honest caveats</h3>
+          <p class="lede">
+            These are <b>positional</b> values, in the sense chess tablebases mean it: they ignore
+            the clock. JANKEN ends a game that has gone 60 actions without a capture and awards it
+            to whoever leads on material, which can turn a theoretical shuffle into a win. For the
+            king variant that rule changes <b>5,952</b> of 415,550 verdicts — 1.43% — and it does
+            not change any legal opening. Threefold repetition, the other history rule, cannot
+            change a positional verdict at all: a forced win never needs to revisit a position.
+          </p>
+          <p class="lede">
+            The second caveat is narrower. Every variant here gives all three pieces the same
+            archetype. Mixed assignments — King's field, say — are solvable the same way, but they
+            lose the rock→paper→scissors symmetry, so the pictures in section 06 would be a third
+            the size.
+          </p>
+          <p class="note">
+            Regenerate with <code>npm run tablebase</code>. The generator audits everything it
+            writes: every value must equal the best reply available, every distance must match the
+            best line, and every verdict must survive all 24 symmetries.
+          </p>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <a href="/" class="linklike">play janken</a>
+    <span class="sep">·</span>
+    <a href="https://subsurfaces.net" class="linklike">subsurfaces.net</a>
+    <span class="sep">·</span>
+    <a class="linklike" href="https://github.com/sub-surface/rps-chess" target="_blank" rel="noopener">source</a>
+  </footer>
+
+  <script type="module" src="/atlas.js"></script>
+</body>
+</html>

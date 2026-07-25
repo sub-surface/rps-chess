@@ -477,6 +477,41 @@ renderer, and the styled renderer is a presentation layer over it.
 
 The complete format and replay procedure are specified in [`docs/JPGN.md`](./docs/JPGN.md).
 
+## 5d. The 3×3 tablebase
+
+Skirmish is small enough to solve outright, and `/atlas` publishes the solution. Six labelled
+pieces, each captured or on one of nine squares, give **207,775** placements — **415,550**
+counting the side to move. `scripts/tablebase.mjs` enumerates them, walks every legal move with
+`engine.js`, and works backwards from the terminal positions: won where some move reaches a lost
+position, lost where every move reaches a won one, drawn where it never resolves.
+
+The solver states no rule of its own. Movement, capture and termination all come from the same
+module the browser and the Durable Object play by, so a published verdict is a verdict about the
+shipped game and cannot drift from it — the reason a preset change forces a regeneration rather
+than a footnote.
+
+One variant is solved per movement archetype, everything else held at Skirmish. A uniform
+archetype is what makes relabelling rock→paper→scissors an automorphism, so each variant's
+symmetry group is D₄ × C₃, order 24; a mixed assignment would keep only D₄.
+
+| Field | Meaning |
+| --- | --- |
+| `public/tablebase.js` | Addressing and decoding, imported by the page **and** the generator |
+| `public/tablebase/<id>.tb` | One gzipped byte per turn-state: value in bits 6–7, DTM in bits 0–5 |
+| `public/tablebase/manifest.json` | Per-variant cfg, W/D/L, material layers, opening grid, sizes |
+
+Placements address themselves by a base-10 key over the six pieces — digit 0 captured, 1–9 a
+square — so a lookup is arithmetic into a flat array rather than a search. Symmetry is therefore
+presentation, not storage: a table is 406 KB flat and compresses to 43–158 KB.
+
+Two limits are deliberate and stated on the page. The values are **positional**, ignoring the
+no-progress clock exactly as chess tablebases ignore the fifty-move rule; for the king variant
+that clock changes 5,952 of 415,550 verdicts (1.43%) and no legal opening. Threefold repetition
+cannot change a positional verdict at all, since a forced win never needs to revisit a position.
+
+The published result: all **192** placements with 180° rotational symmetry — every position a
+JANKEN layout can legally deal — are drawn under all seven archetypes, with no zugzwang.
+
 ## 6. Verification and release
 
 Workers-runtime tests cover config clamping, every movement archetype, capture/turn invariants,

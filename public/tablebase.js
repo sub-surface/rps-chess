@@ -85,6 +85,52 @@ export function enumeratePlacements() {
   return { index, keys };
 }
 
+// ── symmetry ─────────────────────────────────────────────────────────────────
+// D₄, the eight ways a square board maps onto itself. Every movement archetype JANKEN
+// offers is built from a direction set closed under these, so they are symmetries of play
+// and not merely of the picture.
+export const SQUARE_MAPS = (() => {
+  const forms = [
+    (x, y) => [x, y], (x, y) => [SIZE - 1 - y, x], (x, y) => [SIZE - 1 - x, SIZE - 1 - y],
+    (x, y) => [y, SIZE - 1 - x], (x, y) => [SIZE - 1 - x, y], (x, y) => [x, SIZE - 1 - y],
+    (x, y) => [y, x], (x, y) => [SIZE - 1 - y, SIZE - 1 - x],
+  ];
+  return forms.map((form) => {
+    const map = new Int8Array(CELLS);
+    for (let i = 0; i < CELLS; i++) {
+      const [x, y] = form(i % SIZE, (i / SIZE) | 0);
+      map[i] = y * SIZE + x;
+    }
+    return map;
+  });
+})();
+
+export const SYMMETRY_LABELS = ['identity', 'rotate 90°', 'rotate 180°', 'rotate 270°',
+  'mirror ↔', 'mirror ↕', 'transpose', 'anti-transpose'];
+
+// Reflect or rotate the board, and advance every piece rock→paper→scissors together.
+// `spin` is only a symmetry while all three types share a movement archetype: relabelling
+// is an automorphism of the RPS cycle, but not of a game where rooks and knights differ.
+export function transformPositions(positions, map, spin = 0) {
+  const moved = [-1, -1, -1, -1, -1, -1];
+  for (let slot = 0; slot < 6; slot++) {
+    if (positions[slot] < 0) continue;
+    const base = slot < 3 ? 0 : 3;
+    moved[base + ((slot - base + spin) % 3)] = map[positions[slot]];
+  }
+  return moved;
+}
+
+// The placements that play identically to this one. Its size is what a single stored value
+// really stands for, and it varies: a position fixed by a reflection has a smaller orbit.
+export function orbitKeys(positions, spins = 3) {
+  const found = new Set();
+  for (const map of SQUARE_MAPS) {
+    for (let spin = 0; spin < spins; spin++) found.add(keyOf(transformPositions(positions, map, spin)));
+  }
+  return found;
+}
+
 export const positionsFromKey = (key) => {
   const positions = [];
   for (let i = 0; i < 6; i++) { positions.push((key % 10) - 1); key = (key / 10) | 0; }

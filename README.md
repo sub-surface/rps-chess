@@ -49,6 +49,10 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   (13×13, four of each), King's field (rook/knight/bishop, elimination), Checkers (Long kings
   with leap captures), and Melee (all kings, RPS captures, territory enclosure) — plus
   **Custom**. See `SPEC.md` §1.
+- **Skirmish is solved.** [`/atlas`](https://rps.subsurfaces.net/atlas) publishes an exact
+  tablebase for the 3×3 board — all 415,550 positions, for each of the seven movement
+  archetypes. Set up any position and it will tell you whether it is won, lost or drawn and in
+  how many plies. Every one of the 192 openings the game can legally deal is a draw.
 - Everything the presets are built from is still yours to set: board size, pieces/type, up to
   3 actions/turn, independent movement assignments (`king`, `rook`, `bishop`, `knight`,
   `queen`, `cross`, or `long king`) per RPS piece, one-click movement sets (all kings, all Long

@@ -6,14 +6,15 @@
 //
 //   node scripts/tablebase.mjs            # every variant
 //   node scripts/tablebase.mjs king rook  # only the named ones
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as E from '../public/engine.js';
 import {
-  PLACEMENTS, STATES, CELLS, SIZE,
+  PLACEMENTS, STATES, CELLS, SIZE, SQUARE_MAPS,
   enumeratePlacements, positionsFromKey, positionsOf, boardOf, keyOf, packEntry,
+  transformPositions,
 } from '../public/tablebase.js';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'tablebase');
@@ -27,25 +28,6 @@ const VARIANTS = E.MOVEMENT_TYPES.map((move) => ({
     ...E.PRESETS.skirmish, rockMove: move, paperMove: move, scissorsMove: move,
   }),
 }));
-
-// D₄ on the nine squares: the eight ways a 3×3 board maps onto itself.
-const SQUARE_MAPS = (() => {
-  const maps = [];
-  const forms = [
-    (x, y) => [x, y], (x, y) => [SIZE - 1 - y, x], (x, y) => [SIZE - 1 - x, SIZE - 1 - y],
-    (x, y) => [y, SIZE - 1 - x], (x, y) => [SIZE - 1 - x, y], (x, y) => [x, SIZE - 1 - y],
-    (x, y) => [y, x], (x, y) => [SIZE - 1 - y, SIZE - 1 - x],
-  ];
-  for (const form of forms) {
-    const map = new Int8Array(CELLS);
-    for (let i = 0; i < CELLS; i++) {
-      const [x, y] = form(i % SIZE, (i / SIZE) | 0);
-      map[i] = y * SIZE + x;
-    }
-    maps.push(map);
-  }
-  return maps;
-})();
 
 const { index, keys } = enumeratePlacements();
 const placementOf = (board) => {
@@ -180,13 +162,7 @@ function audit({ offsets, succ }, { value, dtm }, cfg) {
     const seen = new Set();
     for (const map of SQUARE_MAPS) {
       for (let spin = 0; spin < 3; spin++) {
-        const moved = [-1, -1, -1, -1, -1, -1];
-        for (let slot = 0; slot < 6; slot++) {
-          if (positions[slot] < 0) continue;
-          const base = slot < 3 ? 0 : 3, type = (slot - base + spin) % 3;
-          moved[base + type] = map[positions[slot]];
-        }
-        const twin = index[keyOf(moved)];
+        const twin = index[keyOf(transformPositions(positions, map, spin))];
         seen.add(twin);
         for (const turn of [0, 1]) {
           if (value[twin * 2 + turn] !== value[p * 2 + turn] || dtm[twin * 2 + turn] !== dtm[p * 2 + turn]) {
@@ -260,7 +236,11 @@ if (!selected.length) {
 mkdirSync(OUT, { recursive: true });
 const startBoard = E.blocksBoard(SIZE, 1, 'rows');
 const startPlacement = placementOf(startBoard);
-const manifest = { size: SIZE, placements: PLACEMENTS, states: STATES, variants: [] };
+// Solving a subset must not drop the variants it did not touch, so carry forward whatever
+// the last full run recorded and replace only what this run recomputed.
+const manifestPath = join(OUT, 'manifest.json');
+const previous = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : { variants: [] };
+const solvedNow = new Map();
 
 for (const variant of selected) {
   const started = Date.now();
@@ -291,7 +271,7 @@ for (const variant of selected) {
   }
 
   const start = { value: solved.value[startPlacement * 2], dtm: solved.dtm[startPlacement * 2] };
-  manifest.variants.push({
+  solvedNow.set(variant.id, {
     id: variant.id,
     label: variant.label,
     cfg: variant.cfg,
@@ -315,6 +295,14 @@ for (const variant of selected) {
   );
 }
 
+const manifest = {
+  size: SIZE,
+  placements: PLACEMENTS,
+  states: STATES,
+  variants: VARIANTS
+    .map(({ id }) => solvedNow.get(id) || previous.variants.find((v) => v.id === id))
+    .filter(Boolean),
+};
 manifest.permutations = PERM_LABELS;
 // Which cell of the 6×6 opening grid the shipped Skirmish layout actually deals.
 manifest.startLineup = (() => {
@@ -328,5 +316,5 @@ manifest.startLineup = (() => {
   }
   throw new Error('the shipped starting layout is not a column line-up');
 })();
-writeFileSync(join(OUT, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`\nwrote ${selected.length} variant(s) + manifest.json to public/tablebase/`);
