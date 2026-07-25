@@ -101,7 +101,7 @@ fields. `Rated` is emitted as `1` or `0`.
 `Rules` is a semicolon-separated set of `key=value` fields:
 
 ```text
-size=6..13
+size=3..13
 perType=1..4
 rockMove=king|rook|bishop|knight|queen|cross|longking
 paperMove=king|rook|bishop|knight|queen|cross|longking

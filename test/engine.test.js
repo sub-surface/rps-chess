@@ -41,6 +41,12 @@ describe('shared rules engine', () => {
     expect(E.sanitizeCfg({ territory: true, enclosure: true }).enclosure).toBe(true);
     expect(E.sanitizeCfg({}).threefold).toBe(true);
     expect(E.sanitizeCfg({ threefold: false }).threefold).toBe(false);
+    expect(E.sanitizeCfg({ size: 2, perType: 4 })).toMatchObject({ size: 3, perType: 1 });
+    expect(E.sanitizeCfg({ size: 4, perType: 4, layout: 'scattered' })).toMatchObject({
+      size: 4,
+      perType: 1,
+      layout: 'scattered',
+    });
     expect(E.sanitizeCfg({ moveStyle: 'classic' })).toMatchObject({
       rockMove: 'king',
       paperMove: 'rook',
@@ -163,12 +169,17 @@ describe('shared rules engine', () => {
       }
     }
 
-    // Every supported size/piece count keeps all pieces and never overlaps its mirror.
-    for (let size = 6; size <= 13; size++) for (let perType = 1; perType <= 4; perType++) {
-      expect(E.pieceCounts(E.blocksBoard(size, perType, 'rows'))).toEqual({
-        B: perType * 3,
-        R: perType * 3,
-      });
+    // Every supported size/layout clamps to a formation that keeps all pieces and
+    // never overlaps its mirror.
+    for (let size = 3; size <= 13; size++) for (const layout of ['rows', 'corners', 'scattered']) {
+      for (let requested = 1; requested <= 4; requested++) {
+        const cfg = E.sanitizeCfg({ size, perType: requested, layout });
+        expect(cfg.perType).toBe(Math.min(requested, E.maxPerTypeForBoard(size, layout)));
+        expect(E.pieceCounts(E.blocksBoard(cfg.size, cfg.perType, layout, () => 0.5))).toEqual({
+          B: cfg.perType * 3,
+          R: cfg.perType * 3,
+        });
+      }
     }
   });
 
@@ -494,6 +505,7 @@ describe('preset library', () => {
       capture: 'checkers',
       territory: false,
     });
+    expect(E.PRESETS.skirmish).toMatchObject({ size: 3, perType: 1 });
   });
 
   it('every preset produces a playable opening position', () => {

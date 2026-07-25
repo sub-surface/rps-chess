@@ -96,6 +96,44 @@ export const sqName = (r, c, size) => fileL(c) + (size - r);
 export const emptyBoard = (S) => Array.from({ length: S }, () => Array.from({ length: S }, () => ({ owner: null, piece: null })));
 export const cloneBoard = (b) => b.map(row => row.map(c => ({ owner: c.owner, piece: c.piece ? { ...c.piece } : null })));
 
+const normalizedBoardSize = (raw) => {
+  const value = Math.floor(+raw);
+  return Number.isFinite(value) ? Math.max(3, Math.min(13, value)) : 9;
+};
+
+// The smallest boards cannot hold four of every piece without a formation crossing
+// its 180-degree mirror. Keep this geometry-derived limit beside blocksBoard so the UI,
+// restored configs and the server all agree on what can actually be placed.
+export function maxPerTypeForBoard(rawSize, rawLayout = 'rows') {
+  const size = normalizedBoardSize(rawSize);
+  const layout = ['rows', 'corners', 'scattered'].includes(rawLayout) ? rawLayout : 'rows';
+  if (layout === 'rows') {
+    return Math.min(MAX_PER_TYPE, Math.max(1, Math.floor((size * Math.floor(size / 2)) / 3)));
+  }
+  if (layout === 'scattered') {
+    const nearHalfCells = size * Math.floor((size - 1) / 2);
+    return Math.min(MAX_PER_TYPE, Math.max(1, Math.floor(nearHalfCells / 3)));
+  }
+  const fitsCorners = (per) => {
+    const occupied = new Set();
+    for (let type = 0; type < 3; type++) for (let copy = 0; copy < per; copy++) {
+      const cells = [
+        [size - 1 - type, copy],
+        [type, size - 1 - copy],
+      ];
+      for (const [row, col] of cells) {
+        if (row < 0 || row >= size || col < 0 || col >= size) return false;
+        const key = `${row}:${col}`;
+        if (occupied.has(key)) return false;
+        occupied.add(key);
+      }
+    }
+    return true;
+  };
+  for (let per = MAX_PER_TYPE; per > 1; per--) if (fitsCorners(per)) return per;
+  return 1;
+}
+
 // Analysis-board transforms return fresh boards so their source never changes underneath
 // the operation. Mirror rebuilds the opposing army and painted territory as an exact
 // 180-degree, colour-swapped copy of the chosen side; Rotate moves the whole position.
@@ -135,6 +173,10 @@ export function rotateBoard(board) {
 // randomises within each player's near half — fair because the whole board is shared
 // state, not re-derived.
 export function blocksBoard(size, per, layout = 'rows', random = Math.random) {
+  size = normalizedBoardSize(size);
+  layout = ['rows', 'corners', 'scattered'].includes(layout) ? layout : 'rows';
+  const requested = Math.floor(+per);
+  per = Number.isFinite(requested) ? Math.max(1, Math.min(maxPerTypeForBoard(size, layout), requested)) : 1;
   const b = emptyBoard(size);
   const put = (r, c, type) => {
     b[r][c] = { owner: BLUE, piece: { type, color: BLUE } };
@@ -584,7 +626,7 @@ export const PRESETS = {
   // Every preset spells out every compared field, so presetOf() can recognise one
   // exactly. Standard's values are the base; each variant states only what it changes.
   ...Object.fromEntries(Object.entries({
-    skirmish: { size: 6, perType: 1 },
+    skirmish: { size: 3, perType: 1 },
     triple: { actionsPerTurn: 3 },
     cavalry: { rockMove: 'knight', paperMove: 'knight', scissorsMove: 'knight' },
     ambush: { layout: 'scattered' },
@@ -601,7 +643,7 @@ export const PRESETS = {
 // Display order and flavour for the variant picker. Every PRESETS key appears here.
 export const PRESET_INFO = {
   standard: { label: 'Standard', tagline: 'Everything moves one square. Take what you beat; most pieces standing wins.' },
-  skirmish: { label: 'Skirmish', tagline: 'A pocket 6×6 with one of each piece. Decided in a hurry.' },
+  skirmish: { label: 'Skirmish', tagline: 'A pocket 3×3 with one of each piece. Decided in a hurry.' },
   triple: { label: 'Triple step', tagline: 'Three moves a turn. Ground changes hands three times as fast.' },
   cavalry: { label: 'Cavalry', tagline: 'All knights. Nothing blocks a jump, so nothing is ever safe.' },
   painters: { label: 'Painters', tagline: 'Queens that ink every unclaimed square they glide across.' },
@@ -733,8 +775,13 @@ export function rulesSummary(cfg) {
 // Clamp an untrusted config to safe ranges (server-side guard against abuse).
 export function sanitizeCfg(raw) {
   raw = raw || {};
-  const clamp = (v, lo, hi, d) => { v = Math.floor(+v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
+  const clamp = (v, lo, hi, d) => {
+    v = Math.floor(+v);
+    return Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : d));
+  };
   const one = (v, set, d) => set.includes(v) ? v : d;
+  const size = clamp(raw.size, 3, 13, 9);
+  const layout = one(raw.layout, ['rows', 'corners', 'scattered'], 'rows');
   // Territory is opt-in: an absent flag means Standard, which does not paint.
   const territory = !!raw.territory;
   const legacy = LEGACY_MOVES[raw.moveStyle] || LEGACY_MOVES.kings;
@@ -752,8 +799,8 @@ export function sanitizeCfg(raw) {
         ? 'classic'
         : 'custom';
   return {
-    size: clamp(raw.size, 6, 13, 9),
-    perType: clamp(raw.perType, 1, MAX_PER_TYPE, 2),
+    size,
+    perType: clamp(raw.perType, 1, maxPerTypeForBoard(size, layout), 2),
     rockMove,
     paperMove,
     scissorsMove,
@@ -764,7 +811,7 @@ export function sanitizeCfg(raw) {
     trail: territory && !!raw.trail,
     enclosure: territory && !!raw.enclosure,
     threefold: raw.threefold !== false,
-    layout: one(raw.layout, ['rows', 'corners', 'scattered'], 'rows'),
+    layout,
     actionsPerTurn: clamp(raw.actionsPerTurn, 1, 3, 1),
     first: raw.first === RED ? RED : BLUE,
   };

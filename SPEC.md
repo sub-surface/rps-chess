@@ -127,7 +127,7 @@ and phase fields after Phases 3 and 4.
 | Preset | Rules |
 | --- | --- |
 | **Standard** | 9×9, all kings, RPS capture, elimination, one action |
-| **Skirmish** | 6×6, one piece per type, territory with re-tread |
+| **Skirmish** | 3×3, one piece per type, territory with re-tread |
 | **Triple step** | Three actions per turn, territory with re-tread |
 | **Cavalry** | All knights, territory with re-tread |
 | **Painters** | All queens, territory with ink trails, no re-tread |
@@ -151,8 +151,8 @@ is Standard. `retread`, `trail`, and `enclosure` are forced off whenever `territ
 
 ```text
 topology square|hex (default square)                       [Phase 3]
-size 6..13 (square only) · radius 4..8 (hex only)          [Phase 3]
-perType 1..4
+size 3..13 (square only) · radius 4..8 (hex only)          [Phase 3]
+perType 1..4 (clamped to the selected board/layout capacity)
 rockMove|paperMove|scissorsMove king|rook|bishop|knight|queen|cross|longking|gold
 capture rps|chess|checkers · forcedCapture bool (default false; Checkers preset true)
 territory bool · retread bool · trail bool · enclosure bool · layout rows|corners|scattered
@@ -477,10 +477,9 @@ The complete format and replay procedure are specified in [`docs/JPGN.md`](./doc
 ## 6. Verification and release
 
 Workers-runtime tests cover config clamping, every movement archetype, capture/turn invariants,
-forced-capture filtering and per-action recomputation, jump/trail separation, randomized
-termination, backward-compatible JPGN replay, GIF structure, SQLite lobby operations, public
-showcase recording, role assignment, server-side move validation, token reconnect fencing,
-seat-grace release, room expiry, route methods, and origin checks.
+jump/trail separation, randomized termination, backward-compatible JPGN replay, GIF structure,
+SQLite lobby operations, public showcase recording, role assignment, server-side move validation,
+token reconnect fencing, seat-grace release, room expiry, route methods, and origin checks.
 
 A dedicated **room lifecycle** group covers the transitions *between* games in one room, which
 single-game tests never reach: refusing to discard a started game, full instance reset on expiry
@@ -489,9 +488,14 @@ tokens, and the account-minting throttle.
 
 ```sh
 npm run verify
+npm run test:smoke
 npm run deploy:dry
 npm run deploy
 ```
+
+The browser smoke starts a local Worker, selects Skirmish, plays a legal move on its 3×3 board,
+and carries that position into analysis. GitHub Actions runs syntax, Workers-runtime, browser, and
+dry-run packaging checks for every push and pull request.
 
 `deploy` applies pending D1 migrations between the version stamp and the upload, so a release
 that needs a new table cannot reach production before the table does. `deploy:dry` deliberately
@@ -548,7 +552,7 @@ directionally distinct from the six-neighbour hex `cross` before the server acce
 
 ### 7.2 Hexagonal lattice (`topology`, `radius`)
 
-The config gains `topology=square|hex`, defaulting to `square`. Square games keep `size=6..13`
+The config gains `topology=square|hex`, defaulting to `square`. Square games keep `size=3..13`
 unchanged. A hex game uses `radius=4..8`, where radius counts the centre cell and the cells on a
 straight line from the centre to an outer corner. A radius-`r` board therefore contains
 `1 + 3r(r - 1)` cells: radius 4 has 37, radius 6 has 91 (the closest analogue to Standard's
@@ -870,10 +874,9 @@ deliberately added.
 
 ### 8.0 Working method
 
-The work is planned as six phases, but it is **implemented as one sweep**. Verification is a
-single full run at the end rather than a gate between phases: the suite is fast, the phases share
-too many files for partial runs to prove much, and the value of stopping at each boundary is
-smaller than the cost of re-establishing context six times.
+The work is planned as six phases and may be implemented in one continuous sweep, but each phase
+remains independently reviewable. Focused checks run when a phase settles; the complete syntax,
+Workers-runtime, browser, and packaging gates run over the assembled tree before commits begin.
 
 That trades safety for speed, so the plan pays for it up front:
 
@@ -883,8 +886,8 @@ That trades safety for speed, so the plan pays for it up front:
   semantics — most sharply, the Phase 1 golden fixtures must be generated from the post-Phase-0
   engine, before the topology refactor touches anything.
 - Commits are still made phase by phase, in order, so the history reads as six reviewable slices
-  rather than one 4,000-line drop. They are made after the suite is green; a commit boundary here
-  is a review unit, not a separate verification.
+  rather than one 4,000-line drop. A phase-specific failure is resolved before later work can hide
+  its cause, while the final full gate proves the phases work together.
 - `npm run verify` must pass on the complete tree before the first commit. Push once every phase
   is committed and the tree is clean.
 - Nothing is deployed as part of this work. `npm run deploy` stays a deliberate, separate act.

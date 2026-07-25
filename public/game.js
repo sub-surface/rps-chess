@@ -1501,9 +1501,17 @@ function setMovementInputs(moves) {
   });
 }
 
+function syncBoardInputs() {
+  const perMax = E.maxPerTypeForBoard(cfg.size, cfg.layout);
+  $('s-size').value = cfg.size;
+  $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
+  $('s-per').max = perMax;
+  $('s-per').value = cfg.perType;
+  $('s-per-v').textContent = cfg.perType;
+}
+
 function fillHome() {
-  $('s-size').value = cfg.size; $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
-  $('s-per').value = cfg.perType; $('s-per-v').textContent = cfg.perType;
+  syncBoardInputs();
   $('s-acts').value = cfg.actionsPerTurn; $('s-acts-v').textContent = cfg.actionsPerTurn;
   $('s-move-rock').value = E.movementFor(cfg, 'rock');
   $('s-move-paper').value = E.movementFor(cfg, 'paper');
@@ -1534,6 +1542,7 @@ function readHome() {
   cfg.enclosure = $('s-enclosure').checked && cfg.territory;
   cfg.first = $('s-first').value; cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked;
   Object.assign(cfg, E.sanitizeCfg(cfg));
+  syncBoardInputs();
   $('s-move-preset').value = movementPresetOf(cfg);
   adoptRules(); updateVariantLine(); markPreset(); renderVariantPreview();
 }

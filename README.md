@@ -44,7 +44,7 @@ what they beat, so identity is as much a wall as a weapon. Outlast your opponent
   Spectators can use the move log, arrow keys, or board controls to review any earlier position
   without losing their place when another live move arrives.
 - **Eleven named variants**, each a real combination rather than a slider preset — Standard,
-  Skirmish (6×6, one of each), Triple step (3 actions/turn), Cavalry (all knights), Painters
+  Skirmish (3×3, one of each), Triple step (3 actions/turn), Cavalry (all knights), Painters
   (queens with ink trails), Ambush (scattered start), Siege (corners, no re-tread), Expanse
   (13×13, four of each), King's field (rook/knight/bishop, elimination), Checkers (Long kings
   with leap captures), and Melee (all kings, RPS captures, territory enclosure) — plus
@@ -117,11 +117,16 @@ linked at the bottom of the page.
 
 ```sh
 npm install
+npx playwright install chromium   # once, for the browser smoke test
 npm run dev          # local Worker, assets, and Durable Objects
 npm run verify       # syntax checks + Workers-runtime tests
+npm run test:smoke   # Chromium: choose a variant, play a move, open analysis
 npm run deploy:dry   # verify + build a no-upload Wrangler bundle
 npm run d1:migrate   # apply pending D1 migrations on their own (deploy runs this for you)
 ```
+
+GitHub Actions runs verification, the Chromium smoke test, and dry-run packaging on every push
+and pull request.
 
 `npm run deploy` verifies the app, refuses an uncommitted application tree, stamps
 `public/version.json`, **applies pending D1 migrations**, and only then uploads — so schema
