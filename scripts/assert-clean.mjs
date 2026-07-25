@@ -6,7 +6,10 @@ import { dirname, join } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const output = execFileSync(
   'git',
-  ['status', '--porcelain', '--untracked-files=all', '--', 'src', 'public', 'scripts', 'package.json', 'package-lock.json', 'wrangler.jsonc'],
+  [
+    'status', '--porcelain', '--untracked-files=all', '--',
+    'src', 'public', 'scripts', 'migrations', 'package.json', 'package-lock.json', 'wrangler.jsonc',
+  ],
   { cwd: root, encoding: 'utf8' },
 );
 const changes = output

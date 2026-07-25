@@ -6,4 +6,6 @@ public/version.json
 
 # test artifacts
 .playwright-mcp/
+playwright-report/
+test-results/
 *.png

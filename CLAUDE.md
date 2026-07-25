@@ -15,6 +15,7 @@ npm install
 npm run dev            # wrangler dev — Worker, assets, DOs, local D1
 npm run verify         # node --check on every module + full vitest suite  ← the gate
 npm test               # vitest only (boots workerd; first run is slow)
+npm run test:smoke     # Chromium through a local wrangler dev server
 npm run deploy:dry     # verify + wrangler bundle, no upload, no DB writes
 npm run d1:migrate:local   # apply migrations to the local D1
 npm run d1:migrate     # applies to PRODUCTION D1 (--remote)
@@ -127,6 +128,8 @@ migration.
 - `test/worker.test.js` runs inside `workerd` via `@cloudflare/vitest-pool-workers` against real DO
   stubs: `env.ROOM.getByName(...)`, `runInDurableObject`, `runDurableObjectAlarm`. Reuse the
   `connect()` and `nextMessage()` helpers at the top of that file.
+- `e2e/game-smoke.spec.js` is the deliberately small browser gate. Install Chromium once with
+  `npx playwright install chromium`; Playwright starts `wrangler dev` itself.
 - `ADMIN_KEY` is bound to `test-admin-key` by `vitest.config.js`.
 - The **room lifecycle** describe block covers transitions *between* games in one room (refusing to
   discard a started game, full reset on expiry, seat-token minting, signup throttling). Lifecycle

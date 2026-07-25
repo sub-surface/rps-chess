@@ -1,13 +1,14 @@
 {
   "name": "rps-chess",
   "version": "1.0.0",
-  "description": "JANKEN — a territory game of rock-paper-scissors chess. Deployed at rps.subsurfaces.net.",
+  "description": "JANKEN — a rock-paper-scissors strategy game played like chess. Deployed at rps.subsurfaces.net.",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "check:syntax": "node --check public/engine.js && node --check public/pieces.js && node --check public/notation.js && node --check public/gif.js && node --check public/showcase.js && node --check public/game.js && node --check src/worker.js",
+    "check:syntax": "node scripts/check-syntax.mjs",
     "test": "vitest run",
+    "test:smoke": "playwright test",
     "verify": "npm run check:syntax && npm test",
     "deploy:dry": "npm run verify && wrangler deploy --dry-run",
     "version:stamp": "node scripts/version.mjs",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",
+    "@playwright/test": "1.61.1",
     "vitest": "^4.1.0",
     "wrangler": "^4.100.0"
   }

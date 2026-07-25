@@ -11,6 +11,7 @@ export default defineConfig(async () => {
       }),
     ],
     test: {
+      include: ['test/**/*.test.js'],
       testTimeout: 10000,
       setupFiles: ['./test/apply-migrations.js'],
     },
