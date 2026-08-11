@@ -336,6 +336,10 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
 .play .btn.primary { grid-column: 1 / -1; }
 /* Keep the stack even: a trailing odd button spans rather than sitting half-width. */
 .play .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.play-bot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; min-width: 0; }
+.play-bot .btn { min-width: 0; }
+.bot-strength { display: flex; align-items: center; gap: 5px; color: var(--muted); font: 9px ui-monospace, monospace; }
+.bot-strength select { width: 74px; padding: 6px 5px; font: inherit; font-size: 10px; }
 
 /* lobby */
 .lobby-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }

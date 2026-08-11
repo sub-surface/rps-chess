@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>JANKEN — daily puzzle</title>
+  <meta name="description" content="A solver-checked daily JANKEN puzzle from the exact 3×3 tablebase." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/puzzle.css" />
+</head>
+<body data-screen="puzzle">
+  <header class="top">
+    <a class="brand" href="/" aria-label="Janken home">
+      <svg class="mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+        <g fill="none" stroke-width="3.4" stroke-linecap="square">
+          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
+          <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
+          <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
+        </g>
+      </svg>
+      <span class="word">JANKEN<em>daily puzzle</em></span>
+    </a>
+    <p class="dyk" id="dyk" aria-live="polite" hidden></p>
+    <nav class="tools">
+      <a class="tbtn" href="/">play</a>
+      <a class="tbtn" href="/atlas">atlas</a>
+      <button class="tbtn" id="theme-btn" type="button">theme</button>
+    </nav>
+  </header>
+
+  <main class="puzzle-page">
+    <section class="puzzle-intro">
+      <p class="puzzle-eyebrow">Skirmish tablebase</p>
+      <h1>Find the move that keeps the win.</h1>
+      <p>
+        Every position is solved exactly. Choose a piece, then a legal square — your move is marked
+        immediately, with the answer held back until you ask for it.
+      </p>
+    </section>
+
+    <section class="puzzle-layout" aria-labelledby="puzzle-prompt">
+      <div class="puzzle-board-wrap">
+        <div class="puzzle-board" id="puzzle-board" role="group" aria-label="Daily puzzle board"></div>
+      </div>
+      <div class="puzzle-panel">
+        <div class="puzzle-meta">
+          <span class="puzzle-tag" id="puzzle-tag">loading</span>
+          <span class="puzzle-streak" id="puzzle-streak"></span>
+        </div>
+        <h2 id="puzzle-prompt">Reading the tablebase…</h2>
+        <p class="puzzle-note" id="puzzle-note" aria-live="polite">The board will be ready in a moment.</p>
+        <p class="puzzle-toast" id="puzzle-toast" role="status" aria-live="polite" hidden></p>
+        <div class="puzzle-actions">
+          <button class="btn sm" id="puzzle-daily" type="button">today</button>
+          <button class="btn sm" id="puzzle-next" type="button">another</button>
+          <button class="linklike" id="puzzle-reveal" type="button">show the move</button>
+        </div>
+        <p class="puzzle-footnote" id="puzzle-footnote">
+          Same daily position as the home screen. The atlas remains available when you want the full proof.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <a href="https://subsurfaces.net" class="linklike">subsurfaces.net</a>
+    <span class="sep">·</span>
+    <a class="linklike" href="https://github.com/sub-surface/rps-chess" target="_blank" rel="noopener">source</a>
+  </footer>
+
+  <script type="module" src="/puzzle.js"></script>
+</body>
+</html>

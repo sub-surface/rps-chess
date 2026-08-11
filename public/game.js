@@ -2,7 +2,7 @@
 // All rules live in engine.js (shared with the server), so hints match server validation.
 import * as E from '/engine.js';
 import { annotateMoves, exportJpgn } from '/notation.js';
-import { glyph, PIECE_STYLE_IDS, PIECE_STYLES } from '/pieces.js';
+import { glyph, PIECE_STYLE_IDS, PIECE_STYLES, spriteSource } from '/pieces.js';
 import { mountFact } from '/facts.js';
 import * as TB from '/tablebase.js';
 import * as Bot from '/bot.js';
@@ -1526,8 +1526,9 @@ let showcaseModule = null;
 // so they can never disagree about which ruleset is on show. Calls made before the lazy import
 // resolves are not lost: showcase.js remembers the last request and honours it on start.
 function theatreVariant(rules) {
-  if (showcaseModule) showcaseModule.showcaseVariant(rules);
-  else pendingTheatreVariant = rules;
+  const style = cfg.pieceStyle;
+  if (showcaseModule) showcaseModule.showcaseVariant(rules, style);
+  else pendingTheatreVariant = { rules, style };
 }
 let pendingTheatreVariant = null;
 function ensureShowcase() {
@@ -1536,7 +1537,9 @@ function ensureShowcase() {
   const load = () => import('/showcase.js')
     .then((module) => {
       showcaseModule = module;
-      if (pendingTheatreVariant) module.showcaseVariant(pendingTheatreVariant);
+      if (pendingTheatreVariant) {
+        module.showcaseVariant(pendingTheatreVariant.rules, pendingTheatreVariant.style);
+      }
       return module.initShowcase();
     })
     .catch(() => { showcaseStarted = false; });
@@ -1730,7 +1733,7 @@ function fillHome() {
   $('s-layout').value = cfg.layout; $('s-first').value = cfg.first;
   $('s-coords').checked = cfg.coords; $('s-hints').checked = cfg.hints; $('s-sound').checked = cfg.sound;
   $('s-coordstyle').value = cfg.coordStyle;
-  $('s-botlevel').value = cfg.botLevel;
+  $('home-botlevel').value = cfg.botLevel;
   $('name-input').value = name;
   $('retread-row').hidden = !cfg.territory;
   $('trail-row').hidden = !cfg.territory;
@@ -1750,6 +1753,7 @@ function readHome() {
   cfg.trail = $('s-trail').checked && cfg.territory;
   cfg.enclosure = $('s-enclosure').checked && cfg.territory;
   cfg.first = $('s-first').value; cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked;
+  cfg.botLevel = Bot.levelOf($('home-botlevel').value);
   Object.assign(cfg, E.sanitizeCfg(cfg));
   syncBoardInputs();
   $('s-move-preset').value = movementPresetOf(cfg);
@@ -1807,12 +1811,15 @@ $('s-move-rotate').onclick = () => {
   readHome();
 };
 // View preferences live in the Preferences dialog so they can change mid-game too.
-for (const id of ['s-coords', 's-hints', 's-sound', 's-coordstyle', 's-botlevel']) $(id).onchange = () => {
+for (const id of ['s-coords', 's-hints', 's-sound', 's-coordstyle']) $(id).onchange = () => {
   cfg.coords = $('s-coords').checked; cfg.hints = $('s-hints').checked; cfg.sound = $('s-sound').checked;
   cfg.coordStyle = $('s-coordstyle').value === 'grid' ? 'grid' : 'chess';
-  cfg.botLevel = Bot.levelOf($('s-botlevel').value);
   saveCfg();
   if (document.body.dataset.screen === 'game') render();
+};
+$('home-botlevel').onchange = () => {
+  cfg.botLevel = Bot.levelOf($('home-botlevel').value);
+  saveCfg();
 };
 // The verdict is stated for whoever is to move, so changing that changes the answer.
 $('ed-first').onchange = () => { if (editing) renderTbVerdict(); };
@@ -2016,15 +2023,7 @@ async function pieceStamper(palette, cell) {
     return best;
   };
   const stamps = new Map();
-  const rasterize = async (type, color) => {
-    const svg = pieceGlyph(type, color)
-      .replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${cell}" height="${cell}" `);
-    const image = new Image();
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    await image.decode();
-    const canvas = new OffscreenCanvas(cell, cell);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    context.drawImage(image, 0, 0, cell, cell);
+  const recordStamp = (context, type, color) => {
     const { data } = context.getImageData(0, 0, cell, cell);
     const stamp = new Uint8Array(cell * cell).fill(255);
     let painted = 0;
@@ -2035,9 +2034,38 @@ async function pieceStamper(palette, cell) {
     }
     if (painted) stamps.set(`${type}:${color}`, stamp);
   };
+  const rasterize = async (type, color) => {
+    const svg = pieceGlyph(type, color)
+      .replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${cell}" height="${cell}" `);
+    const image = new Image();
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await image.decode();
+    const canvas = new OffscreenCanvas(cell, cell);
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0, cell, cell);
+    recordStamp(context, type, color);
+  };
+  const rasterizeSprite = async (sheet, type, color) => {
+    const source = spriteSource(type, color);
+    if (!source) return;
+    const canvas = new OffscreenCanvas(cell, cell);
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.imageSmoothingEnabled = false;
+    context.drawImage(sheet, source.x, source.y, source.size, source.size, 0, 0, cell, cell);
+    recordStamp(context, type, color);
+  };
   try {
+    let spriteSheet = null;
+    if (cfg.pieceStyle === 'sprite') {
+      spriteSheet = new Image();
+      spriteSheet.src = spriteSource('rock', BLUE).href;
+      await spriteSheet.decode();
+    }
     for (const type of ['rock', 'paper', 'scissors']) {
-      for (const color of [BLUE, RED]) await rasterize(type, color);
+      for (const color of [BLUE, RED]) {
+        if (spriteSheet) await rasterizeSprite(spriteSheet, type, color);
+        else await rasterize(type, color);
+      }
     }
   } catch { /* an unsupported canvas or a slow sheet: gif.js falls back to its own geometry */ }
   // No stamps at all means no hook, so the export takes exactly the path the tests assert.

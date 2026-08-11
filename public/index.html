@@ -32,6 +32,7 @@
     <nav class="tools">
       <button id="play-btn" class="tbtn accent" title="Back to the play menu">play ▸</button>
       <button id="analysis-btn" class="tbtn" title="Analysis board — set up or explore any position">analysis</button>
+      <a href="/puzzle" id="puzzle-btn" class="tbtn" title="Daily tablebase puzzle">puzzles</a>
       <a href="/atlas" id="atlas-btn" class="tbtn" title="Atlas — the solved 3×3 board and the combinatorics of the rest">atlas</a>
       <button id="pieces-btn" class="tbtn" title="Preferences">options</button>
       <button id="zen-btn" class="tbtn gameonly" title="Zen mode — board only (z)">zen</button>
@@ -72,7 +73,18 @@
           <div class="play">
             <button class="btn big primary" data-mode="online" title="Open a public room — anyone in the lobby can join.">Play online ▸</button>
             <button class="btn big" data-mode="friend" title="Create a private room and copy its link. Only people you send it to can join.">Challenge a friend</button>
-            <button class="btn big" data-mode="bot" title="Play Blue against a bot that searches these exact rules. Strength is in Preferences.">vs Bot</button>
+            <div class="play-bot">
+              <button class="btn big" data-mode="bot" title="Play Blue against a bot that searches these exact rules.">vs Bot</button>
+              <label class="bot-strength" title="How deeply the bot searches in local bot games.">
+                <span>strength</span>
+                <select id="home-botlevel" aria-label="Bot strength">
+                  <option value="casual">casual</option>
+                  <option value="normal">normal</option>
+                  <option value="strong">strong</option>
+                  <option value="perfect">perfect</option>
+                </select>
+              </label>
+            </div>
             <button class="btn big" data-mode="human" title="Both players share this screen, taking turns.">Over the board</button>
           </div>
           <div class="play-more">
@@ -104,12 +116,12 @@
               <span id="dp-label">Daily puzzle</span>
               <span class="dp-date mono" id="dp-date"></span>
             </div>
-            <a class="dp-body" id="dp-link" href="/atlas#puzzle=daily" title="Solve it on the tablebase atlas">
+            <a class="dp-body" id="dp-link" href="/puzzle" title="Solve today's tablebase puzzle">
               <svg class="dp-board" id="dp-board" viewBox="0 0 96 96" role="img" aria-label="Today's tablebase puzzle position"></svg>
               <span class="dp-copy">
                 <b id="dp-ask">…</b>
                 <span id="dp-note"></span>
-                <span class="dp-go">solve it on the atlas →</span>
+                <span class="dp-go">solve it →</span>
               </span>
             </a>
           </aside>
@@ -368,16 +380,6 @@
         <label class="chk"><input type="checkbox" id="s-coords" checked> Coordinates</label>
         <label class="chk"><input type="checkbox" id="s-hints" checked> Move hints</label>
         <label class="chk"><input type="checkbox" id="s-sound" checked> Sounds</label>
-      </div>
-      <div class="prefrow">
-        <label class="fld">Bot strength
-          <select id="s-botlevel">
-            <option value="casual">Casual — glances ahead</option>
-            <option value="normal">Normal — searches a few plies</option>
-            <option value="strong">Strong — searches as deep as it can</option>
-            <option value="perfect">Perfect — plays the solved 3×3 exactly</option>
-          </select>
-        </label>
       </div>
       <div class="prefrow">
         <label class="fld">Coordinate style

@@ -67,8 +67,21 @@ const ORIGAMI = {
 // box — which would let the whole sheet paint over the board. A nested viewport clips on its own,
 // needs no CSS to cooperate, and unlike a clipPath needs no document-unique id per glyph.
 const SPRITE_COL = { rock: 1, paper: 2, scissors: 3 };
-const SPRITE_SHEET = '/assets/rps-sprites.png';
-const SPRITE_CELL = 32;
+export const SPRITE_SHEET = '/assets/rps-sprites.png';
+export const SPRITE_CELL = 32;
+
+// Consumers that need raster pixels (the GIF renderer) use the same source rectangle as the SVG
+// glyph. Keeping the sheet address here prevents one renderer quietly drifting onto a neighbour.
+export const spriteSource = (type, color) => {
+  const col = SPRITE_COL[type];
+  if (!col) return null;
+  return {
+    href: SPRITE_SHEET,
+    x: SPRITE_CELL * col,
+    y: color === 'R' ? SPRITE_CELL : 0,
+    size: SPRITE_CELL,
+  };
+};
 
 const svg = (style, color, body, attrs = 'fill="none" stroke="currentColor" stroke-width="6"') =>
   `<svg class="pc ${style} pc-${color}" viewBox="0 0 100 100" ${attrs}>${body}</svg>`;
@@ -89,9 +102,9 @@ export function glyph(type, color, requestedStyle = 'line') {
   const style = PIECE_STYLE_IDS.includes(requestedStyle) ? requestedStyle : 'line';
   if (style === 'sprite') {
     // Neutral has no row of its own; it borrows Blue's artwork rather than rendering blank.
-    const x = SPRITE_CELL * SPRITE_COL[type], y = color === 'R' ? SPRITE_CELL : 0;
+    const source = spriteSource(type, color);
     return `<svg class="pc sprite pc-${color}" viewBox="0 0 ${SPRITE_CELL} ${SPRITE_CELL}">`
-      + `<svg width="${SPRITE_CELL}" height="${SPRITE_CELL}" viewBox="${x} ${y} ${SPRITE_CELL} ${SPRITE_CELL}">`
+      + `<svg width="${SPRITE_CELL}" height="${SPRITE_CELL}" viewBox="${source.x} ${source.y} ${SPRITE_CELL} ${SPRITE_CELL}">`
       + `<image href="${SPRITE_SHEET}" width="128" height="64"/></svg></svg>`;
   }
   if (style === 'arcade') {

@@ -6,6 +6,7 @@
 // filter over what is already in hand plus a locally simulated game, so dragging a slider costs
 // no network at all.
 import * as E from './engine.js';
+import { glyph, PIECE_STYLE_IDS } from './pieces.js';
 
 const $ = (id) => document.getElementById(id);
 const PIECE_LETTER = { rock: 'R', paper: 'P', scissors: 'S' };
@@ -90,19 +91,10 @@ function snapshots(record, limit = 64) {
   return sampled;
 }
 
-function miniGlyph(piece, x, y, cell) {
-  const colour = piece.color === E.BLUE ? 'sc-B' : 'sc-R';
-  const cx = x + cell / 2, cy = y + cell / 2, r = cell * 0.24;
-  if (piece.type === 'rock') {
-    return `<path class="sc-piece ${colour}" d="M${cx-r},${cy+r*.3} L${cx-r*.55},${cy-r*.65} L${cx},${cy-r} L${cx+r*.8},${cy-r*.35} L${cx+r},${cy+r*.55} L${cx+r*.35},${cy+r} L${cx-r*.55},${cy+r*.9} Z"/>`;
-  }
-  if (piece.type === 'paper') {
-    return `<g class="sc-piece ${colour}" fill="none"><rect x="${cx-r*.7}" y="${cy-r}" width="${r*1.4}" height="${r*2}"/><path d="M${cx-r*.42},${cy-r*.25} H${cx+r*.42} M${cx-r*.42},${cy+r*.25} H${cx+r*.42}"/></g>`;
-  }
-  return `<g class="sc-piece ${colour}" fill="none"><path d="M${cx-r*.7},${cy-r} L${cx+r*.3},${cy+r*.25} M${cx+r*.7},${cy-r} L${cx-r*.3},${cy+r*.25}"/><circle cx="${cx-r*.42}" cy="${cy+r*.62}" r="${r*.3}"/><circle cx="${cx+r*.42}" cy="${cy+r*.62}" r="${r*.3}"/></g>`;
-}
+const miniGlyph = (piece, x, y, cell, style) => glyph(piece.type, piece.color, style)
+  .replace('<svg ', `<svg x="${x}" y="${y}" width="${cell}" height="${cell}" `);
 
-function renderSnapshot(snapshot) {
+function renderSnapshot(snapshot, style) {
   const board = snapshot.board;
   const size = board.length;
   const cell = 180 / size;
@@ -117,7 +109,7 @@ function renderSnapshot(snapshot) {
         || (snapshot.lastMove.tr === row && snapshot.lastMove.tc === col))) classes.push('last');
     const x = col * cell, y = row * cell;
     squares.push(`<rect class="${classes.join(' ')}" x="${x}" y="${y}" width="${cell}" height="${cell}"/>`);
-    if (square.piece) pieces.push(miniGlyph(square.piece, x, y, cell));
+    if (square.piece) pieces.push(miniGlyph(square.piece, x, y, cell, style));
   }
   const grid = [];
   for (let index = 0; index <= size; index++) {
@@ -182,12 +174,15 @@ const framesFor = (record) => (record.frames || (record.frames = snapshots(recor
 // be called before the theatre exists — the request is simply remembered and honoured on start,
 // which is what makes a hover during first paint behave the same as one a second later.
 let wanted = null;
+let wantedStyle = 'sprite';
 let restart = null;
 let restartTimer = null;
-export function showcaseVariant(cfg) {
+export function showcaseVariant(cfg, pieceStyle) {
   const next = cfg ? E.sanitizeCfg(cfg) : null;
-  if (rulesKey(wanted || {}) === rulesKey(next || {}) && !!wanted === !!next) return;
+  const nextStyle = PIECE_STYLE_IDS.includes(pieceStyle) ? pieceStyle : 'line';
+  if (rulesKey(wanted || {}) === rulesKey(next || {}) && !!wanted === !!next && wantedStyle === nextStyle) return;
   wanted = next;
+  wantedStyle = nextStyle;
   if (!restart) return;
   // One debounce, shared by every caller: a dragged slider fires this on every tick and must
   // still start exactly one game.
@@ -235,7 +230,7 @@ export async function initShowcase() {
     // A programme of unreplayable records would otherwise recurse for ever.
     if (!frames.length && guard < records.length) return selectRecord(recordIndex + 1, guard + 1);
     updateCaption();
-    if (frames.length) renderSnapshot(frames[0]);
+    if (frames.length) renderSnapshot(frames[0], wantedStyle);
   };
   // Every ruleset change restarts the theatre rather than mutating a game in flight: a board
   // that changed size mid-replay would be showing a position that never existed.
@@ -249,7 +244,7 @@ export async function initShowcase() {
     if (!active()) return;
     if (frameIndex + 1 < frames.length) {
       frameIndex++;
-      renderSnapshot(frames[frameIndex]);
+      renderSnapshot(frames[frameIndex], wantedStyle);
       schedule();
     } else {
       selectRecord(recordIndex + 1);

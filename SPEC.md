@@ -196,6 +196,7 @@ Not rules. Never compared by `presetOf()`, never sent as authoritative state.
 | [x] | `bot.js` | one opponent for every ruleset: derived weights, alpha-beta through `applyMove()` (§6g) |
 | [x] | `bot-tuning.js` | generated weight overrides keyed by ruleset fingerprint; ignored when stale |
 | [x] | `atlas.js` | `/atlas`, the tablebase page |
+| [x] | `puzzle.html`, `puzzle.js`, `puzzle.css` | `/puzzle`, the focused solver-checked daily puzzle |
 | [x] | `lab.js` | exact state-space counting and seeded self-play, shared by `scripts/lab.mjs` and the atlas |
 | [ ] | `topology.js` | square and hex lattice adapters, the only code that knows what a cell is **[D6]** |
 
@@ -225,8 +226,11 @@ Not rules. Never compared by `presetOf()`, never sent as authoritative state.
   stalled requests and backs off exponentially. Sockets reconnect with jittered backoff; network
   loss, reconnecting, replaced-tab and expired-room states are explicit.
 - [x] Today's puzzle sits under the theatre on Home, hidden until the tablebase answers — a puzzle
-  nobody can mark is worse than none — and links to `/atlas#puzzle=daily`. It loads later than the
-  theatre because it pulls a table down and nothing on the page waits for it.
+  nobody can mark is worse than none — and links to `/puzzle`. It loads later than the theatre
+  because it pulls a table down and nothing on the page waits for it.
+- [x] `/puzzle` is a dedicated, spoiler-safe solving surface for that same daily position, with
+  random follow-ups, active piece artwork, and immediate correct/wrong feedback. The Atlas keeps
+  its puzzle section as the deeper analysis surface rather than being the only place to solve.
 - [x] The theatre sits **beside the play card**, stacking beneath it on narrow screens. It opens on
   the newest completed game of the variant on show and falls back to a bot game generated under
   exactly those rules. Every ruleset change **restarts** it rather than mutating a game in flight,

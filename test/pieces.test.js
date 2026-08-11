@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { glyph, PIECE_STYLE_IDS, PIECE_STYLES } from '../public/pieces.js';
+import { glyph, PIECE_STYLE_IDS, PIECE_STYLES, spriteSource } from '../public/pieces.js';
 
 describe('piece artwork', () => {
   it('keeps every style unique, named, and renderable for both sides', () => {
@@ -46,5 +46,12 @@ describe('piece artwork', () => {
     const svg = glyph('paper', 'B', 'sprite');
     expect(svg.match(/<svg/g)).toHaveLength(2);
     expect(svg).toContain('<image href');
+  });
+
+  it('shares raster source coordinates with consumers that need actual pixels', () => {
+    expect(spriteSource('rock', 'B')).toMatchObject({ x: 32, y: 0, size: 32 });
+    expect(spriteSource('paper', 'R')).toMatchObject({ x: 64, y: 32, size: 32 });
+    expect(spriteSource('scissors', 'N')).toMatchObject({ x: 96, y: 0, size: 32 });
+    expect(spriteSource('lizard', 'B')).toBeNull();
   });
 });

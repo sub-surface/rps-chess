@@ -1,0 +1,38 @@
+/* The puzzle stays deliberately small: one exact question, one board, and feedback close enough
+   to the move that a correct answer feels immediate rather than like a report from the Atlas. */
+.puzzle-page { width: min(920px, calc(100% - 36px)); margin: 0 auto; padding: 54px 0 70px; }
+.puzzle-intro { max-width: 600px; }
+.puzzle-eyebrow, .puzzle-tag { margin: 0; color: var(--muted); font: 650 10px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+.puzzle-intro h1 { margin: 7px 0 10px; font-size: clamp(29px, 5vw, 46px); line-height: 1.06; letter-spacing: -.045em; }
+.puzzle-intro p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.puzzle-layout { display: grid; grid-template-columns: minmax(240px, 440px) minmax(230px, 1fr); gap: clamp(24px, 6vw, 76px); align-items: center; margin-top: 42px; }
+.puzzle-board-wrap { width: 100%; padding: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.puzzle-board { aspect-ratio: 1; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); }
+.pz-sq { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: var(--sq-dark); cursor: pointer; transition: background .14s ease, box-shadow .14s ease; }
+.pz-sq.light { background: var(--sq-light); }
+.pz-sq:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 15%, var(--sq-dark)); }
+.pz-sq.light:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 15%, var(--sq-light)); }
+.pz-sq svg.pc { width: 82%; height: 82%; overflow: visible; pointer-events: none; }
+.pz-sq.selected { box-shadow: inset 0 0 0 3px var(--accent); z-index: 1; }
+.pz-sq.target::after { content: ''; width: 22%; height: 22%; background: color-mix(in srgb, var(--accent) 66%, transparent); }
+.pz-sq.target.capture::after { width: 72%; height: 72%; background: transparent; border: 3px solid color-mix(in srgb, var(--accent) 76%, transparent); }
+.pz-sq:disabled { cursor: default; }
+.puzzle-panel { min-width: 0; padding: 2px 0; }
+.puzzle-meta { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.puzzle-streak { color: var(--muted); font: 10px ui-monospace, monospace; white-space: nowrap; }
+.puzzle-panel h2 { margin: 10px 0 7px; font-size: clamp(22px, 3.2vw, 31px); letter-spacing: -.03em; }
+.puzzle-note { min-height: 42px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.puzzle-toast { margin: 13px 0 0; padding: 9px 11px; border-left: 2px solid var(--line); background: var(--surface-2); color: var(--text); font-size: 13px; line-height: 1.45; }
+.puzzle-toast.right { border-color: var(--accent); color: var(--accent); }
+.puzzle-toast.wrong { border-color: var(--red); color: var(--red); }
+.puzzle-toast.shown { border-color: var(--muted); }
+.puzzle-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.puzzle-actions .linklike { margin-left: 4px; }
+.puzzle-actions .linklike:disabled { opacity: .42; cursor: default; }
+.puzzle-footnote { margin: 23px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+@media (max-width: 640px) {
+  .puzzle-page { width: min(100% - 28px, 480px); padding-top: 30px; }
+  .puzzle-layout { grid-template-columns: 1fr; gap: 25px; margin-top: 30px; }
+  .puzzle-board-wrap { max-width: 440px; }
+}
