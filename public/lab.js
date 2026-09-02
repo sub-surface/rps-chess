@@ -38,6 +38,14 @@ export function seeded(initial) {
 const factorial = (n) => { let f = 1n; for (let i = 2n; i <= BigInt(n); i++) f *= i; return f; };
 const choose = (n, k) => (k < 0 || k > n ? 0n : factorial(n) / (factorial(k) * factorial(n - k)));
 
+export function decimalExponent(n) {
+  const s = String(n);
+  if (s.length <= 1) return { mantissa: Number(s), exponent: 0 };
+  const exp = s.length - 1;
+  const mantissa = Number(s[0] + '.' + s.slice(1, 4));
+  return { mantissa, exponent: exp };
+}
+
 // How many distinguishable positions the board can hold. Pieces of the same colour and type are
 // interchangeable — a board with two blue rocks does not care which is which — so this counts
 // arrangements of a multiset, not of labelled tokens. At 3×3 with one of each it reproduces the
@@ -45,7 +53,7 @@ const choose = (n, k) => (k < 0 || k > n ? 0n : factorial(n) / (factorial(k) * f
 export function stateSpace(cfg) {
   const safe = E.sanitizeCfg(cfg);
   const cells = safe.size * safe.size;
-  const material = E.startingMaterial(safe);
+  const material = cfg?.customMaterial || E.startingMaterial(safe);
   const kinds = [material.rock, material.paper, material.scissors,
     material.rock, material.paper, material.scissors];
   const cellFactorial = factorial(cells);
@@ -67,6 +75,36 @@ export function stateSpace(cfg) {
   return { size: safe.size, cells, pieces, placements, states: placements * 2n };
 }
 
+// Distinguishable states grouped by total pieces surviving on the board (m = 0..totalPieces).
+export function materialLayers(cfg) {
+  const safe = E.sanitizeCfg(cfg);
+  const cells = safe.size * safe.size;
+  const material = cfg?.customMaterial || E.startingMaterial(safe);
+  const kinds = [material.rock, material.paper, material.scissors,
+    material.rock, material.paper, material.scissors];
+  const maxPieces = kinds.reduce((sum, n) => sum + n, 0);
+  const cellFactorial = factorial(cells);
+  const layerPlacements = Array.from({ length: maxPieces + 1 }, () => 0n);
+
+  const walk = (kind, survivors, divisor) => {
+    if (kind === kinds.length) {
+      layerPlacements[survivors] += cellFactorial / (divisor * factorial(cells - survivors));
+      return;
+    }
+    for (let alive = 0; alive <= kinds[kind]; alive++) {
+      if (survivors + alive > cells) break;
+      walk(kind + 1, survivors + alive, divisor * factorial(alive));
+    }
+  };
+  walk(0, 0, 1n);
+
+  return layerPlacements.map((p, m) => ({
+    m,
+    placements: p,
+    states: p * 2n,
+  }));
+}
+
 // Every position a JANKEN deal can actually produce. Layouts are 180° rotationally symmetric, so
 // Red's army is the exact antipode of Blue's: choose Blue's cells from the antipodal pairs (never
 // both halves of one, and never the fixed centre of an odd board), then deal Blue's material onto
@@ -75,7 +113,7 @@ export function openingCount(cfg) {
   const safe = E.sanitizeCfg(cfg);
   const cells = safe.size * safe.size;
   const pairs = Math.floor(cells / 2);
-  const material = E.startingMaterial(safe);
+  const material = cfg?.customMaterial || E.startingMaterial(safe);
   const army = material.rock + material.paper + material.scissors;
   if (army > pairs) return 0n;
   const repeats = factorial(material.rock) * factorial(material.paper) * factorial(material.scissors);

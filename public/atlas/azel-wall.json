@@ -1,0 +1,71 @@
+{
+  "variant": "azel",
+  "boardSize": 5,
+  "layout": "azel",
+  "startingMaterial": {
+    "rock": 2,
+    "paper": 1,
+    "scissors": 3
+  },
+  "startPos": ".....RS.srPS.spRS.sr.....",
+  "complete": false,
+  "caps": {
+    "maxStates": 50000,
+    "maxEdges": 200000,
+    "maxPlies": 20
+  },
+  "traversal": {
+    "totalStates": 50000,
+    "totalEdges": 90094,
+    "revisits": 40093,
+    "frontierRemaining": 45044,
+    "maxPlyReached": 4,
+    "terminalReasons": {},
+    "materialLayers": {
+      "11": 484,
+      "12": 49516
+    },
+    "plies": [
+      {
+        "ply": 0,
+        "states": 1,
+        "edges": 17,
+        "captures": 0,
+        "terminals": 0,
+        "branching": 17
+      },
+      {
+        "ply": 1,
+        "states": 17,
+        "edges": 270,
+        "captures": 0,
+        "terminals": 0,
+        "branching": 15.88
+      },
+      {
+        "ply": 2,
+        "states": 270,
+        "edges": 4908,
+        "captures": 6,
+        "terminals": 0,
+        "branching": 18.18
+      },
+      {
+        "ply": 3,
+        "states": 2724,
+        "edges": 48345,
+        "captures": 258,
+        "terminals": 0,
+        "branching": 17.75
+      },
+      {
+        "ply": 4,
+        "states": 1944,
+        "edges": 36554,
+        "captures": 115,
+        "terminals": 0,
+        "branching": 18.8
+      }
+    ]
+  }
+}

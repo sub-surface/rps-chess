@@ -70,7 +70,7 @@
       <section class="calc-card" aria-label="Configuration Parameters">
         <div>
           <h3>Configuration Parameters</h3>
-          <p class="card-desc">Tweak board geometry and material piles to inspect exact growth.</p>
+          <p class="card-desc">Tweak board geometry, layout, and material piles to inspect exact growth.</p>
         </div>
 
         <div class="calc-controls">
@@ -94,6 +94,17 @@
               <span class="val" id="size-cells">9 cells</span>
             </label>
             <input type="range" id="size-slider" class="calc-slider" min="3" max="13" step="1" value="3" />
+          </div>
+
+          <!-- Layout Picker -->
+          <div class="calc-group">
+            <label class="calc-label">Formation Layout</label>
+            <div class="calc-buttons" id="layout-buttons">
+              <button type="button" class="calc-btn on" data-layout="rows">Rows (Standard)</button>
+              <button type="button" class="calc-btn" data-layout="corners">Corners</button>
+              <button type="button" class="calc-btn" data-layout="scattered">Scattered</button>
+              <button type="button" class="calc-btn" data-layout="azel" id="layout-azel-btn" style="display: none;">Azel's Wall</button>
+            </div>
           </div>
 
           <!-- Material Piles per player -->
@@ -121,21 +132,60 @@
             <input type="range" id="scissors-input" class="calc-slider" min="1" max="10" step="1" value="1" />
           </div>
 
-          <!-- Export -->
-          <div class="btn-row" style="margin-top: 10px;">
-            <button type="button" class="mini" id="export-csv">Download Complexity Ladder (CSV)</button>
+          <!-- Deal metrics -->
+          <div class="calc-group" style="border-top: 1px solid var(--line); padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-bottom: 4px;">
+              <span>Board Occupancy Density:</span>
+              <b class="mono" id="deal-density" style="color: var(--text);">66.7% (6/9 cells)</b>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted);">
+              <span>Deal Invariant:</span>
+              <b id="deal-sym" style="color: var(--win);">180° Rotational Antipodal</b>
+            </div>
+          </div>
+
+          <!-- Export & Sample -->
+          <div class="btn-row" style="margin-top: 6px;">
+            <button type="button" class="mini" id="sample-deal-btn">sample another fair deal</button>
+            <button type="button" class="mini" id="export-csv">download complexity ladder (csv)</button>
+            <button type="button" class="mini" id="export-strata-csv">download strata (csv)</button>
           </div>
         </div>
       </section>
 
-      <!-- Right: Live Results & Comparative Scale -->
-      <section class="calc-card" aria-label="Computed State Space Metrics">
-        <div>
-          <h3>Computed State Space Metrics</h3>
-          <p class="card-desc">Exact arithmetic values derived from multiset combinatorics.</p>
+      <!-- Right: Live Hero Board & Realtime Playout -->
+      <section class="calc-card" aria-label="Live Board & Realtime Playout Demonstration">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <h3>Live Board & Realtime Playout</h3>
+            <p class="card-desc">The board is the hero: watch deals, symmetries, and strata descent in real time.</p>
+          </div>
+          <span class="mono" id="board-desc" style="font-size: 11px; color: var(--muted);">3×3 · rows</span>
         </div>
 
-        <div class="calc-stats">
+        <div class="pg-stage">
+          <div class="pg-boardwrap">
+            <div class="pg-board" id="pg-board" role="group" aria-label="Interactive preview board"></div>
+          </div>
+
+          <!-- Playout Ticker & Controls -->
+          <div class="pg-playout-ticker">
+            <div class="pg-ticker-item"><span>Ply:</span><span class="val" id="ticker-ply">0</span></div>
+            <div class="pg-ticker-item"><span>Material:</span><span class="val" id="ticker-mat">6</span></div>
+            <div class="pg-ticker-item"><span>Captures:</span><span class="val" id="ticker-caps">0</span></div>
+            <div class="pg-ticker-item"><span>Branching:</span><span class="val" id="ticker-branch">16.0</span></div>
+            <div class="pg-ticker-item"><span>Status:</span><span class="val" id="ticker-status" style="color: var(--accent);">Ready</span></div>
+          </div>
+
+          <div class="btn-row" style="width: 100%;">
+            <button type="button" class="mini on" id="playout-run-btn">run realtime playout</button>
+            <button type="button" class="mini" id="playout-step-btn">step move</button>
+            <button type="button" class="mini" id="playout-reset-btn">reset board</button>
+            <button type="button" class="mini toggle" id="playout-speed-btn">speed: normal</button>
+          </div>
+        </div>
+
+        <div class="calc-stats" style="margin-top: 6px;">
           <div class="stat-box">
             <span class="lbl">Distinguishable Placements</span>
             <span class="num" id="stat-placements">207,775</span>
@@ -172,14 +222,35 @@
             <span class="sub">1M transitions / sec</span>
           </div>
         </div>
-
-        <div>
-          <h4 style="margin: 18px 0 6px; font-size: 13px; font-weight: 600;">Comparative Scale of Game Complexity</h4>
-          <p class="card-desc">State space size compared against canonical solved and unsolved games (logarithmic scale).</p>
-          <div class="comp-ladder" id="comp-ladder"></div>
-        </div>
       </section>
     </div>
+
+    <!-- Material Strata Waterfall Section -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>Material Strata Distribution</h3>
+          <p class="card-desc">Exact BigInt state space partitioned by surviving piece count $M = 0 \dots 2 \times \text{army}$. Click a stratum to inspect.</p>
+        </div>
+        <span class="mono" id="strata-inspect" style="font-size: 12px; color: var(--accent);">Select a stratum</span>
+      </div>
+      <div class="layer-strata" id="strata-waterfall"></div>
+    </section>
+
+    <!-- Comparative Complexity Ladder Section -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>Comparative Scale of Game Complexity</h3>
+          <p class="card-desc">Compare JANKEN's state space $|S|$ and Shannon Game Tree Complexity $b^d$ against canonical games.</p>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="mini on" id="comp-mode-states">state space (|S|)</button>
+          <button type="button" class="mini" id="comp-mode-tree">game tree (bᵈ)</button>
+        </div>
+      </div>
+      <div class="comp-ladder" id="comp-ladder"></div>
+    </section>
 
     <section class="atlas-section">
       <p class="eyebrow">Mathematical Formulation</p>

@@ -556,8 +556,11 @@ before the previous one settles. `needs` names the blocking item. Ownership is b
 | [ ] | **D10** | Four-player, later six-player on hex | Sketch only. Turn order, elimination and the RPS cycle with four armies all need design before any code. |
 | [ ] | **D11** | Structural consolidation | Lichess-shaped compartments as the site grows: analysis, atlas, profile and play as separate surfaces over one engine rather than one page that keeps absorbing features. The repo stays single: one engine, one tablebase, one deploy. |
 | [ ] | **D12** | External: a JANKEN entry in the subsurfaces.net arcade | Lives in the `digital-garden` project, not here. |
-| [ ] | **D13** | Azel's wall reachability-first experiment | A bounded attempt to map, then only if it closes, solve the one 5×5 Azel start. It is not a generic 5×5 tablebase; the procedure and publication gates are in §8.6. |
-| [ ] | **D14** | Atlas multi-page decomposition & variant combinatorics playground | Split the monolithic `/atlas` into dedicated pages/subsurfaces. Rather than a single massive page centered on the 3×3 tablebase, turn the atlas into a rich playground to explore the combinatorics, state spaces, and set theory across variants (3×3 solved spaces, Azel reachability, 5×5/9×9 state spaces, cyclic capture topologies). See §8.7. |
+| [x] | **D13** | Azel's wall reachability-first experiment | `scripts/azel-wall.mjs`, `public/atlas/azel-wall.json`, deterministic test contract in `test/azel-wall.test.js`, and live reachability visualization on `/variants` (§8.6). |
+| [x] | **D14** | Atlas multi-page decomposition & variant combinatorics playground | Monolithic `/atlas` decomposed into dedicated sub-surfaces (`/atlas` 3×3 tablebase, `/combinatorics` state-space arithmetic & playout, `/variants` tournament topology & reachability lab) with interactive boards and CSV provenance (§8.7). |
+| [ ] | **D15** | Reachable subgraph closures and solvability classification | Categorizing retrograde solvability bounds on parity-restricted and color-bound subspaces (§8.8). |
+| [ ] | **D16** | Lyapunov potential energy monitor | Energy function $\Phi$ monitoring dissipative game paths in non-cyclic presets (§8.9). |
+| [ ] | **D17** | Odd tournament generator $\mathbb{Z}/(2k+1)\mathbb{Z}$ | Algebraic cycle calculation $C_3(T_{2k+1})$ and higher-order attractor dynamics (§8.10). |
 
 ## 8. Design notes for unbuilt features
 
@@ -739,32 +742,29 @@ used by authoritative play, analysis and bot simulation alike. Above it the redu
 `isLegalAction` · `applyAction` · `hasStarted` · `ratingLockPoint`. Worker lifecycle rules call
 those predicates rather than inferring phase from `moves.length`.
 
+
+`public/topology.js`:
+
+```text
+cells · has · get/set · neighbours · rays · distance · opposite
+coordKey · coordinateLabel · canonicalOrder · cellCount · setupZone
+```
+
+The square adapter wraps the current nested arrays, preserving their JSON shape and every square
+position string. Movement generation asks for the rays or steps of an archetype at a coordinate
+for a colour; most archetypes ignore it, `gold` does not. Checkers capture asks for the
+intervening cell on a two-step rook ray rather than deriving a midpoint, then passes both pieces
+through the same `canCapture()` used by landing captures.
+
+One low-level `applyBoardMove()` owns capture, movement, trails, landing ownership and enclosure,
+used by authoritative play, analysis and bot simulation alike. Above it the reducer exposes
+`isLegalAction` · `applyAction` · `hasStarted` · `ratingLockPoint`. Worker lifecycle rules call
+those predicates rather than inferring phase from `moves.length`.
+
 The square DOM grid stays unchanged behind a board-view boundary; hex gets a dedicated SVG view.
 The controller keeps owning selection, history, online state and modes, with no geometry branch
 beyond choosing the view. Spectator history, the theatre and GIF export consume one phase-aware
 replay frame stream containing both placements and moves.
-
-## 9. Traps
-
-Decided in advance, because a sweep has no natural place to discover them.
-
-1. **Fixture ordering.** D6's goldens must come from the post-B0/B1 engine. Capture them before
-   touching geometry, or the refactor bakes in pre-B0 checkers semantics, and a GIF frame captured
-   before the palette change is a fixture of a colour scheme that no longer exists.
-2. **`presetOf()` grows twice more** (hex, setup); B0 already took it to fifteen fields. Every
-   preset must spell out every compared field or a variant silently reports an earlier preset's
-   name, and the round-trip test catches it only if new presets are added to it. `rulesVersion`
-   stays out of the comparison on purpose — it is an edition, not a variant.
-3. **Keep the validators separate.** Every rejection belongs in `validatePlayableCfg()`. A throw
-   inside `sanitizeCfg()` breaks restored browser state and every historical record.
-4. **Forced capture is per action, not per turn**, and the client consults the same predicate the
-   server enforces: the obligation is filtered inside `legalDest()`, so nothing downstream — the
-   bot, the previews, `hasMove()`, the tablebase walk — can hold a second opinion. `sideHasCapture()`
-   calls the raw geometry, not `legalDest()`, or it would recurse.
-5. **`rulesVersion` is one-way.** The unrestricted leap is reachable from migration and replay
-   only. No UI path may produce it.
-6. **`size × size` is a hex bug.** The no-progress bound and the enclosure majority both assume a
-   square board; both must become `cellCount`.
 
 ### 8.6 Azel's wall reachability-first experiment (`D13`)
 
@@ -820,6 +820,79 @@ the shipped rules, or silently turns incomplete reachability into an Atlas verdi
    - `/atlas/bots`: Empirical tuning ladders, regret curves, and depth-versus-board scaling analysis.
 2. **Interactive playground:** Empower visitors to slice and interact with variant combinatorics directly in the browser—toggling rule predicates, visualizing cyclic capture graph invariants, filtering reachable subsets, and inspecting state-space growth bounds.
 3. **Data provenance:** Retain invariant §9b across all sub-pages: all displayed figures are dynamically read from machine-readable JSON/tablebase fixtures (`manifest.json`, `lab.json`, `bots.json`, `azel-wall.json`), with per-view CSV exports.
+
+### 8.8 Topological invariants for retrograde solvability & reachable subgraph closures (`D15`)
+
+**Problem statement.** Whole-board retrograde analysis scales exponentially: $3 \times 3$ has $4.16 \times 10^5$ states (406 KB raw table, solved in 1.8s), whereas unconstrained $5 \times 5$ has $3.58 \times 10^{14}$ theoretical states (179 TB storage, $\sim 700$ core-years). However, forward reachability and movement constraints dramatically contract the state graph:
+- In $3 \times 3$, bishop movement contracts reachable states to $4.5\%$ of the total space because diagonal steps preserve square color parity $(r + c) \pmod 2$.
+- In $5 \times 5$, square-color binding partitions the 25 cells into independent light (13 cells) and dark (12 cells) manifolds. Under pure sliding bishop rules, the reachability subgraph decomposes into decoupled color complexes.
+
+**Closed Subgraph Theorem for Solvability.**
+A state subset $S_0 \subset S$ is **retrograde solvable** in working memory $M_{\text{RAM}}$ without whole-universe enumeration if and only if:
+1. **Closure Under Predecessors & Successors:** For all $s \in S_0$, all valid forward transitions $\operatorname{Succ}(s)$ and all retrograde ancestor positions $\operatorname{Pred}(s)$ that could reach $s$ lie within $S_0$.
+2. **Strict Layer Boundary:** No capture transition creates backward predecessors into higher material strata: $\forall s \to s'$, $M(s') \le M(s)$.
+3. **Attractor Finite Closure:** All directed cycles in $S_0$ are contained within Strongly Connected Components (SCCs) verifiable by Tarjan's or Kosaraju's algorithm in $\mathcal{O}(|V| + |E|)$ space.
+4. **Memory Bound:** The packed predecessor graph $|V(S_0)| \times b_{\text{avg}} \times 4\text{ bytes} \le M_{\text{RAM}}$.
+
+### 8.9 Lyapunov energy and potential functions ($\Phi$) for non-cyclic presets (`D16`)
+
+**Problem statement.** Standard JANKEN operates on the cyclic tournament $\mathbb{Z}/3\mathbb{Z}$ ($R \succ S \succ P \succ R$). Because the tournament is non-conservative ($\oint d\Phi \neq 0$), directed cycles permit endless repetition orbits, requiring an extrinsic threefold repetition rule.
+
+**Monotonic Potential Construction.**
+For non-cyclic variants, we construct a scalar **Lyapunov Potential Function** $\Phi: S \to \mathbb{R}^+$ that strictly decreases along every game transition:
+1. **Transitive Tournament ($R \succ P \succ S$ and $R \succ S$):**
+   Assign piece weights $w(R) = 3$, $w(P) = 2$, $w(S) = 1$. The state potential is:
+   $\Phi(s) = \sum_{p \in \text{pieces}(s)} w(\operatorname{type}(p))$
+   Every capture strictly decreases $\Phi(s)$ by at least $1$. Because non-capture moves advance across files, a secondary monotonic potential $\Psi(s) = \sum \operatorname{dist}(p)$ guarantees finite termination in at most $\mathcal{O}(N \times |\text{pieces}|)$ plies without repetition rules.
+2. **Territory & Trail Variants (`territory=true`):**
+   When territory paint is non-retreadable, the remaining unpainted cells $U(s) = N^2 - |\operatorname{Painted}(s)|$ serves as a strict Lyapunov function: $U(s') = U(s) - 1$, forcing game termination in at most $N^2$ plies.
+
+### 8.10 Generalizing cyclic tournaments to odd tournaments ($\mathbb{Z}/(2k+1)\mathbb{Z}$) and algebraic cycle dynamics (`D17`)
+
+**Problem statement.** Rock-Paper-Scissors is the unique regular tournament on 3 vertices ($k=1$). Generalizing cyclic capture to arbitrary odd orders $n = 2k+1$ yields rich algebraic and topological properties:
+- $k=1$ ($n=3$): Standard JANKEN on $\mathbb{Z}/3\mathbb{Z}$.
+- $k=2$ ($n=5$): Pentagram tournament ($\mathbb{Z}/5\mathbb{Z}$ · RPSLS: Rock, Paper, Scissors, Lizard, Spock).
+- $k=3$ ($n=7$): Heptagram tournament ($\mathbb{Z}/7\mathbb{Z}$).
+
+**Algebraic Cycle Density.**
+In any regular tournament $T_n$ of odd order $n = 2k+1$, each vertex has out-degree and in-degree $k$. By the Kendall–Babington Smith formula, the number of directed 3-cycles is:
+$C_3(T_n) = \frac{n(n^2 - 1)}{24} = \frac{(2k+1)k(k+1)}{6}$
+- For $n=3$ ($k=1$): $C_3 = \frac{3 \times 8}{24} = 1$ directed 3-cycle.
+- For $n=5$ ($k=2$): $C_3 = \frac{5 \times 24}{24} = 5$ directed 3-cycles.
+- For $n=7$ ($k=3$): $C_3 = \frac{7 \times 48}{24} = 14$ directed 3-cycles.
+
+As $k$ grows, the density of intransitive cycles scales as $\mathcal{O}(k^3)$, creating deep, multi-tiered attractor orbits in the game state graph.
+
+### 8.11 Hexagonal geometry & lattice dynamics integration (`D6`/`D7`)
+
+**Lattice Kinematics.** Hexagonal boards (`topology='hex'`) use axial $(q, r)$ coordinates with implied $s = -q - r$, bounded by $\max(|q|, |r|, |s|) < R$ for radius $R \in [4, 8]$:
+- Cell count is exactly $1 + 3R(R - 1)$ (37 at $R=4$, 91 at $R=6$, 169 at $R=8$).
+- 180° rotational symmetry is exact cube negation: $\operatorname{opposite}([q, r]) = [-q, -r]$.
+- Distance is the $L_1$ half-sum: $\operatorname{dist}(a, b) = \frac{|dq| + |dr| + |ds|}{2}$.
+- Interior kings command 12 destinations (6 edge + 6 vertex diagonals), doubling king branching compared to square center cells.
+- Enclosure boundaries require 6 contiguous edge-neighbor contacts, prohibiting diagonal "corner leaps".
+
+## 9. Traps
+
+Decided in advance, because a sweep has no natural place to discover them.
+
+1. **Fixture ordering.** D6's goldens must come from the post-B0/B1 engine. Capture them before
+   touching geometry, or the refactor bakes in pre-B0 checkers semantics, and a GIF frame captured
+   before the palette change is a fixture of a colour scheme that no longer exists.
+2. **`presetOf()` grows twice more** (hex, setup); B0 already took it to fifteen fields. Every
+   preset must spell out every compared field or a variant silently reports an earlier preset's
+   name, and the round-trip test catches it only if new presets are added to it. `rulesVersion`
+   stays out of the comparison on purpose — it is an edition, not a variant.
+3. **Keep the validators separate.** Every rejection belongs in `validatePlayableCfg()`. A throw
+   inside `sanitizeCfg()` breaks restored browser state and every historical record.
+4. **Forced capture is per action, not per turn**, and the client consults the same predicate the
+   server enforces: the obligation is filtered inside `legalDest()`, so nothing downstream — the
+   bot, the previews, `hasMove()`, the tablebase walk — can hold a second opinion. `sideHasCapture()`
+   calls the raw geometry, not `legalDest()`, or it would recurse.
+5. **`rulesVersion` is one-way.** The unrestricted leap is reachable from migration and replay
+   only. No UI path may produce it.
+6. **`size × size` is a hex bug.** The no-progress bound and the enclosure majority both assume a
+   square board; both must become `cellCount`.
 7. **Canonical order comes from the adapter.** Any reliance on object or `Map` insertion order
    makes `encodePos()` and repetition keys nondeterministic, corrupting threefold detection and
    JPGN round-trips in ways tests may catch only intermittently.

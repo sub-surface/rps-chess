@@ -1010,11 +1010,14 @@ export default {
         ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
         return response;
       }
-      if (url.pathname === '/combinatorics') {
+      if (url.pathname === '/combinatorics' || url.pathname === '/atlas/combinatorics') {
         return env.ASSETS.fetch(new Request(new URL('/combinatorics.html', request.url), request));
       }
-      if (url.pathname === '/variants') {
+      if (url.pathname === '/variants' || url.pathname === '/atlas/variants') {
         return env.ASSETS.fetch(new Request(new URL('/variants.html', request.url), request));
+      }
+      if (url.pathname === '/atlas/tablebase-3x3') {
+        return env.ASSETS.fetch(new Request(new URL('/atlas.html', request.url), request));
       }
       return env.ASSETS.fetch(request);
     } catch (error) {

@@ -61,6 +61,38 @@ describe('lab counting is exact', () => {
     expect(L.log10Of(1000n)).toBeCloseTo(3, 9);
     expect(L.log10Of(415550n)).toBeCloseTo(Math.log10(415550), 9);
     expect(L.log10Of(10n ** 40n)).toBeCloseTo(40, 6);
+
+    const deSmall = L.decimalExponent(415550n);
+    expect(deSmall.exponent).toBe(5);
+    expect(deSmall.mantissa).toBeCloseTo(4.155, 3);
+
+    const deBig = L.decimalExponent(10n ** 40n);
+    expect(deBig.exponent).toBe(40);
+    expect(deBig.mantissa).toBe(1.0);
+  });
+
+  it('calculates exact material layer strata matching the tablebase', () => {
+    const cfg = L.labCfg(3);
+    const layers = L.materialLayers(cfg);
+    expect(layers).toHaveLength(7);
+    const expectedStates = [2n, 108n, 2160n, 20160n, 90720n, 181440n, 120960n];
+    for (let m = 0; m <= 6; m++) {
+      expect(layers[m].m).toBe(m);
+      expect(layers[m].states).toBe(expectedStates[m]);
+    }
+    const sumStates = layers.reduce((sum, l) => sum + l.states, 0n);
+    expect(sumStates).toBe(BigInt(TB.STATES));
+  });
+
+  it('supports custom piece material multisets', () => {
+    const customCfg = {
+      size: 3,
+      customMaterial: { rock: 2, paper: 1, scissors: 0 },
+    };
+    const space = L.stateSpace(customCfg);
+    expect(space.pieces).toBe(6);
+    expect(space.states).toBeGreaterThan(0n);
+    expect(space.states % 2n).toBe(0n);
   });
 });
 

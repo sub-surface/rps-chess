@@ -19,9 +19,9 @@
     <a class="brand" href="/" aria-label="Janken home">
       <svg class="mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
         <g fill="none" stroke-width="3.4" stroke-linecap="square">
-          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
-          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
-          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <circle cx="32" cy="15" r="6" fill="var(--accent)"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)"/>
           <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
           <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
           <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
@@ -76,56 +76,42 @@
         </div>
 
         <div class="calc-buttons" style="margin-bottom: 12px;">
-          <button type="button" class="calc-btn on" data-topo="cyclic">Standard Cyclic (ℤ/3ℤ)</button>
-          <button type="button" class="calc-btn" data-topo="transitive">Transitive / Linear</button>
-          <button type="button" class="calc-btn" data-topo="symmetric">Symmetric (Chess)</button>
+          <button type="button" class="calc-btn on" data-topo="cyclic">Cyclic Ring (ℤ/3ℤ)</button>
+          <button type="button" class="calc-btn" data-topo="transitive">Transitive Order</button>
+          <button type="button" class="calc-btn" data-topo="symmetric">Complete (Chess K₃)</button>
+          <button type="button" class="calc-btn" data-topo="pentagram">Pentagram (ℤ/5ℤ · RPSLS)</button>
+          <button type="button" class="calc-btn" data-topo="null">Null (Territory Only)</button>
         </div>
 
         <div class="digraph-wrap">
-          <svg class="digraph-svg" viewBox="0 0 300 260" aria-label="Piece dominance digraph">
-            <!-- Directed Edges -->
+          <svg class="digraph-svg" id="digraph-svg" viewBox="0 0 320 280" aria-label="Piece dominance digraph">
             <defs>
-              <marker id="arr-accent" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+              <marker id="arr-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                 <path d="M1,1 L7,4 L1,7 Z" fill="var(--accent)"/>
               </marker>
-              <marker id="arr-red" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+              <marker id="arr-red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                 <path d="M1,1 L7,4 L1,7 Z" fill="var(--red)"/>
               </marker>
-              <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+              <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                 <path d="M1,1 L7,4 L1,7 Z" fill="var(--blue)"/>
               </marker>
             </defs>
-
-            <!-- Triangle edges -->
             <g id="digraph-edges" stroke-width="2.5"></g>
-
-            <!-- Vertices -->
-            <!-- Rock (top) -->
-            <g transform="translate(150, 45)" class="vertex">
-              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
-              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">R</text>
-              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Rock</text>
-            </g>
-
-            <!-- Scissors (bottom-right) -->
-            <g transform="translate(230, 195)" class="vertex">
-              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
-              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">S</text>
-              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Scissors</text>
-            </g>
-
-            <!-- Paper (bottom-left) -->
-            <g transform="translate(70, 195)" class="vertex">
-              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
-              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">P</text>
-              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Paper</text>
-            </g>
+            <g id="digraph-nodes"></g>
           </svg>
 
-          <div style="font-size: 12.5px; line-height: 1.5; color: var(--muted);" id="topo-desc">
-            Standard JANKEN rule: $R \succ S \succ P \succ R$. The capture digraph contains a directed 3-cycle.
-            This cycle creates non-trivial Strongly Connected Components (SCCs) in the state space graph,
-            meaning games can orbit in infinite threefold repetition loops.
+          <div style="margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 12px; font-weight: 600;">Generalized Odd Tournaments $\mathbb{Z}/(2k+1)\mathbb{Z}$:</span>
+              <span class="mono" id="kbs-formula" style="font-size: 11.5px; color: var(--accent);">C₃ = (2k+1)k(k+1) / 6</span>
+            </div>
+            <div class="calc-buttons" id="kbs-buttons">
+              <button type="button" class="calc-btn on" data-k="1">k=1 (3 items · 1 cycle)</button>
+              <button type="button" class="calc-btn" data-k="2">k=2 (5 items · 5 cycles)</button>
+              <button type="button" class="calc-btn" data-k="3">k=3 (7 items · 14 cycles)</button>
+              <button type="button" class="calc-btn" data-k="4">k=4 (9 items · 30 cycles)</button>
+              <button type="button" class="calc-btn" data-k="5">k=5 (11 items · 55 cycles)</button>
+            </div>
           </div>
         </div>
 
@@ -133,54 +119,202 @@
           <div class="stat-box">
             <span class="lbl">Tournament Topology</span>
             <span class="num" id="stat-topo-type" style="font-size: 13px;">Cyclic Ring</span>
-            <span class="sub" id="stat-topo-cycles">Contains 3-cycle</span>
+            <span class="sub" id="stat-topo-cycles">Contains 1 3-cycle</span>
+          </div>
+          <div class="stat-box">
+            <span class="lbl">Monotonic Potential (Φ)</span>
+            <span class="num" id="stat-topo-potential" style="font-size: 13px;">None</span>
+            <span class="sub" id="stat-topo-potential-sub">Cycles permit loops</span>
+          </div>
+          <div class="stat-box">
+            <span class="lbl">SCC Decomposition</span>
+            <span class="num" id="stat-topo-scc" style="font-size: 13px;">1 Giant SCC</span>
+            <span class="sub">Non-trivial attractors</span>
           </div>
           <div class="stat-box">
             <span class="lbl">Game Termination</span>
             <span class="num" id="stat-topo-term" style="font-size: 13px;">Requires 3-fold</span>
-            <span class="sub">Cycles permit loops</span>
+            <span class="sub">Infinite without repetition</span>
           </div>
         </div>
       </section>
 
-      <!-- Right: Material Strata & Azel's Wall -->
-      <section class="calc-card" aria-label="Material Strata DAG & Reachability">
-        <div>
-          <h3>Material Strata & The Macro DAG</h3>
-          <p class="card-desc">Why the overall state space is an acyclic cascade of cyclic pools.</p>
-        </div>
-
-        <div style="font-size: 12.5px; line-height: 1.5; color: var(--muted);">
-          Every capture strictly decreases total surviving material $M = |B| + |R|$. Because captures cannot be
-          reversed (no promotions, no re-spawns), <b>no move can ever return to a higher material stratum</b>.
-          The state space graph is therefore a <b>Directed Acyclic Graph (DAG)</b> of material layers.
-        </div>
-
-        <div class="layer-strata" id="layer-strata"></div>
-
-        <div style="margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px;">
-          <h4 style="margin: 0 0 6px; font-size: 13.5px; font-weight: 600;">The Azel's Wall Reachability Frontier</h4>
-          <p class="card-desc" style="margin-bottom: 12px;">
-            Azel's Wall is a 5×5 asymmetric layout ($2R / 1P / 3S$). While the full 5×5 state space contains
-            $\approx 3.58 \times 10^{14}$ theoretical states, forward reachability from Azel's fixed starting line
-            traverses only $\sim 4.5\%$ of the placements.
-          </p>
-          <div class="calc-stats">
-            <div class="stat-box">
-              <span class="lbl">Theoretical States</span>
-              <span class="num" style="font-size: 14px;">3.58 × 10¹⁴</span>
-              <span class="sub">Full multiset</span>
-            </div>
-            <div class="stat-box">
-              <span class="lbl">Reachability Shrinkage</span>
-              <span class="num" style="font-size: 14px;">~95.5% Pruned</span>
-              <span class="sub">Unreachable deals</span>
-            </div>
+      <!-- Right: Live Demonstration Board - Intransitive Attractor Cycle -->
+      <section class="calc-card" aria-label="Intransitive Attractor Cycle Demonstration">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <h3>Intransitive Chasing Orbit</h3>
+            <p class="card-desc">Realtime board demonstration of cyclic chase dynamics and attractor loops.</p>
           </div>
+          <span class="mono" id="orbit-rule-label" style="font-size: 11px; color: var(--accent);">Rule: Cyclic ℤ/3ℤ</span>
+        </div>
+
+        <div class="pg-stage">
+          <div class="pg-boardwrap" style="max-width: 320px;">
+            <div class="pg-board" id="orbit-board" role="group" aria-label="Orbit demonstration board"></div>
+            <svg class="pg-trail-svg" id="orbit-trail-svg" viewBox="0 0 320 320" aria-hidden="true"></svg>
+          </div>
+
+          <div class="pg-banner info" id="orbit-banner">
+            <span>Click <b>play chasing orbit</b> to watch the circular chase.</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 11.5px; margin-top: 4px; color: var(--muted); width: 100%;">
+            <span>Lyapunov Potential (Φ):</span>
+            <b class="mono" id="orbit-potential-val" style="color: var(--accent);">Non-conservative (∮dΦ ≠ 0)</b>
+          </div>
+
+          <div class="btn-row" style="width: 100%; margin-top: 6px;">
+            <button type="button" class="mini on" id="orbit-run-btn">play chasing orbit</button>
+            <button type="button" class="mini" id="orbit-step-btn">step move</button>
+            <button type="button" class="mini" id="orbit-reset-btn">reset orbit</button>
+            <button type="button" class="mini toggle" id="orbit-toggle-rule">rule: cyclic</button>
+          </div>
+        </div>
+
+        <div style="font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 6px;">
+          <b>Topological insight:</b> Under cyclic rules, Blue Rock pursues Red Scissors, Red Scissors pursues Blue Paper,
+          and Blue Paper pursues Red Rock in an endless orbital attractor. Under <b>transitive rules</b>, the chase collapses:
+          the superior piece immediately captures its prey, proving why cyclic rules require a threefold repetition rule.
         </div>
       </section>
     </div>
 
+    <!-- The Deadlock & Termination Matrix Section -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>The Deadlock & Termination Matrix</h3>
+          <p class="card-desc">
+            The Intransitive Absorption Theorem: JANKEN terminates immediately when <code>capturesPossible()</code> is false.
+            This 8×8 matrix evaluates all surviving army subsets $\{B_R, B_P, B_S\} \times \{R_R, R_P, R_S\}$.
+          </p>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="mini" id="deadlock-export-csv">download matrix (csv)</button>
+        </div>
+      </div>
+
+      <div class="deadlock-wrap">
+        <div class="deadlock-grid" id="deadlock-grid"></div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 11.5px; margin-top: 6px;">
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          <i style="width: 12px; height: 12px; background: color-mix(in srgb, var(--blue) 35%, transparent); border: 1px solid var(--blue); border-radius: 2px;"></i>
+          <b>Active War:</b> Both sides can capture each other
+        </span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          <i style="width: 12px; height: 12px; background: color-mix(in srgb, var(--accent) 40%, transparent); border: 1px solid var(--accent); border-radius: 2px;"></i>
+          <b>Blue Predator:</b> Only Blue can capture Red
+        </span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          <i style="width: 12px; height: 12px; background: color-mix(in srgb, var(--red) 40%, transparent); border: 1px solid var(--red); border-radius: 2px;"></i>
+          <b>Red Predator:</b> Only Red can capture Blue
+        </span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          <i style="width: 12px; height: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 2px;"></i>
+          <b>Deadlock Sink:</b> Zero captures possible; game ends immediately by rule!
+        </span>
+      </div>
+      <p class="note" id="deadlock-info" style="margin-top: 10px;">Click any matrix cell to inspect that material duel on the demo board.</p>
+    </section>
+
+    <!-- Azel's Wall Reachability Frontier Section (SPEC §8.6 D13) -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>Azel's Wall Reachability Frontier (D13)</h3>
+          <p class="card-desc">
+            Audited forward census from the fixed 5×5 Azel start formation ($2R / 1P / 3S$).
+            Proves why forward reachability bounds state space exploration.
+          </p>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="mini" id="azel-export-csv">download azel reachability (csv)</button>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 12px 0;">
+        <div class="stat-box">
+          <span class="lbl">Theoretical 5×5 States</span>
+          <span class="num mono">3.58 × 10¹⁴</span>
+          <span class="sub">Full multiset space</span>
+        </div>
+        <div class="stat-box">
+          <span class="lbl">Explored Frontier States</span>
+          <span class="num mono" id="azel-stat-states">50,000</span>
+          <span class="sub" id="azel-stat-edges">90,094 transitions</span>
+        </div>
+        <div class="stat-box">
+          <span class="lbl">Attractor Cycle Revisits</span>
+          <span class="num mono" id="azel-stat-revisits">40,093</span>
+          <span class="sub">Repeated state visits</span>
+        </div>
+        <div class="stat-box">
+          <span class="lbl">Census Status</span>
+          <span class="num" id="azel-stat-status" style="color: var(--draw); font-size: 14px;">Bounded Census</span>
+          <span class="sub">Frontier capped cleanly</span>
+        </div>
+      </div>
+
+      <h4 style="margin: 16px 0 6px; font-size: 13px; font-weight: 600;">Frontier Depth & Contact Evolution</h4>
+      <p class="card-desc">
+        Notice contact dynamics: on Ply 0 and 1, zero captures are possible because armies start separated by column 2.
+        On Ply 2, first contact occurs (6 captures). By Ply 3, tactical melee erupts (258 captures across 48k edges).
+      </p>
+
+      <div style="overflow-x: auto;">
+        <table class="azel-table" id="azel-ply-table">
+          <thead>
+            <tr>
+              <th>Ply</th>
+              <th>States Discovered</th>
+              <th>Edges Traversed</th>
+              <th>Captures Occurred</th>
+              <th>Avg Branching</th>
+            </tr>
+          </thead>
+          <tbody id="azel-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Hexagonal Lattice Kinematics Section (SPEC §8.2, §8.11) -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>Hexagonal Lattice Kinematics & Topology (D6/D7)</h3>
+          <p class="card-desc">
+            Axial coordinates $(q, r)$ with implied $s = -q - r$, bounded by $\max(|q|, |r|, |s|) < R$.
+            Notice the geometric contrast: 6 edge rays (rooks), 6 vertex-diagonal rays (bishops), and 12-direction kings.
+          </p>
+        </div>
+        <span class="mono" id="hex-cell-count" style="font-size: 12px; color: var(--accent);">Radius 4 · 37 cells</span>
+      </div>
+
+      <div class="calc-buttons" id="hex-radius-buttons" style="margin: 12px 0;">
+        <span style="font-size: 11px; color: var(--muted); align-self: center; margin-right: 4px;">Radius:</span>
+        <button type="button" class="calc-btn on" data-hex-radius="4">R = 4 (37 cells)</button>
+        <button type="button" class="calc-btn" data-hex-radius="5">R = 5 (61 cells)</button>
+        <button type="button" class="calc-btn" data-hex-radius="6">R = 6 (91 cells · Standard)</button>
+      </div>
+
+      <div class="calc-buttons" id="hex-role-buttons" style="margin-bottom: 14px;">
+        <span style="font-size: 11px; color: var(--muted); align-self: center; margin-right: 4px;">Archetype:</span>
+        <button type="button" class="calc-btn on" data-hex-role="rook">Rook (6 Edge Rays)</button>
+        <button type="button" class="calc-btn" data-hex-role="bishop">Bishop (6 Vertex Rays)</button>
+        <button type="button" class="calc-btn" data-hex-role="queen">Queen (12 Rays)</button>
+        <button type="button" class="calc-btn" data-hex-role="king">King (12 Steps)</button>
+        <button type="button" class="calc-btn" data-hex-role="knight">Knight (12 Jumps)</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow: hidden;">
+        <svg id="hex-board-svg" viewBox="-240 -240 480 480" width="100%" style="max-width: 440px; height: auto;" aria-label="Hexagonal board demonstration"></svg>
+        <div class="mono" id="hex-hover-info" style="font-size: 11px; color: var(--muted); margin-top: 8px;">Hover over any hex cell to inspect axial coordinates and projected rays.</div>
+      </div>
+    </section>
+
+    <!-- Graph-Theoretic Invariants Section -->
     <section class="atlas-section">
       <p class="eyebrow">Graph-Theoretic Invariants</p>
       <h2>Attractors, Repetition Cycles, and Terminal Sinks</h2>
@@ -191,15 +325,15 @@
         <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
           <h4 style="margin: 0 0 6px; font-size: 13px; color: var(--win);">Terminal Sinks</h4>
           <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">
-            Positions where the game ends by rule: elimination of the opponent's army or arrival at zero legal moves.
-            These are the base cases from which retrograde solving propagates backwards.
+            Positions where the game ends by rule: elimination of the opponent's army, deadlocks where no captures are possible,
+            or arrival at zero legal moves. These are the base cases from which retrograde solving propagates backwards.
           </p>
         </div>
         <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
           <h4 style="margin: 0 0 6px; font-size: 13px; color: var(--accent);">Attractor Cycles (SCCs)</h4>
           <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">
             Subgraphs where neither player can force an escape into a won terminal state. Moves cycle indefinitely,
-            forming the draw-by-threefold attractor basins that characterise perfect play in JANKEN.
+            forming the draw-by-threefold attractor basins that characterise perfect play in cyclic games.
           </p>
         </div>
         <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
@@ -212,6 +346,16 @@
       </div>
     </section>
   </main>
+
+  <footer class="foot">
+    <a href="/" class="linklike">play janken</a>
+    <span class="sep">·</span>
+    <a href="/atlas" class="linklike">3×3 tablebase</a>
+    <span class="sep">·</span>
+    <a href="/combinatorics" class="linklike">combinatorics</a>
+    <span class="sep">·</span>
+    <a href="https://subsurfaces.net" class="linklike">subsurfaces.net</a>
+  </footer>
 
   <script type="module" src="/variants.js"></script>
 </body>
