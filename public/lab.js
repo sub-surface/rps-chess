@@ -50,31 +50,6 @@ export function decimalExponent(n) {
 // interchangeable — a board with two blue rocks does not care which is which — so this counts
 // arrangements of a multiset, not of labelled tokens. At 3×3 with one of each it reproduces the
 // tablebase's 207,775 exactly, which is the check that the formula is the right one.
-export function stateSpace(cfg) {
-  const safe = E.sanitizeCfg(cfg);
-  const cells = safe.size * safe.size;
-  const material = cfg?.customMaterial || E.startingMaterial(safe);
-  const kinds = [material.rock, material.paper, material.scissors,
-    material.rock, material.paper, material.scissors];
-  const cellFactorial = factorial(cells);
-
-  let placements = 0n;
-  const walk = (kind, survivors, divisor) => {
-    if (kind === kinds.length) {
-      placements += cellFactorial / (divisor * factorial(cells - survivors));
-      return;
-    }
-    for (let alive = 0; alive <= kinds[kind]; alive++) {
-      if (survivors + alive > cells) break;
-      walk(kind + 1, survivors + alive, divisor * factorial(alive));
-    }
-  };
-  walk(0, 0, 1n);
-
-  const pieces = kinds.reduce((sum, n) => sum + n, 0);
-  return { size: safe.size, cells, pieces, placements, states: placements * 2n };
-}
-
 function gcdBig(a, b) {
   while (b) {
     const t = b;
@@ -134,6 +109,26 @@ export function materialLayers(cfg) {
     };
   });
 }
+
+// How many distinguishable positions the board can hold. Pieces of the same colour and type are
+// interchangeable — a board with two blue rocks does not care which is which — so this counts
+// arrangements of a multiset, not of labelled tokens. At 3×3 with one of each it reproduces the
+// tablebase's 207,775 exactly, which is the check that the formula is the right one.
+export function stateSpace(cfg) {
+  const safe = E.sanitizeCfg(cfg);
+  const cells = safe.size * safe.size;
+  const layers = materialLayers(cfg);
+  const placements = layers.reduce((sum, l) => sum + l.placements, 0n);
+  const material = cfg?.customMaterial || E.startingMaterial(safe);
+  const kinds = [
+    material.rock, material.paper, material.scissors,
+    material.rock, material.paper, material.scissors,
+  ];
+  const pieces = kinds.reduce((sum, n) => sum + n, 0);
+  return { size: safe.size, cells, pieces, placements, states: placements * 2n };
+}
+
+export const exactCombinatorics = stateSpace;
 
 // Every position a JANKEN deal can actually produce. Layouts are 180° rotationally symmetric, so
 // Red's army is the exact antipode of Blue's: choose Blue's cells from the antipodal pairs (never

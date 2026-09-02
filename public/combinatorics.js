@@ -365,7 +365,7 @@ function renderCompLadder() {
     perType: Math.max(current.r, current.p, current.s),
     customMaterial: { rock: current.r, paper: current.p, scissors: current.s },
   };
-  const exact = L.exactCombinatorics(cfg);
+  const exact = L.stateSpace(cfg);
   const jankenExp = compMode === 'states' ? L.decimalExponent(exact.states).exponent : current.size * current.size;
 
   const items = [...BENCHMARKS];
@@ -446,7 +446,7 @@ function updateAll() {
     customMaterial: { rock: current.r, paper: current.p, scissors: current.s },
   };
 
-  const exact = L.exactCombinatorics(cfg);
+  const exact = L.stateSpace(cfg);
   $('stat-placements').textContent = formatBig(exact.placements);
   const pExp = L.decimalExponent(exact.placements);
   $('stat-placements-sci').textContent = `${pExp.mantissa.toFixed(2)} × 10${superscript(pExp.exponent)}`;
