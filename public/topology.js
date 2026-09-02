@@ -4,7 +4,7 @@
 // Zero external dependencies; runs in modern browser, Node.js, and workerd.
 
 export const TOPOLOGIES = Object.freeze(['square', 'hex']);
-export const MIN_HEX_RADIUS = 4;
+export const MIN_HEX_RADIUS = 2;
 export const MAX_HEX_RADIUS = 8;
 
 // ── square topology adapter ──────────────────────────────────────────────────

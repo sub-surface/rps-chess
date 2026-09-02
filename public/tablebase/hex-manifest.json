@@ -1,0 +1,77 @@
+{
+  "topology": "hex",
+  "radius": 2,
+  "cellCount": 7,
+  "cells": [
+    [
+      0,
+      -1
+    ],
+    [
+      1,
+      -1
+    ],
+    [
+      -1,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      -1,
+      1
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "pieces": [
+    {
+      "color": 0,
+      "type": "rock"
+    },
+    {
+      "color": 0,
+      "type": "paper"
+    },
+    {
+      "color": 0,
+      "type": "scissors"
+    },
+    {
+      "color": 1,
+      "type": "rock"
+    },
+    {
+      "color": 1,
+      "type": "paper"
+    },
+    {
+      "color": 1,
+      "type": "scissors"
+    }
+  ],
+  "keySpace": 262144,
+  "placements": 37633,
+  "states": 75266,
+  "results": {
+    "wins": 30798,
+    "losses": 11502,
+    "draws": 32966,
+    "maxDtm": 7,
+    "winPct": "40.92",
+    "drawPct": "43.80",
+    "lossPct": "15.28"
+  },
+  "files": {
+    "turn0": "hex-7-turn0.tb",
+    "turn1": "hex-7-turn1.tb"
+  }
+}

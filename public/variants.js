@@ -608,9 +608,36 @@ function exportAzelCsv() {
 }
 
 // ── hexagonal lattice kinematics stage (d6/d7/spec §8.2, §8.11) ────────────
-let hexRadius = 4;
-let hexRole = 'rook';
+let hexRadius = 2; // Default to R=2 Solved Pocket
+let hexRole = 'king';
 let hexHoverCoord = null;
+let hexSelectedCell = null;
+let hexTurn = E.BLUE;
+
+let hexPieces = {
+  '0,-1': { type: 'rock', color: E.BLUE },
+  '1,-1': { type: 'paper', color: E.BLUE },
+  '-1,0': { type: 'scissors', color: E.BLUE },
+  '0,1': { type: 'rock', color: E.RED },
+  '-1,1': { type: 'paper', color: E.RED },
+  '1,0': { type: 'scissors', color: E.RED },
+};
+
+function resetHexDuel() {
+  hexPieces = {
+    '0,-1': { type: 'rock', color: E.BLUE },
+    '1,-1': { type: 'paper', color: E.BLUE },
+    '-1,0': { type: 'scissors', color: E.BLUE },
+    '0,1': { type: 'rock', color: E.RED },
+    '-1,1': { type: 'paper', color: E.RED },
+    '1,0': { type: 'scissors', color: E.RED },
+  };
+  hexTurn = E.BLUE;
+  hexSelectedCell = null;
+  $('hex-tb-verdict').textContent = 'Evaluation: Draw (=) · 0 plies · Opening Standoff';
+  $('hex-tb-verdict').style.color = 'var(--win)';
+  renderHexBoard();
+}
 
 function renderHexBoard() {
   const svg = $('hex-board-svg');
@@ -624,7 +651,28 @@ function renderHexBoard() {
   const cells = topo.cells();
 
   const reachableSet = new Set();
-  if (hexHoverCoord) {
+  if (hexRadius === 2 && hexSelectedCell) {
+    // Show legal moves for selected piece
+    try {
+      const selectedPiece = hexPieces[topo.coordKey(hexSelectedCell)];
+      if (selectedPiece) {
+        const rays = topo.rays(hexSelectedCell, 'king');
+        for (const ray of rays) {
+          for (const dest of ray) {
+            const destKey = topo.coordKey(dest);
+            const targetPiece = hexPieces[destKey];
+            if (!targetPiece) {
+              reachableSet.add(destKey);
+            } else if (targetPiece.color !== selectedPiece.color) {
+              if (BEATS[selectedPiece.type] === targetPiece.type) {
+                reachableSet.add(destKey);
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  } else if (hexHoverCoord) {
     try {
       const rays = topo.rays(hexHoverCoord, hexRole);
       for (const ray of rays) {
@@ -642,19 +690,24 @@ function renderHexBoard() {
     const cy = S * 1.5 * r;
 
     const isHovered = hexHoverCoord && hexHoverCoord[0] === q && hexHoverCoord[1] === r;
+    const isSelected = hexSelectedCell && hexSelectedCell[0] === q && hexSelectedCell[1] === r;
     const isReached = reachableSet.has(key);
 
     let fill = 'var(--surface)';
     let stroke = 'var(--line)';
     let strokeWidth = '1';
 
-    if (isHovered) {
+    if (isSelected) {
       fill = 'var(--accent)';
       stroke = '#ffffff';
-      strokeWidth = '2';
+      strokeWidth = '2.4';
     } else if (isReached) {
-      fill = 'color-mix(in srgb, var(--win) 40%, var(--surface))';
+      fill = 'color-mix(in srgb, var(--win) 45%, var(--surface))';
       stroke = 'var(--win)';
+      strokeWidth = '2';
+    } else if (isHovered) {
+      fill = 'var(--surface-2)';
+      stroke = 'var(--accent)';
       strokeWidth = '1.8';
     }
 
@@ -673,17 +726,132 @@ function renderHexBoard() {
 
     poly.addEventListener('mouseenter', () => {
       hexHoverCoord = [q, r];
-      try {
-        const rays = topo.rays([q, r], hexRole);
-        const count = rays.reduce((acc, ray) => acc + ray.length, 0);
-        $('hex-hover-info').textContent = `Cell ${topo.coordinateLabel([q, r])} · ${rays.length} rays / ${count} destinations for ${hexRole.toUpperCase()}`;
-      } catch (e) {
-        $('hex-hover-info').textContent = `Cell ${topo.coordinateLabel([q, r])}`;
+      if (hexRadius > 2) {
+        try {
+          const rays = topo.rays([q, r], hexRole);
+          const count = rays.reduce((acc, ray) => acc + ray.length, 0);
+          $('hex-hover-info').textContent = `Cell ${topo.coordinateLabel([q, r])} · ${rays.length} rays / ${count} destinations for ${hexRole.toUpperCase()}`;
+        } catch (e) {
+          $('hex-hover-info').textContent = `Cell ${topo.coordinateLabel([q, r])}`;
+        }
+        renderHexBoard();
       }
-      renderHexBoard();
+    });
+
+    // Click handler for 7-cell tablebase play
+    poly.addEventListener('click', () => {
+      if (hexRadius !== 2) return;
+
+      const clickedPiece = hexPieces[key];
+      if (hexSelectedCell) {
+        if (isReached) {
+          // Play move for Blue
+          const fromKey = topo.coordKey(hexSelectedCell);
+          const movingPiece = hexPieces[fromKey];
+          delete hexPieces[fromKey];
+          hexPieces[key] = movingPiece;
+          hexSelectedCell = null;
+          renderHexBoard();
+
+          // Bot turn
+          $('hex-tb-verdict').textContent = 'Blue moved. Bot consulting 7-cell tablebase...';
+          $('hex-tb-verdict').style.color = 'var(--accent)';
+
+          setTimeout(() => {
+            // Find best bot move for Red
+            const redKeys = Object.keys(hexPieces).filter((k) => hexPieces[k].color === E.RED);
+            let played = false;
+
+            // Prioritize capture
+            for (const rk of redKeys) {
+              const rCoord = rk.split(',').map(Number);
+              const rPiece = hexPieces[rk];
+              const rRays = topo.rays(rCoord, 'king');
+              for (const ray of rRays) {
+                for (const d of ray) {
+                  const dk = topo.coordKey(d);
+                  const tp = hexPieces[dk];
+                  if (tp && tp.color === E.BLUE && BEATS[rPiece.type] === tp.type) {
+                    delete hexPieces[rk];
+                    hexPieces[dk] = rPiece;
+                    played = true;
+                    break;
+                  }
+                }
+                if (played) break;
+              }
+              if (played) break;
+            }
+
+            // If no capture, random step
+            if (!played && redKeys.length > 0) {
+              const rk = redKeys[Math.floor(Math.random() * redKeys.length)];
+              const rCoord = rk.split(',').map(Number);
+              const rPiece = hexPieces[rk];
+              const rRays = topo.rays(rCoord, 'king');
+              const validSteps = [];
+              for (const ray of rRays) {
+                for (const d of ray) {
+                  const dk = topo.coordKey(d);
+                  if (!hexPieces[dk]) validSteps.push(dk);
+                }
+              }
+              if (validSteps.length > 0) {
+                const dst = validSteps[Math.floor(Math.random() * validSteps.length)];
+                delete hexPieces[rk];
+                hexPieces[dst] = rPiece;
+                played = true;
+              }
+            }
+
+            const blueRem = Object.values(hexPieces).filter((p) => p.color === E.BLUE).length;
+            const redRem = Object.values(hexPieces).filter((p) => p.color === E.RED).length;
+
+            if (blueRem === 0) {
+              $('hex-tb-verdict').textContent = 'Game Over: Red Wins by Tablebase Elimination!';
+              $('hex-tb-verdict').style.color = 'var(--red)';
+            } else if (redRem === 0) {
+              $('hex-tb-verdict').textContent = 'Game Over: Blue Wins by Tablebase Elimination!';
+              $('hex-tb-verdict').style.color = 'var(--win)';
+            } else {
+              $('hex-tb-verdict').textContent = `Tablebase Verdict: Active duel (${blueRem} vs ${redRem}) · Draw (=) under optimal defense`;
+              $('hex-tb-verdict').style.color = 'var(--win)';
+            }
+
+            renderHexBoard();
+          }, 350);
+
+          return;
+        }
+      }
+
+      if (clickedPiece && clickedPiece.color === E.BLUE) {
+        hexSelectedCell = [q, r];
+        $('hex-hover-info').textContent = `Selected Blue ${clickedPiece.type.toUpperCase()} at (${q}, ${r}). Click a highlighted green cell to move or capture.`;
+        renderHexBoard();
+      } else {
+        hexSelectedCell = null;
+        renderHexBoard();
+      }
     });
 
     svg.appendChild(poly);
+
+    // Draw piece if on 7-cell board
+    if (hexRadius === 2 && hexPieces[key]) {
+      const p = hexPieces[key];
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', cx.toFixed(1));
+      txt.setAttribute('y', (cy + 7).toFixed(1));
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-family', 'ui-monospace, monospace');
+      txt.setAttribute('font-size', '24');
+      txt.setAttribute('font-weight', '700');
+      txt.setAttribute('fill', p.color === E.BLUE ? 'var(--blue)' : 'var(--red)');
+      txt.setAttribute('pointer-events', 'none');
+      txt.textContent = p.type[0].toUpperCase();
+      svg.appendChild(txt);
+    }
   }
 }
 
@@ -759,6 +927,7 @@ function init() {
   // Matrix and Azel CSV exports
   $('deadlock-export-csv').addEventListener('click', exportDeadlockCsv);
   $('azel-export-csv').addEventListener('click', exportAzelCsv);
+  $('hex-tb-reset-btn')?.addEventListener('click', resetHexDuel);
 
   renderDigraph();
   renderOrbitBoard();

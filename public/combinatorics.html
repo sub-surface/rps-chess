@@ -166,6 +166,12 @@
         <div class="pg-stage">
           <div class="pg-boardwrap">
             <div class="pg-board" id="pg-board" role="group" aria-label="Interactive preview board"></div>
+            <svg class="pg-trail-svg" id="symmetry-ray-svg" viewBox="0 0 320 320" aria-hidden="true" style="pointer-events: none;"></svg>
+          </div>
+
+          <!-- Click inspector banner -->
+          <div class="pg-banner info" id="hero-inspect-banner" style="margin-top: 6px; width: 100%;">
+            <span>Click any square or piece to inspect coordinates, antipodal symmetry partner, and role.</span>
           </div>
 
           <!-- Playout Ticker & Controls -->
@@ -181,6 +187,7 @@
             <button type="button" class="mini on" id="playout-run-btn">run realtime playout</button>
             <button type="button" class="mini" id="playout-step-btn">step move</button>
             <button type="button" class="mini" id="playout-reset-btn">reset board</button>
+            <button type="button" class="mini toggle" id="toggle-symmetry-rays">180° rays: off</button>
             <button type="button" class="mini toggle" id="playout-speed-btn">speed: normal</button>
           </div>
         </div>
@@ -235,6 +242,44 @@
         <span class="mono" id="strata-inspect" style="font-size: 12px; color: var(--accent);">Select a stratum</span>
       </div>
       <div class="layer-strata" id="strata-waterfall"></div>
+    </section>
+
+    <!-- 3B1B "Powers of Ten" Cosmic Scale Explorer -->
+    <section class="calc-card" style="margin-bottom: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <h3>Powers of Ten: An Interactive Cosmic Zoom</h3>
+          <p class="card-desc">
+            Drag the logarithmic scale slider to travel from human-scale decisions to astronomical state spaces.
+          </p>
+        </div>
+        <span class="mono" id="scale-exp-badge" style="font-size: 13px; color: var(--accent); font-weight: 700;">10⁵ · 3×3 Skirmish</span>
+      </div>
+
+      <div style="margin: 16px 0;">
+        <input type="range" id="scale-slider" class="calc-slider" min="1" max="170" step="1" value="5" style="width: 100%;" />
+        <div class="scale-ticks" style="display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px;">
+          <span>10¹ (Tic-Tac-Toe)</span>
+          <span>10⁴ (Hex Pocket)</span>
+          <span>10⁵ (3×3 JANKEN)</span>
+          <span>10¹⁴ (5×5 Azel)</span>
+          <span>10⁴⁷ (9×9 JANKEN)</span>
+          <span>10⁸⁰ (Universe Atoms)</span>
+          <span>10¹²³ (Chess)</span>
+          <span>10¹⁷⁰ (13×13 Expanse)</span>
+        </div>
+      </div>
+
+      <!-- Scale Story Card -->
+      <div id="scale-story-card" style="background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: flex; gap: 16px; align-items: center;">
+        <div id="scale-icon" style="font-size: 32px; min-width: 44px; text-align: center;">⏳</div>
+        <div>
+          <h4 id="scale-title" style="margin: 0 0 4px; font-size: 13.5px; color: var(--text);">3×3 Skirmish: 415,550 States (10⁵)</h4>
+          <p id="scale-desc" style="margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45;">
+            A pocket universe comparable to the grains of sand in a single teaspoon. Completely solved by retrograde analysis in 1.8 seconds.
+          </p>
+        </div>
+      </div>
     </section>
 
     <!-- Comparative Complexity Ladder Section -->

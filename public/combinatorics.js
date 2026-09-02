@@ -1,6 +1,6 @@
 // Combinatorics & State Space Playground.
 // Pure BigInt integer arithmetic exploring multiset arrangements, layout geometry,
-// strata cascades, and Shannon game tree complexity.
+// strata cascades, 3B1B powers-of-ten scale, and Shannon game tree complexity.
 import * as E from './engine.js';
 import * as L from './lab.js';
 import { glyph, PIECE_STYLE_IDS } from './pieces.js';
@@ -23,6 +23,7 @@ const square = (row, col, size) => E.sqName(row, col, size, prefs.coordStyle);
 // ── benchmarks ───────────────────────────────────────────────────────────────
 const BENCHMARKS = [
   { name: 'Tic-Tac-Toe', states: 5478n, treeExp: 5, solved: true, note: 'solved by hand' },
+  { name: 'Hex Pocket (R=2)', states: 75266n, treeExp: 12, solved: true, note: 'solved tablebase' },
   { name: '3×3 JANKEN', states: 415550n, treeExp: 31, solved: true, note: 'solved tablebase' },
   { name: 'Connect Four', states: 4531985219092n, treeExp: 21, solved: true, note: 'Allis 1988' },
   { name: 'Checkers', states: 500995484682338672639n, treeExp: 31, solved: true, note: 'Schaeffer 2007' },
@@ -43,6 +44,8 @@ let current = { size: 3, r: 1, p: 1, s: 1, layout: 'rows' };
 let liveBoard = null;
 let currentStrata = [];
 let selectedStratum = null;
+let selectedSquare = null;
+let showSymmetryRays = false;
 let compMode = 'states'; // 'states' | 'tree'
 
 // Playout State
@@ -78,119 +81,40 @@ function formatBytes(bytes) {
   return `${b.toFixed(b < 10 ? 2 : 1)} ${units[u]}`;
 }
 
-function formatDuration(seconds) {
+function formatTime(seconds) {
   if (seconds < 60) return `${seconds.toFixed(1)} seconds`;
   if (seconds < 3600) return `${(seconds / 60).toFixed(1)} minutes`;
   if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} hours`;
   if (seconds < 86400 * 365) return `${(seconds / 86400).toFixed(1)} days`;
   const years = seconds / (86400 * 365.25);
-  if (years < 1000) return `${years.toFixed(1)} years`;
-  if (years < 1e9) return `${nf.format(Math.round(years))} years`;
-  return `${years.toExponential(2)} years`;
+  if (years < 1e6) return `${nf.format(Math.round(years))} years`;
+  const exp = Math.floor(Math.log10(years));
+  const man = years / 10 ** exp;
+  return `${man.toFixed(2)} × 10${superscript(exp)} years`;
 }
 
-function buildCfg() {
-  return E.sanitizeCfg({
-    size: current.size,
-    perType: Math.max(current.r, current.p, current.s),
-    layout: current.layout,
-    rockMove: 'king',
-    paperMove: 'king',
-    scissorsMove: 'king',
-    capture: 'rps',
-    territory: false,
-    threefold: true,
-  });
-}
-
-// ── layout deal generation ──────────────────────────────────────────────────
-function buildStartBoard() {
-  const size = current.size;
-  const b = E.emptyBoard(size);
-  const put = (r, c, type) => {
-    b[r][c] = { owner: E.BLUE, piece: { type, color: E.BLUE } };
-    b[size - 1 - r][size - 1 - c] = { owner: E.RED, piece: { type, color: E.RED } };
-  };
-
-  const list = [
-    ...Array(current.r).fill('rock'),
-    ...Array(current.p).fill('paper'),
-    ...Array(current.s).fill('scissors'),
-  ];
-
-  if (current.layout === 'azel' && size >= 4 && current.r === 2 && current.p === 1 && current.s === 3) {
-    const top = Math.floor((size - 3) / 2);
-    const back = ['rock', 'paper', 'rock'];
-    for (let i = 0; i < 3; i++) {
-      put(top + i, 0, back[i]);
-      put(top + i, 1, 'scissors');
-    }
-    return b;
-  }
-
-  if (current.layout === 'corners') {
-    let idx = 0;
-    for (let r = 0; r < size && idx < list.length; r++) {
-      for (let c = 0; c < size && idx < list.length; c++) {
-        if (r + c < Math.floor(size / 1.4) && r < Math.floor(size / 2)) {
-          put(r, c, list[idx++]);
-        }
-      }
-    }
-    // fallback if couldn't fit
-    while (idx < list.length) {
-      put(Math.floor(idx / size), idx % Math.floor(size / 2), list[idx++]);
-    }
-    return b;
-  }
-
-  if (current.layout === 'scattered') {
-    const cells = [];
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < Math.floor(size / 2); c++) {
-        cells.push([r, c]);
-      }
-    }
-    // deterministic shuffle
-    for (let i = cells.length - 1; i > 0; i--) {
-      const j = (Math.random() * (i + 1)) | 0;
-      [cells[i], cells[j]] = [cells[j], cells[i]];
-    }
-    for (let i = 0; i < list.length && i < cells.length; i++) {
-      put(cells[i][0], cells[i][1], list[i]);
-    }
-    return b;
-  }
-
-  // default 'rows'
-  const half = Math.floor(size / 2);
-  const width = Math.max(1, Math.min(Math.ceil(list.length / size), half));
-  const height = Math.min(size, Math.ceil(list.length / width));
-  const r0 = Math.floor((size - height) / 2);
-  const c0 = Math.floor((half - width) / 2);
-  let idx = 0;
-  for (let c = c0; c < c0 + width && idx < list.length; c++) {
-    for (let r = r0; r < r0 + height && idx < list.length; r++) {
-      put(r, c, list[idx++]);
-    }
-  }
-  return b;
-}
-
-// ── hero board rendering ────────────────────────────────────────────────────
-function renderBoard(boardToRender = liveBoard) {
+// ── hero board rendering & direct interaction ──────────────────────────────
+function renderBoard() {
   const host = $('pg-board');
-  host.style.setProperty('--grid-size', current.size);
+  const size = current.size;
+  host.style.setProperty('--grid-size', size);
   host.innerHTML = '';
 
-  const size = current.size;
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.className = `pg-sq ${(r + c) % 2 === 0 ? 'even-cell' : 'odd-cell'}`;
-      cell.dataset.r = r;
-      cell.dataset.c = c;
+      const cell = document.createElement('div');
+      const isEven = (r + c) % 2 === 0;
+      cell.className = `pg-sq ${isEven ? 'even-cell' : 'odd-cell'}`;
+
+      // Check if selected or antipodal
+      if (selectedSquare) {
+        if (selectedSquare.r === r && selectedSquare.c === c) {
+          cell.style.outline = '2px solid var(--accent)';
+          cell.style.boxShadow = 'inset 0 0 10px var(--accent)';
+        } else if (selectedSquare.r === size - 1 - r && selectedSquare.c === size - 1 - c) {
+          cell.style.outline = '2px dashed var(--red)';
+        }
+      }
 
       const coord = document.createElement('span');
       coord.className = 'tb-coord';
@@ -199,231 +123,479 @@ function renderBoard(boardToRender = liveBoard) {
 
       const pcwrap = document.createElement('span');
       pcwrap.className = 'pcwrap';
-      const cellData = boardToRender[r][c];
-      if (cellData?.piece) {
-        pcwrap.innerHTML = glyph(cellData.piece.type, cellData.piece.color, prefs.pieceStyle);
+      if (liveBoard[r][c]?.piece) {
+        pcwrap.innerHTML = glyph(liveBoard[r][c].piece.type, liveBoard[r][c].piece.color, prefs.pieceStyle);
       }
       cell.appendChild(pcwrap);
 
-      // Antipodal symmetry hover
-      cell.addEventListener('mouseenter', () => {
-        const mr = size - 1 - r;
-        const mc = size - 1 - c;
-        cell.classList.add('sym-hover');
-        const mirror = host.querySelector(`.pg-sq[data-r="${mr}"][data-c="${mc}"]`);
-        if (mirror) mirror.classList.add('sym-hover');
-      });
+      // Interactive Click on square
+      cell.addEventListener('click', () => {
+        selectedSquare = { r, c };
+        const p = liveBoard[r][c]?.piece;
+        const oppR = size - 1 - r;
+        const oppC = size - 1 - c;
+        const oppCell = liveBoard[oppR]?.[oppC];
+        const oppDesc = oppCell?.piece
+          ? `${oppCell.piece.color === E.BLUE ? 'Blue' : 'Red'} ${oppCell.piece.type.toUpperCase()}`
+          : 'empty cell';
 
-      cell.addEventListener('mouseleave', () => {
-        host.querySelectorAll('.pg-sq.sym-hover').forEach((el) => el.classList.remove('sym-hover'));
+        if (p) {
+          $('hero-inspect-banner').innerHTML = `Selected <b>${p.color === E.BLUE ? 'Blue' : 'Red'} ${p.type.toUpperCase()}</b> at ${square(r, c, size)} · 180° Antipodal Partner: <b>${oppDesc}</b> at ${square(oppR, oppC, size)}.`;
+        } else {
+          $('hero-inspect-banner').innerHTML = `Selected <b>Empty cell</b> at ${square(r, c, size)} · 180° Antipodal Partner: <b>${oppDesc}</b> at ${square(oppR, oppC, size)}.`;
+        }
+        renderBoard();
+        drawSymmetryRays();
       });
 
       host.appendChild(cell);
     }
   }
+
+  $('board-desc').textContent = `${size}×${size} · ${current.layout}`;
+  drawSymmetryRays();
 }
 
-// ── material strata waterfall ───────────────────────────────────────────────
-function countLivingPieces(b) {
-  let count = 0;
-  for (let r = 0; r < current.size; r++) {
-    for (let c = 0; c < current.size; c++) {
-      if (b[r][c].piece) count++;
+function drawSymmetryRays() {
+  const svg = $('symmetry-ray-svg');
+  if (!svg) return;
+  svg.innerHTML = '';
+  if (!showSymmetryRays) return;
+
+  const size = current.size;
+  const cellSize = 320 / size;
+  const cx = 160, cy = 160;
+
+  // Center beacon
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', cx);
+  circle.setAttribute('cy', cy);
+  circle.setAttribute('r', '5');
+  circle.setAttribute('fill', 'var(--accent)');
+  circle.setAttribute('stroke', '#ffffff');
+  circle.setAttribute('stroke-width', '1.5');
+  svg.appendChild(circle);
+
+  // Draw rays from Blue pieces through center to Red pieces
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (liveBoard[r][c]?.piece?.color === E.BLUE) {
+        const x1 = (c + 0.5) * cellSize;
+        const y1 = (r + 0.5) * cellSize;
+        const x2 = (size - 1 - c + 0.5) * cellSize;
+        const y2 = (size - 1 - r + 0.5) * cellSize;
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+        line.setAttribute('stroke', 'var(--accent)');
+        line.setAttribute('stroke-width', '1.8');
+        line.setAttribute('stroke-dasharray', '4 3');
+        line.setAttribute('opacity', '0.7');
+        svg.appendChild(line);
+      }
     }
   }
-  return count;
 }
 
-function renderStrataWaterfall(totalStates) {
-  const container = $('strata-waterfall');
-  container.innerHTML = '';
-  if (!currentStrata.length) return;
+// ── deal generator ──────────────────────────────────────────────────────────
+function sampleFairDeal() {
+  const size = current.size;
+  const armyPieces = current.r + current.p + current.s;
+  const halfCells = Math.floor((size * size) / 2);
 
-  const maxStratum = currentStrata.reduce((max, s) => (s.states > max ? s.states : max), 1n);
-  const currentLiving = liveBoard ? countLivingPieces(liveBoard) : null;
+  if (armyPieces > halfCells) {
+    current.r = 1;
+    current.p = 1;
+    current.s = 1;
+    $('rock-input').value = 1;
+    $('paper-input').value = 1;
+    $('scissors-input').value = 1;
+    $('rock-val').textContent = 1;
+    $('paper-val').textContent = 1;
+    $('scissors-val').textContent = 1;
+  }
 
-  // Render top-down (M = max down to 0)
-  for (let i = currentStrata.length - 1; i >= 0; i--) {
-    const s = currentStrata[i];
+  const cfg = E.sanitizeCfg({
+    size,
+    perType: Math.max(current.r, current.p, current.s),
+    layout: current.layout,
+  });
+
+  const b = E.emptyBoard(size);
+
+  if (current.layout === 'azel' && size === 5) {
+    // Exact Azel screen
+    b[0][0] = { piece: { type: 'rock', color: E.BLUE } };
+    b[0][1] = { piece: { type: 'paper', color: E.BLUE } };
+    b[0][2] = { piece: { type: 'rock', color: E.BLUE } };
+    b[1][0] = { piece: { type: 'scissors', color: E.BLUE } };
+    b[1][1] = { piece: { type: 'scissors', color: E.BLUE } };
+    b[1][2] = { piece: { type: 'scissors', color: E.BLUE } };
+  } else if (current.layout === 'rows') {
+    let slot = 0;
+    const kinds = [
+      ...Array(current.r).fill('rock'),
+      ...Array(current.p).fill('paper'),
+      ...Array(current.s).fill('scissors'),
+    ];
+    for (let r = 0; r < Math.ceil(size / 2) && slot < kinds.length; r++) {
+      for (let c = 0; c < size && slot < kinds.length; c++) {
+        b[r][c] = { piece: { type: kinds[slot++], color: E.BLUE } };
+      }
+    }
+  } else if (current.layout === 'corners') {
+    let slot = 0;
+    const kinds = [
+      ...Array(current.r).fill('rock'),
+      ...Array(current.p).fill('paper'),
+      ...Array(current.s).fill('scissors'),
+    ];
+    for (let d = 0; d < size && slot < kinds.length; d++) {
+      for (let r = 0; r <= d && slot < kinds.length; r++) {
+        const c = d - r;
+        if (r < size && c < size) {
+          b[r][c] = { piece: { type: kinds[slot++], color: E.BLUE } };
+        }
+      }
+    }
+  } else {
+    // Scattered symmetric
+    const pairs = [];
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const oppR = size - 1 - r;
+        const oppC = size - 1 - c;
+        if (r < oppR || (r === oppR && c < oppC)) pairs.push([r, c]);
+      }
+    }
+    // Shuffle pairs
+    for (let i = pairs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    }
+    const kinds = [
+      ...Array(current.r).fill('rock'),
+      ...Array(current.p).fill('paper'),
+      ...Array(current.s).fill('scissors'),
+    ];
+    for (let i = 0; i < kinds.length && i < pairs.length; i++) {
+      const [r, c] = pairs[i];
+      b[r][c] = { piece: { type: kinds[i], color: E.BLUE } };
+    }
+  }
+
+  // Reflect Blue to Red under 180° antipodal symmetry
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (b[r][c]?.piece?.color === E.BLUE) {
+        const oppR = size - 1 - r;
+        const oppC = size - 1 - c;
+        b[oppR][oppC] = {
+          piece: { type: b[r][c].piece.type, color: E.RED },
+        };
+      }
+    }
+  }
+
+  liveBoard = b;
+  renderBoard();
+  resetPlayoutGame();
+}
+
+// ── strata waterfall ────────────────────────────────────────────────────────
+function renderStrataWaterfall() {
+  const host = $('strata-waterfall');
+  host.innerHTML = '';
+
+  const cfg = {
+    size: current.size,
+    perType: Math.max(current.r, current.p, current.s),
+    customMaterial: { rock: current.r, paper: current.p, scissors: current.s },
+  };
+
+  currentStrata = L.materialLayers(cfg);
+  const totalStates = currentStrata.reduce((sum, s) => sum + s.states, 0n);
+
+  for (const s of currentStrata) {
     const row = document.createElement('div');
-    row.className = `layer-row ${selectedStratum === s.m ? 'active' : ''}`;
-    if (currentLiving === s.m) row.style.boxShadow = 'inset 0 0 0 1.5px var(--accent)';
+    row.className = `stratum-row ${selectedStratum === s.m ? 'selected' : ''}`;
 
-    const lbl = document.createElement('div');
-    lbl.style.fontWeight = '600';
-    lbl.textContent = `M = ${s.m} (${s.m} pcs)`;
+    const label = document.createElement('div');
+    label.className = 'stratum-label mono';
+    label.textContent = `M = ${s.m} pieces`;
 
-    const barWrap = document.createElement('div');
-    barWrap.className = 'bar';
-    const fill = document.createElement('div');
-    fill.className = 'bar-fill';
+    const barwrap = document.createElement('div');
+    barwrap.className = 'stratum-barwrap';
+
+    const bar = document.createElement('div');
+    bar.className = 'stratum-bar';
     const pct = totalStates > 0n ? Number((s.states * 10000n) / totalStates) / 100 : 0;
-    const barWidth = maxStratum > 0n ? Number((s.states * 10000n) / maxStratum) / 100 : 0;
-    fill.style.width = `${Math.max(1, barWidth)}%`;
-    barWrap.appendChild(fill);
+    bar.style.width = `${Math.max(pct, 0.5)}%`;
+    barwrap.appendChild(bar);
 
-    const val = document.createElement('div');
-    val.style.fontFamily = 'ui-monospace, monospace';
-    val.style.textAlign = 'right';
-    val.style.color = 'var(--muted)';
-    val.textContent = `${pct.toFixed(1)}%`;
+    const count = document.createElement('div');
+    count.className = 'stratum-count mono';
+    count.textContent = `${formatBig(s.states)} (${pct.toFixed(1)}%)`;
 
-    row.appendChild(lbl);
-    row.appendChild(barWrap);
-    row.appendChild(val);
+    row.appendChild(label);
+    row.appendChild(barwrap);
+    row.appendChild(count);
 
     row.addEventListener('click', () => {
       selectedStratum = s.m;
-      $('strata-inspect').textContent = `Stratum M=${s.m}: ${formatBig(s.states)} states (${pct.toFixed(2)}% of total)`;
-      renderStrataWaterfall(totalStates);
+      $('strata-inspect').textContent = `Stratum M = ${s.m}: ${formatBig(s.states)} states (${pct.toFixed(2)}% of universe)`;
+      document.querySelectorAll('.stratum-row').forEach((r) => r.classList.remove('selected'));
+      row.classList.add('selected');
     });
 
-    container.appendChild(row);
+    host.appendChild(row);
   }
 }
 
-// ── comparative complexity ladder ───────────────────────────────────────────
-function renderComplexityLadder(currentStates, currentBranching) {
-  const container = $('comp-ladder');
-  container.innerHTML = '';
+// ── comparative ladder ──────────────────────────────────────────────────────
+function renderCompLadder() {
+  const host = $('comp-ladder');
+  host.innerHTML = '';
 
-  const cfg = buildCfg();
-  const medianDepth = Math.round(20 + current.size * 3.5);
-  const currentTreeLog = medianDepth * Math.log10(Math.max(2, currentBranching));
+  const cfg = {
+    size: current.size,
+    perType: Math.max(current.r, current.p, current.s),
+    customMaterial: { rock: current.r, paper: current.p, scissors: current.s },
+  };
+  const exact = L.exactCombinatorics(cfg);
+  const jankenExp = compMode === 'states' ? L.decimalExponent(exact.states).exponent : current.size * current.size;
 
-  const entries = [
-    ...BENCHMARKS.map((b) => ({
-      name: b.name,
-      valLog: compMode === 'states'
-        ? L.decimalExponent(b.states).exponent + Math.log10(Math.max(1, L.decimalExponent(b.states).mantissa))
-        : b.treeExp,
-      displayVal: compMode === 'states' ? formatBig(b.states) : `10${superscript(b.treeExp)}`,
-      solved: b.solved,
-      isCurrent: false,
-      note: b.note,
-    })),
-    {
-      name: `${current.size}×${current.size} Current`,
-      valLog: compMode === 'states'
-        ? L.decimalExponent(currentStates).exponent + Math.log10(Math.max(1, L.decimalExponent(currentStates).mantissa))
-        : currentTreeLog,
-      displayVal: compMode === 'states' ? formatBig(currentStates) : `10${superscript(Math.round(currentTreeLog))}`,
-      solved: current.size === 3,
-      isCurrent: true,
-      note: compMode === 'states' ? (current.size === 3 ? 'solved' : 'current state space') : `b=${currentBranching.toFixed(1)}, d≈${medianDepth}`,
-    },
-  ].sort((a, b) => a.valLog - b.valLog);
+  const items = [...BENCHMARKS];
+  items.push({
+    name: `JANKEN (${current.size}×${current.size})`,
+    states: exact.states,
+    treeExp: current.size * current.size,
+    isCurrent: true,
+  });
 
-  const maxLog = compMode === 'states' ? 175 : 365;
+  items.sort((a, b) => {
+    const expA = compMode === 'states' ? (a.states ? L.decimalExponent(a.states).exponent : 0) : a.treeExp;
+    const expB = compMode === 'states' ? (b.states ? L.decimalExponent(b.states).exponent : 0) : b.treeExp;
+    return expA - expB;
+  });
 
-  for (const entry of entries) {
-    const pct = Math.max(1, Math.min(100, (entry.valLog / maxLog) * 100));
+  const maxExp = Math.max(...items.map((i) => (compMode === 'states' ? (i.states ? L.decimalExponent(i.states).exponent : 0) : i.treeExp)), 1);
 
+  for (const item of items) {
     const row = document.createElement('div');
-    row.className = `comp-row ${entry.isCurrent ? 'current' : ''} ${entry.solved ? 'solved' : ''}`;
+    row.className = `comp-row ${item.isCurrent ? 'highlight' : ''}`;
 
-    const name = document.createElement('div');
-    name.className = 'name';
-    name.innerHTML = `${entry.name}<em>${entry.note}</em>`;
+    const exp = compMode === 'states' ? (item.states ? L.decimalExponent(item.states).exponent : 0) : item.treeExp;
+    const valText = compMode === 'states' ? (item.states ? formatBig(item.states) : '—') : `10${superscript(item.treeExp)}`;
 
-    const track = document.createElement('div');
-    track.className = 'track';
-    const fill = document.createElement('div');
-    fill.className = 'fill';
-    fill.style.width = `${pct}%`;
-    track.appendChild(fill);
-
-    const val = document.createElement('div');
-    val.className = 'val';
-    val.textContent = entry.displayVal;
-
-    row.appendChild(name);
-    row.appendChild(track);
-    row.appendChild(val);
-    container.appendChild(row);
+    row.innerHTML = `
+      <div class="comp-name"><b>${item.name}</b> ${item.note ? `<span style="font-size:10px; color:var(--muted)">(${item.note})</span>` : ''}</div>
+      <div class="comp-barwrap">
+        <div class="comp-bar" style="width: ${Math.max((exp / maxExp) * 100, 2)}%;"></div>
+      </div>
+      <div class="comp-val mono">${valText}</div>
+    `;
+    host.appendChild(row);
   }
 }
 
-// ── playout engine & strata plunge ──────────────────────────────────────────
-function resetPlayout() {
+// ── 3B1B "powers of ten" cosmic scale explorer ──────────────────────────────
+const SCALE_MILESTONES = [
+  { exp: 1, title: 'Tic-Tac-Toe: 9 Openings (10¹)', icon: '✏️', desc: 'A game solved by children on paper. 255,168 total game tree leaf nodes.' },
+  { exp: 4, title: 'Hex Pocket: 10,080 States (10⁴)', icon: '⬡', desc: 'The 7-cell hexagonal RPS pocket universe (R=2). Solved completely by retrograde minimax in 200 milliseconds.' },
+  { exp: 5, title: '3×3 Skirmish: 415,550 States (10⁵)', icon: '⏳', desc: 'A pocket universe comparable to the grains of sand in a single teaspoon. 406 KB raw table, solved in 1.8 seconds.' },
+  { exp: 14, title: '5×5 Azel: 3.58 × 10¹⁴ States (10¹⁴)', icon: '🏖️', desc: 'Comparable to the grains of sand on an entire 10-mile beach. Would require 179 Terabytes of RAM to store raw.' },
+  { exp: 47, title: '9×9 Standard: 1.2 × 10⁴⁷ States (10⁴⁷)', icon: '🌍', desc: 'Exceeds the total estimated number of atoms in the entire planet Earth (~10⁵⁰ atoms).' },
+  { exp: 80, title: 'Observable Universe Atoms (10⁸⁰)', icon: '🌌', desc: 'The total number of fundamental hydrogen atoms in the entire observable universe (Eddington-Dirac estimate).' },
+  { exp: 123, title: 'Chess Shannon Number (10¹²³)', icon: '♟️', desc: 'Claude Shannon\'s famous estimate for the game tree complexity of classical chess.' },
+  { exp: 170, title: '13×13 Expanse: 10¹⁷⁰ States (10¹⁷⁰)', icon: '🪐', desc: 'A monumental campaign whose state space exceeds the atoms in a googol universes.' },
+];
+
+function updateScaleStory(targetExp) {
+  let closest = SCALE_MILESTONES[0];
+  let minDiff = Math.abs(targetExp - closest.exp);
+  for (const m of SCALE_MILESTONES) {
+    const diff = Math.abs(targetExp - m.exp);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = m;
+    }
+  }
+
+  $('scale-exp-badge').textContent = `10${superscript(targetExp)} · ${closest.title.split(':')[0]}`;
+  $('scale-icon').textContent = closest.icon;
+  $('scale-title').textContent = closest.title;
+  $('scale-desc').textContent = closest.desc;
+}
+
+// ── update all metrics ──────────────────────────────────────────────────────
+function updateAll() {
+  const size = current.size;
+  const armyPieces = current.r + current.p + current.s;
+  const totalPieces = armyPieces * 2;
+  const cells = size * size;
+
+  $('deal-density').textContent = `${((totalPieces / cells) * 100).toFixed(1)}% (${totalPieces}/${cells} cells)`;
+
+  const cfg = {
+    size,
+    perType: Math.max(current.r, current.p, current.s),
+    customMaterial: { rock: current.r, paper: current.p, scissors: current.s },
+  };
+
+  const exact = L.exactCombinatorics(cfg);
+  $('stat-placements').textContent = formatBig(exact.placements);
+  const pExp = L.decimalExponent(exact.placements);
+  $('stat-placements-sci').textContent = `${pExp.mantissa.toFixed(2)} × 10${superscript(pExp.exponent)}`;
+
+  $('stat-states').textContent = formatBig(exact.states);
+  const sExp = L.decimalExponent(exact.states);
+  $('stat-states-sci').textContent = `${sExp.mantissa.toFixed(2)} × 10${superscript(sExp.exponent)}`;
+
+  $('stat-storage').textContent = formatBytes(exact.states);
+
+  const ramBytes = exact.states * 26n;
+  $('stat-ram').textContent = formatBytes(ramBytes);
+
+  const sec = Number(exact.states) / 1_000_000;
+  $('stat-time').textContent = formatTime(sec);
+
+  // Azel button availability
+  if (size === 5) {
+    $('layout-azel-btn').style.display = 'inline-block';
+  } else {
+    $('layout-azel-btn').style.display = 'none';
+    if (current.layout === 'azel') {
+      current.layout = 'rows';
+      document.querySelectorAll('#layout-buttons .calc-btn').forEach((b) => b.classList.remove('on'));
+      document.querySelector('#layout-buttons .calc-btn[data-layout="rows"]').classList.add('on');
+    }
+  }
+
+  // Update scale slider to match current state space exponent
+  $('scale-slider').value = Math.min(Math.max(sExp.exponent, 1), 170);
+  updateScaleStory(sExp.exponent);
+
+  sampleFairDeal();
+  renderStrataWaterfall();
+  renderCompLadder();
+}
+
+// ── realtime playout engine ─────────────────────────────────────────────────
+function resetPlayoutGame() {
   if (playoutTimer) {
     clearInterval(playoutTimer);
     playoutTimer = null;
+    $('playout-run-btn').textContent = 'run realtime playout';
   }
-  liveBoard = buildStartBoard();
-  const cfg = buildCfg();
-  playoutGame = E.newGame(cfg, liveBoard);
+
   playoutPlies = 0;
   playoutCaptures = 0;
 
+  const cfg = E.sanitizeCfg({
+    size: current.size,
+    perType: Math.max(current.r, current.p, current.s),
+    capture: 'rps',
+    threefold: true,
+  });
+
+  const boardCopy = E.emptyBoard(current.size);
+  let livePieces = 0;
+  for (let r = 0; r < current.size; r++) {
+    for (let c = 0; c < current.size; c++) {
+      if (liveBoard[r][c]?.piece) {
+        boardCopy[r][c] = {
+          owner: liveBoard[r][c].piece.color,
+          piece: { ...liveBoard[r][c].piece },
+        };
+        livePieces++;
+      }
+    }
+  }
+
+  playoutGame = {
+    board: boardCopy,
+    cfg,
+    turn: E.BLUE,
+    moves: [],
+    repetitions: {},
+    dry: 0,
+    acts: 0,
+    passStreak: 0,
+    gameOver: false,
+    endReason: null,
+  };
+
   $('ticker-ply').textContent = '0';
-  $('ticker-mat').textContent = String(countLivingPieces(liveBoard));
+  $('ticker-mat').textContent = livePieces;
   $('ticker-caps').textContent = '0';
   const initialMoves = E.allMoves(playoutGame.board, playoutGame.turn, cfg);
   $('ticker-branch').textContent = initialMoves.length.toFixed(1);
   $('ticker-status').textContent = 'Ready';
   $('ticker-status').style.color = 'var(--accent)';
-  $('playout-run-btn').textContent = 'run realtime playout';
-
-  renderBoard(liveBoard);
-  if (currentStrata.length) {
-    const totalStates = currentStrata.reduce((sum, s) => sum + s.states, 0n);
-    renderStrataWaterfall(totalStates);
-  }
 }
 
 function stepPlayout() {
   if (!playoutGame || playoutGame.gameOver) {
-    resetPlayout();
+    resetPlayoutGame();
   }
-  const cfg = buildCfg();
-  const moves = E.allMoves(playoutGame.board, playoutGame.turn, cfg);
-  if (!moves.length || playoutGame.gameOver) {
-    endPlayout(playoutGame.endReason || 'immobilization');
+
+  const moves = E.allMoves(playoutGame.board, playoutGame.turn, playoutGame.cfg);
+  if (!moves.length) {
+    playoutGame.gameOver = true;
+    playoutGame.endReason = 'no_moves';
+    $('ticker-status').textContent = 'Immobilized';
+    $('ticker-status').style.color = 'var(--red)';
+    if (playoutTimer) {
+      clearInterval(playoutTimer);
+      playoutTimer = null;
+      $('playout-run-btn').textContent = 'run realtime playout';
+    }
     return;
   }
 
-  // Realistic policy: prefer captures and central advances
-  const centre = (cfg.size - 1) / 2;
-  const scored = moves.map((move) => {
-    const isCap = !!E.captureTarget(playoutGame.board, move, cfg);
-    const dist = Math.abs(move.tr - centre) + Math.abs(move.tc - centre);
-    return { move, isCap, score: (isCap ? 50 : 0) + (cfg.size - dist) + Math.random() * 8 };
-  }).sort((a, b) => b.score - a.score);
+  // Pick capture if available, else random legal
+  const caps = moves.filter((m) => m.captured);
+  const picked = caps.length > 0
+    ? caps[Math.floor(Math.random() * caps.length)]
+    : moves[Math.floor(Math.random() * moves.length)];
 
-  const choice = scored[0].move;
-  if (scored[0].isCap) playoutCaptures++;
-
-  E.applyMove(playoutGame, choice);
+  if (picked.captured) playoutCaptures++;
+  E.applyMove(playoutGame, picked);
   playoutPlies++;
-  liveBoard = playoutGame.board;
 
-  $('ticker-ply').textContent = String(playoutPlies);
-  const mat = countLivingPieces(liveBoard);
-  $('ticker-mat').textContent = String(mat);
-  $('ticker-caps').textContent = String(playoutCaptures);
-  const nextMoves = E.allMoves(playoutGame.board, playoutGame.turn, cfg);
+  // Update live board
+  liveBoard = playoutGame.board;
+  renderBoard();
+
+  let surviving = 0;
+  for (let r = 0; r < current.size; r++) {
+    for (let c = 0; c < current.size; c++) {
+      if (liveBoard[r][c]?.piece) surviving++;
+    }
+  }
+
+  $('ticker-ply').textContent = playoutPlies;
+  $('ticker-mat').textContent = surviving;
+  $('ticker-caps').textContent = playoutCaptures;
+  const nextMoves = E.allMoves(playoutGame.board, playoutGame.turn, playoutGame.cfg);
   $('ticker-branch').textContent = nextMoves.length.toFixed(1);
 
-  renderBoard(liveBoard);
-  if (currentStrata.length) {
-    const totalStates = currentStrata.reduce((sum, s) => sum + s.states, 0n);
-    renderStrataWaterfall(totalStates);
-  }
-
   if (playoutGame.gameOver) {
-    endPlayout(playoutGame.endReason || 'elimination');
+    $('ticker-status').textContent = `Game Over (${playoutGame.endReason})`;
+    $('ticker-status').style.color = 'var(--win)';
+    if (playoutTimer) {
+      clearInterval(playoutTimer);
+      playoutTimer = null;
+      $('playout-run-btn').textContent = 'run realtime playout';
+    }
+  } else {
+    $('ticker-status').textContent = `${playoutGame.turn === E.BLUE ? 'Blue' : 'Red'} to move`;
+    $('ticker-status').style.color = playoutGame.turn === E.BLUE ? 'var(--blue)' : 'var(--red)';
   }
-}
-
-function endPlayout(reason) {
-  if (playoutTimer) {
-    clearInterval(playoutTimer);
-    playoutTimer = null;
-  }
-  $('playout-run-btn').textContent = 'run realtime playout';
-  $('ticker-status').textContent = `Finished (${reason})`;
-  $('ticker-status').style.color = reason === 'repetition' ? 'var(--draw)' : 'var(--win)';
 }
 
 function togglePlayoutRun() {
@@ -431,144 +603,11 @@ function togglePlayoutRun() {
     clearInterval(playoutTimer);
     playoutTimer = null;
     $('playout-run-btn').textContent = 'run realtime playout';
-    $('ticker-status').textContent = 'Paused';
   } else {
-    if (!playoutGame || playoutGame.gameOver) resetPlayout();
     $('playout-run-btn').textContent = 'pause playout';
-    $('ticker-status').textContent = 'Simulating…';
-    $('ticker-status').style.color = 'var(--win)';
-    const delay = playoutFast ? 100 : 380;
-    playoutTimer = setInterval(() => {
-      stepPlayout();
-    }, delay);
+    const interval = playoutFast ? 120 : 380;
+    playoutTimer = setInterval(stepPlayout, interval);
   }
-}
-
-// ── main render loop ────────────────────────────────────────────────────────
-function render() {
-  $('size-dim').textContent = `${current.size}×${current.size}`;
-  $('size-cells').textContent = `${current.size * current.size} cells`;
-  $('rock-val').textContent = current.r;
-  $('paper-val').textContent = current.p;
-  $('scissors-val').textContent = current.s;
-  $('board-desc').textContent = `${current.size}×${current.size} · ${current.layout}`;
-
-  // Azel layout button visibility
-  const canAzel = current.size >= 4 && current.r === 2 && current.p === 1 && current.s === 3;
-  $('layout-azel-btn').style.display = canAzel ? '' : 'none';
-  if (current.layout === 'azel' && !canAzel) {
-    current.layout = 'rows';
-  }
-
-  // Update layout button styles
-  document.querySelectorAll('#layout-buttons .calc-btn').forEach((b) => {
-    b.classList.toggle('on', b.dataset.layout === current.layout);
-  });
-
-  const army = current.r + current.p + current.s;
-  const cells = current.size * current.size;
-  const occupancyPct = ((army * 2 / cells) * 100).toFixed(1);
-  $('deal-density').textContent = `${occupancyPct}% (${army * 2}/${cells} cells)`;
-
-  if (army * 2 > cells) {
-    $('stat-placements').textContent = 'Material exceeds board capacity';
-    $('stat-states').textContent = '—';
-    $('stat-openings').textContent = '—';
-    $('deal-sym').textContent = 'Capacity Exceeded';
-    $('deal-sym').style.color = 'var(--loss)';
-    return;
-  }
-
-  $('deal-sym').textContent = '180° Rotational Antipodal';
-  $('deal-sym').style.color = 'var(--win)';
-
-  const cfg = buildCfg();
-  const customMaterial = { rock: current.r, paper: current.p, scissors: current.s };
-
-  const space = L.stateSpace({ ...cfg, customMaterial });
-  const states = space.states;
-  const openings = L.openingCount({ ...cfg, customMaterial });
-  const branching = L.branchingFor(current.size, [
-    { size: 3, value: 12.8 },
-    { size: 5, value: 17.5 },
-    { size: 7, value: 25.0 },
-    { size: 9, value: 34.0 },
-    { size: 13, value: 48.0 },
-  ]);
-  const cost = L.solveCost(states, branching, 1_000_000);
-
-  $('stat-placements').textContent = nf.format(space.placements);
-  $('stat-placements-sci').textContent = formatBig(space.placements);
-  $('stat-states').textContent = nf.format(states);
-  $('stat-states-sci').textContent = formatBig(states);
-  $('stat-openings').textContent = nf.format(openings);
-  $('stat-storage').textContent = formatBytes(cost.bytes);
-  $('stat-ram').textContent = formatBytes(cost.ram);
-  $('stat-time').textContent = formatDuration(cost.seconds);
-
-  currentStrata = L.materialLayers({ ...cfg, customMaterial });
-  renderStrataWaterfall(states);
-  renderComplexityLadder(states, branching);
-
-  resetPlayout();
-}
-
-// ── csv exports ─────────────────────────────────────────────────────────────
-function exportCsv() {
-  const rows = [
-    ['size', 'cells', 'pieces', 'placements', 'states', 'openings', 'solve_ram_bytes', 'solve_duration_sec'],
-  ];
-
-  for (const size of L.LADDER) {
-    const cfg = E.sanitizeCfg({ ...E.PRESETS.standard, size });
-    const space = L.stateSpace(cfg);
-    const openings = L.openingCount(cfg);
-    const branching = L.branchingFor(size, [
-      { size: 3, value: 12.8 }, { size: 5, value: 17.5 }, { size: 9, value: 34.0 },
-    ]);
-    const cost = L.solveCost(space.states, branching, 1_000_000);
-
-    rows.push([
-      size,
-      space.cells,
-      space.pieces,
-      String(space.placements),
-      String(space.states),
-      String(openings),
-      String(cost.ram),
-      cost.seconds.toFixed(2),
-    ]);
-  }
-
-  const csv = rows.map((r) => r.join(',')).join('\n') + '\n';
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'janken-complexity-ladder.csv';
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
-function exportStrataCsv() {
-  if (!currentStrata.length) return;
-  const total = currentStrata.reduce((sum, s) => sum + s.states, 0n);
-  const rows = [
-    ['material_remaining', 'pieces', 'placements', 'directed_states', 'percent_of_total_space'],
-  ];
-  for (const s of currentStrata) {
-    const pct = total > 0n ? (Number((s.states * 10000n) / total) / 100).toFixed(4) : '0';
-    rows.push([s.m, s.m, String(s.placements), String(s.states), `${pct}%`]);
-  }
-
-  const csv = rows.map((r) => r.join(',')).join('\n') + '\n';
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `janken-${current.size}x${current.size}-material-strata.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 // ── initialization ──────────────────────────────────────────────────────────
@@ -586,105 +625,116 @@ function init() {
 
   mountFact($('dyk'));
 
-  // Sliders
-  $('size-slider').addEventListener('input', (e) => {
-    current.size = parseInt(e.target.value, 10);
-    document.querySelectorAll('.calc-btn[data-preset]').forEach((b) => b.classList.remove('on'));
-    render();
-  });
-
-  $('rock-input').addEventListener('input', (e) => {
-    current.r = parseInt(e.target.value, 10);
-    document.querySelectorAll('.calc-btn[data-preset]').forEach((b) => b.classList.remove('on'));
-    render();
-  });
-
-  $('paper-input').addEventListener('input', (e) => {
-    current.p = parseInt(e.target.value, 10);
-    document.querySelectorAll('.calc-btn[data-preset]').forEach((b) => b.classList.remove('on'));
-    render();
-  });
-
-  $('scissors-input').addEventListener('input', (e) => {
-    current.s = parseInt(e.target.value, 10);
-    document.querySelectorAll('.calc-btn[data-preset]').forEach((b) => b.classList.remove('on'));
-    render();
-  });
-
-  // Presets
+  // Preset Buttons
   document.querySelectorAll('.calc-btn[data-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.calc-btn[data-preset]').forEach((b) => b.classList.remove('on'));
       btn.classList.add('on');
-      const preset = PRESETS[btn.dataset.preset];
-      if (preset) {
-        current = { ...preset };
+      const p = PRESETS[btn.dataset.preset];
+      if (p) {
+        current = { ...p };
         $('size-slider').value = current.size;
+        $('size-dim').textContent = `${current.size}×${current.size}`;
+        $('size-cells').textContent = `${current.size * current.size} cells`;
         $('rock-input').value = current.r;
         $('paper-input').value = current.p;
         $('scissors-input').value = current.s;
-        render();
+        $('rock-val').textContent = current.r;
+        $('paper-val').textContent = current.p;
+        $('scissors-val').textContent = current.s;
+        updateAll();
       }
     });
+  });
+
+  // Size Slider (Debounced for instant responsiveness)
+  let sizeDebounce = null;
+  $('size-slider').addEventListener('input', (e) => {
+    const size = parseInt(e.target.value, 10);
+    $('size-dim').textContent = `${size}×${size}`;
+    $('size-cells').textContent = `${size * size} cells`;
+    clearTimeout(sizeDebounce);
+    sizeDebounce = setTimeout(() => {
+      current.size = size;
+      updateAll();
+    }, 40);
   });
 
   // Layout Buttons
   document.querySelectorAll('#layout-buttons .calc-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
+      document.querySelectorAll('#layout-buttons .calc-btn').forEach((b) => b.classList.remove('on'));
+      btn.classList.add('on');
       current.layout = btn.dataset.layout;
-      render();
+      sampleFairDeal();
     });
   });
 
-  // Sample deal
-  $('sample-deal-btn').addEventListener('click', () => {
-    if (current.layout !== 'scattered') {
-      current.layout = 'scattered';
-    }
-    render();
+  // Material Sliders
+  $('rock-input').addEventListener('input', (e) => {
+    current.r = parseInt(e.target.value, 10);
+    $('rock-val').textContent = current.r;
+    updateAll();
+  });
+  $('paper-input').addEventListener('input', (e) => {
+    current.p = parseInt(e.target.value, 10);
+    $('paper-val').textContent = current.p;
+    updateAll();
+  });
+  $('scissors-input').addEventListener('input', (e) => {
+    current.s = parseInt(e.target.value, 10);
+    $('scissors-val').textContent = current.s;
+    updateAll();
   });
 
   // Playout buttons
   $('playout-run-btn').addEventListener('click', togglePlayoutRun);
   $('playout-step-btn').addEventListener('click', stepPlayout);
-  $('playout-reset-btn').addEventListener('click', resetPlayout);
+  $('playout-reset-btn').addEventListener('click', () => {
+    resetPlayoutGame();
+    renderBoard();
+  });
   $('playout-speed-btn').addEventListener('click', () => {
     playoutFast = !playoutFast;
     $('playout-speed-btn').textContent = `speed: ${playoutFast ? 'fast' : 'normal'}`;
-    $('playout-speed-btn').classList.toggle('on', playoutFast);
     if (playoutTimer) {
       clearInterval(playoutTimer);
-      playoutTimer = setInterval(stepPlayout, playoutFast ? 100 : 380);
+      playoutTimer = setInterval(stepPlayout, playoutFast ? 120 : 380);
     }
   });
 
-  // Complexity Mode Buttons
+  // Symmetry rays toggle
+  $('toggle-symmetry-rays').addEventListener('click', () => {
+    showSymmetryRays = !showSymmetryRays;
+    $('toggle-symmetry-rays').textContent = `180° rays: ${showSymmetryRays ? 'on' : 'off'}`;
+    $('toggle-symmetry-rays').classList.toggle('on', showSymmetryRays);
+    drawSymmetryRays();
+  });
+
+  // Sample deal button
+  $('sample-deal-btn').addEventListener('click', sampleFairDeal);
+
+  // 3B1B Powers of Ten Slider
+  $('scale-slider').addEventListener('input', (e) => {
+    const exp = parseInt(e.target.value, 10);
+    updateScaleStory(exp);
+  });
+
+  // Comp mode buttons
   $('comp-mode-states').addEventListener('click', () => {
     compMode = 'states';
     $('comp-mode-states').classList.add('on');
     $('comp-mode-tree').classList.remove('on');
-    const cfg = buildCfg();
-    const customMaterial = { rock: current.r, paper: current.p, scissors: current.s };
-    const space = L.stateSpace({ ...cfg, customMaterial });
-    const branching = L.branchingFor(current.size, [{ size: 3, value: 12.8 }, { size: 9, value: 34.0 }]);
-    renderComplexityLadder(space.states, branching);
+    renderCompLadder();
   });
-
   $('comp-mode-tree').addEventListener('click', () => {
     compMode = 'tree';
     $('comp-mode-tree').classList.add('on');
     $('comp-mode-states').classList.remove('on');
-    const cfg = buildCfg();
-    const customMaterial = { rock: current.r, paper: current.p, scissors: current.s };
-    const space = L.stateSpace({ ...cfg, customMaterial });
-    const branching = L.branchingFor(current.size, [{ size: 3, value: 12.8 }, { size: 9, value: 34.0 }]);
-    renderComplexityLadder(space.states, branching);
+    renderCompLadder();
   });
 
-  $('export-csv').addEventListener('click', exportCsv);
-  $('export-strata-csv').addEventListener('click', exportStrataCsv);
-
-  render();
+  updateAll();
 }
 
 if (document.readyState === 'loading') {

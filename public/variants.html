@@ -294,23 +294,32 @@
 
       <div class="calc-buttons" id="hex-radius-buttons" style="margin: 12px 0;">
         <span style="font-size: 11px; color: var(--muted); align-self: center; margin-right: 4px;">Radius:</span>
-        <button type="button" class="calc-btn on" data-hex-radius="4">R = 4 (37 cells)</button>
+        <button type="button" class="calc-btn on" data-hex-radius="2">R = 2 (7 cells · Solved Pocket)</button>
+        <button type="button" class="calc-btn" data-hex-radius="4">R = 4 (37 cells)</button>
         <button type="button" class="calc-btn" data-hex-radius="5">R = 5 (61 cells)</button>
         <button type="button" class="calc-btn" data-hex-radius="6">R = 6 (91 cells · Standard)</button>
       </div>
 
       <div class="calc-buttons" id="hex-role-buttons" style="margin-bottom: 14px;">
         <span style="font-size: 11px; color: var(--muted); align-self: center; margin-right: 4px;">Archetype:</span>
-        <button type="button" class="calc-btn on" data-hex-role="rook">Rook (6 Edge Rays)</button>
+        <button type="button" class="calc-btn on" data-hex-role="king">King (12 Steps)</button>
+        <button type="button" class="calc-btn" data-hex-role="rook">Rook (6 Edge Rays)</button>
         <button type="button" class="calc-btn" data-hex-role="bishop">Bishop (6 Vertex Rays)</button>
         <button type="button" class="calc-btn" data-hex-role="queen">Queen (12 Rays)</button>
-        <button type="button" class="calc-btn" data-hex-role="king">King (12 Steps)</button>
         <button type="button" class="calc-btn" data-hex-role="knight">Knight (12 Jumps)</button>
       </div>
 
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow: hidden;">
         <svg id="hex-board-svg" viewBox="-240 -240 480 480" width="100%" style="max-width: 440px; height: auto;" aria-label="Hexagonal board demonstration"></svg>
         <div class="mono" id="hex-hover-info" style="font-size: 11px; color: var(--muted); margin-top: 8px;">Hover over any hex cell to inspect axial coordinates and projected rays.</div>
+
+        <div id="hex-tb-controls" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; width: 100%; border-top: 1px solid var(--line); padding-top: 8px;">
+          <div style="font-size: 11.5px;">
+            <span>Solved Tablebase Bot:</span>
+            <b class="mono" id="hex-tb-verdict" style="color: var(--win); margin-left: 6px;">Evaluation: Draw (=) · 0 plies</b>
+          </div>
+          <button type="button" class="mini" id="hex-tb-reset-btn">reset 7-cell duel</button>
+        </div>
       </div>
     </section>
 

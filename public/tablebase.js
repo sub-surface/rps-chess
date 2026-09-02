@@ -312,3 +312,37 @@ export function findPuzzle(table, cfg, random, options = {}) {
 // position on the home page and on the atlas, which is what makes the deep link between them work.
 export const dailyPuzzle = (table, cfg, variantId, day = puzzleDay()) =>
   findPuzzle(table, cfg, rngFrom(seedFrom(`${day}${variantId}`)));
+
+// ── hex tablebase (radius 2, 7 cells, 1R/1P/1S each) ─────────────────────────
+export const HEX_RADIUS = 2;
+export const HEX_CELLS = 7;
+export const HEX_PLACEMENTS = 37633;
+export const HEX_STATES = HEX_PLACEMENTS * 2;
+export const HEX_KEY_SPACE = 8 ** 6; // 262,144
+
+export function hexKeyOf(positions) {
+  let key = 0, mul = 1;
+  for (let i = 0; i < 6; i++) {
+    key += (positions[i] + 1) * mul;
+    mul *= 8;
+  }
+  return key;
+}
+
+export function hexPositionsFromKey(key) {
+  const pos = [-1, -1, -1, -1, -1, -1];
+  let k = key;
+  for (let i = 0; i < 6; i++) {
+    pos[i] = (k % 8) - 1;
+    k = Math.floor(k / 8);
+  }
+  return pos;
+}
+
+export function probeHexTable(table, placement, turn = BLUE) {
+  if (!table || placement < 0 || placement >= HEX_PLACEMENTS) return null;
+  const byte = table[placement];
+  const value = (byte & 0x80) ? 1 : ((byte & 0x40) ? -1 : 0);
+  const dtm = byte & 0x3f;
+  return { value, dtm };
+}
