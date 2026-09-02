@@ -556,6 +556,8 @@ before the previous one settles. `needs` names the blocking item. Ownership is b
 | [ ] | **D10** | Four-player, later six-player on hex | Sketch only. Turn order, elimination and the RPS cycle with four armies all need design before any code. |
 | [ ] | **D11** | Structural consolidation | Lichess-shaped compartments as the site grows: analysis, atlas, profile and play as separate surfaces over one engine rather than one page that keeps absorbing features. The repo stays single: one engine, one tablebase, one deploy. |
 | [ ] | **D12** | External: a JANKEN entry in the subsurfaces.net arcade | Lives in the `digital-garden` project, not here. |
+| [ ] | **D13** | Azel's wall reachability-first experiment | A bounded attempt to map, then only if it closes, solve the one 5×5 Azel start. It is not a generic 5×5 tablebase; the procedure and publication gates are in §8.6. |
+| [ ] | **D14** | Atlas multi-page decomposition & variant combinatorics playground | Split the monolithic `/atlas` into dedicated pages/subsurfaces. Rather than a single massive page centered on the 3×3 tablebase, turn the atlas into a rich playground to explore the combinatorics, state spaces, and set theory across variants (3×3 solved spaces, Azel reachability, 5×5/9×9 state spaces, cyclic capture topologies). See §8.7. |
 
 ## 8. Design notes for unbuilt features
 
@@ -763,6 +765,61 @@ Decided in advance, because a sweep has no natural place to discover them.
    only. No UI path may produce it.
 6. **`size × size` is a hex bug.** The no-progress bound and the enclosure majority both assume a
    square board; both must become `cellCount`.
+
+### 8.6 Azel's wall reachability-first experiment (`D13`)
+
+**Question.** Can the exact 5×5 Azel's wall *starting position* be mapped far enough to yield a
+useful, reproducible result, and does its reachable graph close within a deliberately conservative
+budget? This does **not** reopen the rejected general 5×5 tablebase: the target is one fixed start
+and its descendants, not every 5×5 arrangement.
+
+**Fixed contract.** The experiment takes its board and rules exclusively from `E.PRESETS.azel` and
+`E.blocksBoard()`: 5×5, all kings, RPS captures, elimination, one action, `layout=azel`, and the
+fixed 2-rock / 1-paper / 3-scissors material on each side. It records the exact config fingerprint,
+engine revision and positional-tablebase convention (`threefold=false` while walking), matching the
+existing 3×3 solver's explicit choice to exclude history-dependent repetition from a position value.
+No hand-built position, synthetic move generator, or alternate capture rule is allowed.
+
+**Plan and gates.**
+
+1. Add an isolated deterministic `scripts/azel-wall.mjs` that imports only the shared engine. Its
+   first mode is a forward census from the fixed start, recording unique states, edges, material
+   layers, terminal reasons, branching, repeated-state/SCC evidence and any unexpanded frontier.
+   Every run has explicit state, edge, RAM and wall-time caps; a cap exits cleanly with `complete:
+   false` rather than extending the job or guessing a verdict.
+2. Commit a machine-readable `public/atlas/azel-wall.json` only when its config fingerprint, caps,
+   traversal counters and completion status are present. A capped artifact is a **frontier census**,
+   not solved data; it may describe exactly what was visited but must not label the root or an
+   unclosed region win/draw/loss.
+3. Attempt retrograde solving only after the reachable graph is proven closed. Build predecessor
+   edges from the same recorded successors, audit every edge through `engine.js`, and publish an
+   exact root result only when the full attractor audit passes. If closure does not fit the initial
+   budget, stop after the census and report the measured obstacle plus the next safe cap to try.
+4. Keep site impact local to a lazy Azel section in `/atlas`: initial-position diagram, material and
+   frontier/layer figures, a visible `exact` versus `capped census` label, method/cap disclosure and
+   CSV for the rows drawn. Existing 3×3 tablebase data, claims, loader, bot, home screen and gameplay
+   remain untouched. The section remains absent until a validated artifact exists.
+5. Before presentation, add deterministic script tests for start reconstruction, legal replay,
+   stable output, cap handling and the complete-versus-capped claim boundary; then run the normal
+   syntax, Vitest and browser gates. A benchmark that merely changes the cap is not a new result
+   until it regenerates the committed artifact and its Atlas CSV.
+
+**Exit conditions.** A successful session ends in either an audited exact result for the fixed root,
+or a reproducible capped census with no overclaim. It never starts a whole-5×5 enumeration, changes
+the shipped rules, or silently turns incomplete reachability into an Atlas verdict.
+
+### 8.7 Atlas multi-page decomposition & variant combinatorics playground (`D14`)
+
+**Problem statement.** Today `/atlas` is a single monolithic page predominantly centered around the solved 3×3 tablebase. While comprehensive for that specific domain, it crowds out the broader combinatorial, topological, and set-theoretic beauty of JANKEN's variant ecosystem. The atlas should evolve into an exploratory mathematical playground rather than a single static report.
+
+**Decomposition & Structure.**
+1. **Sub-surfaces & routing:** Split `/atlas` into modular sub-routes or views:
+   - `/atlas/tablebase-3x3`: Solved 3×3 domain, DTM ladders, opening grids, attractor graphs, perfect play verifications.
+   - `/atlas/combinatorics`: State-space arithmetic across board sizes (3×3, 5×5, 9×9, hex), branching factors, partition numbers, and layer sizing.
+   - `/atlas/variants`: Interactive laboratory for exploring the set theory, reachability graphs, and cyclic capture dynamics across custom presets (Azel's wall reachability, asymmetric piece ratios, alternate win conditions).
+   - `/atlas/bots`: Empirical tuning ladders, regret curves, and depth-versus-board scaling analysis.
+2. **Interactive playground:** Empower visitors to slice and interact with variant combinatorics directly in the browser—toggling rule predicates, visualizing cyclic capture graph invariants, filtering reachable subsets, and inspecting state-space growth bounds.
+3. **Data provenance:** Retain invariant §9b across all sub-pages: all displayed figures are dynamically read from machine-readable JSON/tablebase fixtures (`manifest.json`, `lab.json`, `bots.json`, `azel-wall.json`), with per-view CSV exports.
 7. **Canonical order comes from the adapter.** Any reliance on object or `Map` insertion order
    makes `encodePos()` and repetition keys nondeterministic, corrupting threefold detection and
    JPGN round-trips in ways tests may catch only intermittently.
