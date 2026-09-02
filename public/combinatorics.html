@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>JANKEN — Combinatorics Playground</title>
+  <meta name="description" content="Exact state space combinatorics, legal opening deal counts, and retrograde solve budgets across board sizes and variant material multisets." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="JANKEN — Combinatorics Playground" />
+  <meta property="og:description" content="Interactive state space arithmetic and complexity scaling for JANKEN variants." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/atlas.css" />
+</head>
+<body data-screen="atlas">
+  <header class="top">
+    <a class="brand" href="/" aria-label="Janken home">
+      <svg class="mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+        <g fill="none" stroke-width="3.4" stroke-linecap="square">
+          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
+          <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
+          <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
+        </g>
+      </svg>
+      <span class="word">JANKEN<em>combinatorics playground</em></span>
+    </a>
+    <p class="dyk" id="dyk" aria-live="polite" hidden></p>
+    <div class="tools">
+      <a class="tbtn" href="/">play</a>
+      <a class="tbtn" href="/atlas">atlas</a>
+      <a class="tbtn" href="/puzzle">puzzles</a>
+      <button class="tbtn" id="theme-btn" type="button">theme</button>
+    </div>
+  </header>
+
+  <main class="atlas">
+    <section class="atlas-hero">
+      <div class="hero-copy">
+        <h1>The Combinatorics<br />of JANKEN.</h1>
+        <p>
+          Beyond the pocket 3×3 board, the state space scales into numbers that human intuition cannot
+          grasp. This playground computes the <b>exact multiset combinatorics</b>, legal opening deal
+          capacities, and retrograde solving budgets across arbitrary board dimensions and piece distributions.
+        </p>
+        <p>
+          Every calculation uses pure BigInt integer arithmetic via <code>lab.js</code>. No estimates,
+          no float loss, no approximations.
+        </p>
+      </div>
+      <div class="hero-figures" id="hero-figures">
+        <div class="hero-figure"><span>3×3 Pocket Board</span><b class="mono">415,550</b></div>
+        <div class="hero-figure"><span>5×5 Standard</span><b class="mono">3.58 × 10¹⁴</b></div>
+        <div class="hero-figure"><span>9×9 Grand Board</span><b class="mono">1.04 × 10²⁸</b></div>
+      </div>
+    </section>
+
+    <nav class="atlas-subsurfaces" aria-label="Atlas sub-surfaces">
+      <a class="subsurface-tab" href="/atlas"><span class="tab-badge">solved</span> 3×3 Tablebase</a>
+      <a class="subsurface-tab on" href="/combinatorics"><span class="tab-badge">playground</span> Combinatorics & State Space</a>
+      <a class="subsurface-tab" href="/variants"><span class="tab-badge">lab</span> Topology & Variant Lab</a>
+    </nav>
+
+    <div class="playground-grid">
+      <!-- Left: Interactive Controls -->
+      <section class="calc-card" aria-label="Configuration Parameters">
+        <div>
+          <h3>Configuration Parameters</h3>
+          <p class="card-desc">Tweak board geometry and material piles to inspect exact growth.</p>
+        </div>
+
+        <div class="calc-controls">
+          <!-- Preset buttons -->
+          <div class="calc-group">
+            <label class="calc-label">Quick Presets</label>
+            <div class="calc-buttons">
+              <button type="button" class="calc-btn on" data-preset="3-skirmish">3×3 Skirmish</button>
+              <button type="button" class="calc-btn" data-preset="5-azel">5×5 Azel</button>
+              <button type="button" class="calc-btn" data-preset="5-standard">5×5 Standard</button>
+              <button type="button" class="calc-btn" data-preset="7-classic">7×7 Classic</button>
+              <button type="button" class="calc-btn" data-preset="9-grand">9×9 Grand</button>
+              <button type="button" class="calc-btn" data-preset="13-campaign">13×13 Campaign</button>
+            </div>
+          </div>
+
+          <!-- Board Size -->
+          <div class="calc-group">
+            <label class="calc-label" for="size-slider">
+              <span>Board Size (<span id="size-dim">3×3</span>)</span>
+              <span class="val" id="size-cells">9 cells</span>
+            </label>
+            <input type="range" id="size-slider" class="calc-slider" min="3" max="13" step="1" value="3" />
+          </div>
+
+          <!-- Material Piles per player -->
+          <div class="calc-group">
+            <label class="calc-label" for="rock-input">
+              <span>Rocks per player</span>
+              <span class="val" id="rock-val">1</span>
+            </label>
+            <input type="range" id="rock-input" class="calc-slider" min="1" max="10" step="1" value="1" />
+          </div>
+
+          <div class="calc-group">
+            <label class="calc-label" for="paper-input">
+              <span>Papers per player</span>
+              <span class="val" id="paper-val">1</span>
+            </label>
+            <input type="range" id="paper-input" class="calc-slider" min="1" max="10" step="1" value="1" />
+          </div>
+
+          <div class="calc-group">
+            <label class="calc-label" for="scissors-input">
+              <span>Scissors per player</span>
+              <span class="val" id="scissors-val">1</span>
+            </label>
+            <input type="range" id="scissors-input" class="calc-slider" min="1" max="10" step="1" value="1" />
+          </div>
+
+          <!-- Export -->
+          <div class="btn-row" style="margin-top: 10px;">
+            <button type="button" class="mini" id="export-csv">Download Complexity Ladder (CSV)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Live Results & Comparative Scale -->
+      <section class="calc-card" aria-label="Computed State Space Metrics">
+        <div>
+          <h3>Computed State Space Metrics</h3>
+          <p class="card-desc">Exact arithmetic values derived from multiset combinatorics.</p>
+        </div>
+
+        <div class="calc-stats">
+          <div class="stat-box">
+            <span class="lbl">Distinguishable Placements</span>
+            <span class="num" id="stat-placements">207,775</span>
+            <span class="sub" id="stat-placements-sci">2.08 × 10⁵</span>
+          </div>
+
+          <div class="stat-box">
+            <span class="lbl">Total States (2 × Placements)</span>
+            <span class="num" id="stat-states">415,550</span>
+            <span class="sub" id="stat-states-sci">4.16 × 10⁵</span>
+          </div>
+
+          <div class="stat-box">
+            <span class="lbl">Fair Opening Deals</span>
+            <span class="num" id="stat-openings">192</span>
+            <span class="sub">180° antipodal symmetry</span>
+          </div>
+
+          <div class="stat-box">
+            <span class="lbl">Table Storage (1B/state)</span>
+            <span class="num" id="stat-storage">405.8 KB</span>
+            <span class="sub">Raw packed table</span>
+          </div>
+
+          <div class="stat-box">
+            <span class="lbl">RAM Floor (Retrograde)</span>
+            <span class="num" id="stat-ram">10.3 MB</span>
+            <span class="sub">Queue + predecessor floor</span>
+          </div>
+
+          <div class="stat-box">
+            <span class="lbl">Solve Duration (@1 Meps)</span>
+            <span class="num" id="stat-time">1.8 seconds</span>
+            <span class="sub">1M transitions / sec</span>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="margin: 18px 0 6px; font-size: 13px; font-weight: 600;">Comparative Scale of Game Complexity</h4>
+          <p class="card-desc">State space size compared against canonical solved and unsolved games (logarithmic scale).</p>
+          <div class="comp-ladder" id="comp-ladder"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="atlas-section">
+      <p class="eyebrow">Mathematical Formulation</p>
+      <h2>Closed-Form Multiset Counting</h2>
+      <p class="lede">
+        Pieces of the same type and colour are physically and rule-wise indistinguishable. A board with two Blue
+        Rocks does not distinguish which rock occupies which cell. Given $N^2$ cells, and $k$ surviving pieces of
+        multiset counts $\{n_{B,R}, n_{B,P}, n_{B,S}, n_{R,R}, n_{R,P}, n_{R,S}\}$, the total distinguishable arrangements is:
+      </p>
+      <div style="background: var(--surface-2); padding: 16px 20px; border: 1px solid var(--line); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 13.5px; overflow-x: auto; margin: 12px 0 20px;">
+        Placements = ∑ [ (N²)! / ( (N² - ∑ alive)! · ∏ (alive!) ) ]
+      </div>
+      <p class="lede">
+        Summed over all legal survival counts $0 \le \text{alive}_i \le n_i$. Total directed game states doubles this
+        figure ($2 \times \text{Placements}$) to account for the binary turn flag (Blue or Red to move).
+      </p>
+    </section>
+  </main>
+
+  <script type="module" src="/combinatorics.js"></script>
+</body>
+</html>

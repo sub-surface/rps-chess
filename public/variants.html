@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>JANKEN — Topology & Variant Lab</title>
+  <meta name="description" content="Set-theoretic topology, cyclic capture digraphs on Z/3Z, Strongly Connected Components, and reachability frontiers for JANKEN variants." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="JANKEN — Topology & Variant Lab" />
+  <meta property="og:description" content="Interactive tournament graphs, attractor cycles, and invariant analysis for cyclic games." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/atlas.css" />
+</head>
+<body data-screen="atlas">
+  <header class="top">
+    <a class="brand" href="/" aria-label="Janken home">
+      <svg class="mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+        <g fill="none" stroke-width="3.4" stroke-linecap="square">
+          <circle cx="32" cy="15" r="6" fill="var(--accent)" stroke="none"/>
+          <circle cx="47" cy="43" r="6" fill="var(--red)" stroke="none"/>
+          <circle cx="17" cy="43" r="6" fill="var(--blue)" stroke="none"/>
+          <path d="M37 19 A18 18 0 0 1 47 36" stroke="var(--hair)"/>
+          <path d="M44 47 A18 18 0 0 1 23 47" stroke="var(--hair)"/>
+          <path d="M14 37 A18 18 0 0 1 27 19" stroke="var(--hair)"/>
+        </g>
+      </svg>
+      <span class="word">JANKEN<em>topology & variant lab</em></span>
+    </a>
+    <p class="dyk" id="dyk" aria-live="polite" hidden></p>
+    <div class="tools">
+      <a class="tbtn" href="/">play</a>
+      <a class="tbtn" href="/atlas">atlas</a>
+      <a class="tbtn" href="/combinatorics">combinatorics</a>
+      <a class="tbtn" href="/puzzle">puzzles</a>
+      <button class="tbtn" id="theme-btn" type="button">theme</button>
+    </div>
+  </header>
+
+  <main class="atlas">
+    <section class="atlas-hero">
+      <div class="hero-copy">
+        <h1>The Topology<br />of Cyclic Capture.</h1>
+        <p>
+          Unlike chess where piece superiority is transitive and scalar (Queen > Rook > Bishop > Pawn),
+          JANKEN operates on the <b>intransitive cyclic ring $\mathbb{Z}/3\mathbb{Z}$</b>:
+          $R \succ S \succ P \succ R$. This circular dominance turns evaluation into a topological problem
+          of cycles, attractors, and Strongly Connected Components (SCCs).
+        </p>
+        <p>
+          This laboratory inspects how variant capture rules warp the state space digraph, why games
+          decompose into a DAG of material strata, and how reachability bounding tames large boards.
+        </p>
+      </div>
+      <div class="hero-figures" id="hero-figures">
+        <div class="hero-figure"><span>Algebraic Ring</span><b class="mono">ℤ / 3ℤ</b></div>
+        <div class="hero-figure"><span>Material Strata</span><b class="mono">7 Layers</b></div>
+        <div class="hero-figure"><span>Macro Digraph</span><b class="mono">Pure DAG</b></div>
+      </div>
+    </section>
+
+    <nav class="atlas-subsurfaces" aria-label="Atlas sub-surfaces">
+      <a class="subsurface-tab" href="/atlas"><span class="tab-badge">solved</span> 3×3 Tablebase</a>
+      <a class="subsurface-tab" href="/combinatorics"><span class="tab-badge">playground</span> Combinatorics & State Space</a>
+      <a class="subsurface-tab on" href="/variants"><span class="tab-badge">lab</span> Topology & Variant Lab</a>
+    </nav>
+
+    <div class="playground-grid">
+      <!-- Left: Capture Tournament Digraph -->
+      <section class="calc-card" aria-label="Capture Digraph Laboratory">
+        <div>
+          <h3>Capture Tournament Digraph</h3>
+          <p class="card-desc">Toggle the underlying binary relation on piece interactions.</p>
+        </div>
+
+        <div class="calc-buttons" style="margin-bottom: 12px;">
+          <button type="button" class="calc-btn on" data-topo="cyclic">Standard Cyclic (ℤ/3ℤ)</button>
+          <button type="button" class="calc-btn" data-topo="transitive">Transitive / Linear</button>
+          <button type="button" class="calc-btn" data-topo="symmetric">Symmetric (Chess)</button>
+        </div>
+
+        <div class="digraph-wrap">
+          <svg class="digraph-svg" viewBox="0 0 300 260" aria-label="Piece dominance digraph">
+            <!-- Directed Edges -->
+            <defs>
+              <marker id="arr-accent" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                <path d="M1,1 L7,4 L1,7 Z" fill="var(--accent)"/>
+              </marker>
+              <marker id="arr-red" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                <path d="M1,1 L7,4 L1,7 Z" fill="var(--red)"/>
+              </marker>
+              <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                <path d="M1,1 L7,4 L1,7 Z" fill="var(--blue)"/>
+              </marker>
+            </defs>
+
+            <!-- Triangle edges -->
+            <g id="digraph-edges" stroke-width="2.5"></g>
+
+            <!-- Vertices -->
+            <!-- Rock (top) -->
+            <g transform="translate(150, 45)" class="vertex">
+              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
+              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">R</text>
+              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Rock</text>
+            </g>
+
+            <!-- Scissors (bottom-right) -->
+            <g transform="translate(230, 195)" class="vertex">
+              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
+              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">S</text>
+              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Scissors</text>
+            </g>
+
+            <!-- Paper (bottom-left) -->
+            <g transform="translate(70, 195)" class="vertex">
+              <circle r="26" fill="var(--surface-2)" stroke="var(--hair)" stroke-width="2"/>
+              <text y="6" text-anchor="middle" fill="var(--text)" font-family="ui-monospace, monospace" font-size="16" font-weight="700">P</text>
+              <text y="42" text-anchor="middle" fill="var(--muted)" font-size="10">Paper</text>
+            </g>
+          </svg>
+
+          <div style="font-size: 12.5px; line-height: 1.5; color: var(--muted);" id="topo-desc">
+            Standard JANKEN rule: $R \succ S \succ P \succ R$. The capture digraph contains a directed 3-cycle.
+            This cycle creates non-trivial Strongly Connected Components (SCCs) in the state space graph,
+            meaning games can orbit in infinite threefold repetition loops.
+          </div>
+        </div>
+
+        <div class="calc-stats" style="margin-top: 6px;">
+          <div class="stat-box">
+            <span class="lbl">Tournament Topology</span>
+            <span class="num" id="stat-topo-type" style="font-size: 13px;">Cyclic Ring</span>
+            <span class="sub" id="stat-topo-cycles">Contains 3-cycle</span>
+          </div>
+          <div class="stat-box">
+            <span class="lbl">Game Termination</span>
+            <span class="num" id="stat-topo-term" style="font-size: 13px;">Requires 3-fold</span>
+            <span class="sub">Cycles permit loops</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Material Strata & Azel's Wall -->
+      <section class="calc-card" aria-label="Material Strata DAG & Reachability">
+        <div>
+          <h3>Material Strata & The Macro DAG</h3>
+          <p class="card-desc">Why the overall state space is an acyclic cascade of cyclic pools.</p>
+        </div>
+
+        <div style="font-size: 12.5px; line-height: 1.5; color: var(--muted);">
+          Every capture strictly decreases total surviving material $M = |B| + |R|$. Because captures cannot be
+          reversed (no promotions, no re-spawns), <b>no move can ever return to a higher material stratum</b>.
+          The state space graph is therefore a <b>Directed Acyclic Graph (DAG)</b> of material layers.
+        </div>
+
+        <div class="layer-strata" id="layer-strata"></div>
+
+        <div style="margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px;">
+          <h4 style="margin: 0 0 6px; font-size: 13.5px; font-weight: 600;">The Azel's Wall Reachability Frontier</h4>
+          <p class="card-desc" style="margin-bottom: 12px;">
+            Azel's Wall is a 5×5 asymmetric layout ($2R / 1P / 3S$). While the full 5×5 state space contains
+            $\approx 3.58 \times 10^{14}$ theoretical states, forward reachability from Azel's fixed starting line
+            traverses only $\sim 4.5\%$ of the placements.
+          </p>
+          <div class="calc-stats">
+            <div class="stat-box">
+              <span class="lbl">Theoretical States</span>
+              <span class="num" style="font-size: 14px;">3.58 × 10¹⁴</span>
+              <span class="sub">Full multiset</span>
+            </div>
+            <div class="stat-box">
+              <span class="lbl">Reachability Shrinkage</span>
+              <span class="num" style="font-size: 14px;">~95.5% Pruned</span>
+              <span class="sub">Unreachable deals</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="atlas-section">
+      <p class="eyebrow">Graph-Theoretic Invariants</p>
+      <h2>Attractors, Repetition Cycles, and Terminal Sinks</h2>
+      <p class="lede">
+        In retrograde analysis, positions resolve into three fundamental topological categories:
+      </p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 18px 0 24px;">
+        <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
+          <h4 style="margin: 0 0 6px; font-size: 13px; color: var(--win);">Terminal Sinks</h4>
+          <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">
+            Positions where the game ends by rule: elimination of the opponent's army or arrival at zero legal moves.
+            These are the base cases from which retrograde solving propagates backwards.
+          </p>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
+          <h4 style="margin: 0 0 6px; font-size: 13px; color: var(--accent);">Attractor Cycles (SCCs)</h4>
+          <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">
+            Subgraphs where neither player can force an escape into a won terminal state. Moves cycle indefinitely,
+            forming the draw-by-threefold attractor basins that characterise perfect play in JANKEN.
+          </p>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px;">
+          <h4 style="margin: 0 0 6px; font-size: 13px; color: var(--draw);">Transient Strata Cascades</h4>
+          <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">
+            Directed pathways where every edge moves strictly downward in distance-to-mate (DTM) or down material
+            layers, funneling non-cyclically toward a terminal conclusion.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/variants.js"></script>
+</body>
+</html>

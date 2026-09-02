@@ -1010,6 +1010,12 @@ export default {
         ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
         return response;
       }
+      if (url.pathname === '/combinatorics') {
+        return env.ASSETS.fetch(new Request(new URL('/combinatorics.html', request.url), request));
+      }
+      if (url.pathname === '/variants') {
+        return env.ASSETS.fetch(new Request(new URL('/variants.html', request.url), request));
+      }
       return env.ASSETS.fetch(request);
     } catch (error) {
       logError('request_failed', error, { method: request.method, path: url.pathname });
