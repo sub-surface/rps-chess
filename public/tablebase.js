@@ -194,7 +194,12 @@ export function variantForCfg(list, cfg) {
 
 // A loaded oracle for these rules, or null if they are not solved. Callers hold the result.
 export async function oracleFor(cfg) {
-  if (E.sanitizeCfg(cfg).size !== SIZE) return null;      // cheap reject before any network
+  const safe = E.sanitizeCfg(cfg);
+  if (safe.topology === 'hex') {
+    if (safe.size !== HEX_RADIUS || safe.perType !== 1 || safe.capture !== 'rps') return null;
+    return loadHexOracle();
+  }
+  if (safe.size !== SIZE) return null;      // cheap reject before any network
   const list = (await manifest()).variants;
   const variant = variantForCfg(list, cfg);
   if (!variant) return null;
@@ -345,4 +350,89 @@ export function probeHexTable(table, placement, turn = BLUE) {
   const value = (byte & 0x80) ? 1 : ((byte & 0x40) ? -1 : 0);
   const dtm = byte & 0x3f;
   return { value, dtm };
+}
+
+export const HEX_CELLS_7 = Object.freeze([
+  [0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
+]);
+export const HEX_CELL_INDEX = Object.freeze({
+  '0,0': 0, '1,0': 1, '1,-1': 2, '0,-1': 3, '-1,0': 4, '-1,1': 5, '0,1': 6,
+});
+
+let hexPlacementTable = null;
+export function enumerateHexPlacements() {
+  if (hexPlacementTable) return hexPlacementTable;
+  const index = new Int32Array(HEX_KEY_SPACE).fill(-1);
+  const keys = new Int32Array(HEX_PLACEMENTS);
+  let count = 0;
+  const pos = [-1, -1, -1, -1, -1, -1];
+  function walk(slot, used) {
+    if (slot === 6) {
+      const k = hexKeyOf(pos);
+      index[k] = count;
+      keys[count++] = k;
+      return;
+    }
+    pos[slot] = -1;
+    walk(slot + 1, used);
+    for (let c = 0; c < 7; c++) {
+      if (used & (1 << c)) continue;
+      pos[slot] = c;
+      walk(slot + 1, used | (1 << c));
+    }
+  }
+  walk(0, 0);
+  hexPlacementTable = { index, keys };
+  return hexPlacementTable;
+}
+
+export function hexPlacementOf(pieces) {
+  const { index } = enumerateHexPlacements();
+  const pos = [-1, -1, -1, -1, -1, -1];
+  for (const [coord, p] of Object.entries(pieces || {})) {
+    if (!p) continue;
+    const cellIdx = HEX_CELL_INDEX[coord];
+    if (cellIdx === undefined) continue;
+    const base = p.color === BLUE ? 0 : 3;
+    const typeOffset = p.type === 'rock' ? 0 : p.type === 'paper' ? 1 : 2;
+    pos[base + typeOffset] = cellIdx;
+  }
+  return index[hexKeyOf(pos)];
+}
+
+let hexOraclePromise = null;
+export async function loadHexOracle() {
+  if (hexOraclePromise) return hexOraclePromise;
+  hexOraclePromise = (async () => {
+    const [res0, res1] = await Promise.all([
+      fetch(`${ROOT}/hex-7-turn0.tb`),
+      fetch(`${ROOT}/hex-7-turn1.tb`),
+    ]);
+    if (!res0.ok || !res1.ok) throw new Error('Could not load hex tablebase');
+    const b0 = new Uint8Array(await res0.arrayBuffer());
+    const b1 = new Uint8Array(await res1.arrayBuffer());
+    const { index, keys } = enumerateHexPlacements();
+    return {
+      id: 'hex-7',
+      label: '7-cell Hex Pocket',
+      topology: 'hex',
+      turn0: b0,
+      turn1: b1,
+      index,
+      keys,
+      variant: { cfg: { topology: 'hex', size: 2, perType: 1, capture: 'rps' } },
+    };
+  })();
+  return hexOraclePromise;
+}
+
+export function probeHex(oracle, pieces, turn = BLUE) {
+  if (!oracle) return null;
+  const placement = hexPlacementOf(pieces);
+  if (placement < 0 || placement >= HEX_PLACEMENTS) return null;
+  const table = turn === RED ? oracle.turn1 : oracle.turn0;
+  const byte = table[placement];
+  const value = (byte & 0x80) ? 1 : ((byte & 0x40) ? -1 : 0);
+  const dtm = byte & 0x3f;
+  return { value, dtm, placement };
 }

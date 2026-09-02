@@ -23,7 +23,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all kings · RPS · elimination",
       "bytes": 86508,
@@ -235,7 +236,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all rooks · RPS · elimination",
       "bytes": 149685,
@@ -447,7 +449,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all bishops · RPS · elimination",
       "bytes": 44429,
@@ -659,7 +662,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all knights · RPS · elimination",
       "bytes": 126957,
@@ -871,7 +875,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all queens · RPS · elimination",
       "bytes": 95966,
@@ -1083,7 +1088,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all crosses · RPS · elimination",
       "bytes": 161429,
@@ -1295,7 +1301,8 @@
         "threefold": true,
         "layout": "rows",
         "actionsPerTurn": 1,
-        "first": "B"
+        "first": "B",
+        "topology": "square"
       },
       "rules": "3×3 · all long kings · RPS · elimination",
       "bytes": 75504,

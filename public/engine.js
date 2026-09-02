@@ -701,18 +701,21 @@ export const PRESETS = {
     moveStyle: 'kings', capture: 'rps', forcedCapture: false,
     territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'square',
   },
   kings: {
     size: 9, perType: 2, rockMove: 'rook', paperMove: 'knight', scissorsMove: 'bishop',
     moveStyle: 'custom', capture: 'rps', forcedCapture: false,
     territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'square',
   },
   checkers: {
     size: 8, perType: 2, rockMove: 'longking', paperMove: 'longking', scissorsMove: 'longking',
     moveStyle: 'custom', capture: 'checkers', forcedCapture: true,
     territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'square',
   },
   // Azel's wall, from a player who went looking for lopsided openings worth playing. Six pieces
   // a side, but not two of each: the scissors screen is the variant.
@@ -721,12 +724,21 @@ export const PRESETS = {
     moveStyle: 'kings', capture: 'rps', forcedCapture: false,
     territory: false, retread: false, trail: false, enclosure: false,
     threefold: true, layout: 'azel', actionsPerTurn: 1, first: BLUE,
+    topology: 'square',
   },
   painters: {
     size: 9, perType: 2, rockMove: 'queen', paperMove: 'queen', scissorsMove: 'queen',
     moveStyle: 'queens', capture: 'rps', forcedCapture: false,
     territory: true, retread: false, trail: true, enclosure: false,
     threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'square',
+  },
+  hex: {
+    size: 2, perType: 1, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
+    moveStyle: 'kings', capture: 'rps', forcedCapture: false,
+    territory: false, retread: false, trail: false, enclosure: false,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'hex',
   },
   // Every preset spells out every compared field, so presetOf() can recognise one
   // exactly. Standard's values are the base; each variant states only what it changes.
@@ -744,7 +756,8 @@ export const PRESETS = {
     size: 9, perType: 2, rockMove: 'king', paperMove: 'king', scissorsMove: 'king',
     capture: 'rps', forcedCapture: false,
     territory: true, retread: true, trail: false, enclosure: false,
-    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE, ...over,
+    threefold: true, layout: 'rows', actionsPerTurn: 1, first: BLUE,
+    topology: 'square', ...over,
   }])),
 };
 
@@ -752,6 +765,7 @@ export const PRESETS = {
 export const PRESET_INFO = {
   standard: { label: 'Standard', tagline: 'Everything moves one square. Take what you beat; most pieces standing wins.' },
   skirmish: { label: 'Skirmish', tagline: 'A pocket 3×3 with one of each piece. Decided in a hurry.' },
+  hex: { label: 'Hex Pocket', tagline: 'A 7-cell hexagonal duel with one of each piece. Solved tablebase play.' },
   azel: { label: "Azel's wall", tagline: 'A 5×5 with three scissors screening rock, paper, rock. Lopsided on purpose.' },
   triple: { label: 'Triple step', tagline: 'Three moves a turn. Ground changes hands three times as fast.' },
   cavalry: { label: 'Cavalry', tagline: 'All knights. Nothing blocks a jump, so nothing is ever safe.' },
@@ -772,6 +786,7 @@ export function presetOf(cfg) {
   const fields = [
     'size', 'perType', 'rockMove', 'paperMove', 'scissorsMove', 'capture', 'forcedCapture',
     'territory', 'retread', 'trail', 'enclosure', 'threefold', 'layout', 'actionsPerTurn', 'first',
+    'topology',
   ];
   // `rulesVersion` is deliberately absent: it says which edition a game finishes under, not what
   // variant it is, and comparing it would rename every legacy record Custom.
@@ -796,7 +811,8 @@ export function variantLabel(cfg) {
   const capture = safe.capture === 'rps'
     ? 'RPS'
     : safe.capture === 'checkers' ? 'checkers-capture' : 'chess-capture';
-  const parts = [`${safe.size}×${safe.size}`, movementLabel(safe), capture];
+  const geom = safe.topology === 'hex' ? `Hex (R=${safe.size})` : `${safe.size}×${safe.size}`;
+  const parts = [geom, movementLabel(safe), capture];
   if (safe.forcedCapture) parts.push('forced');
   parts.push(safe.territory ? (safe.retread ? 'territory+' : 'territory') : 'elimination');
   if (safe.trail) parts.push('ink');
@@ -907,8 +923,11 @@ export function sanitizeCfg(raw) {
   const one = (v, set, d) => set.includes(v) ? v : d;
   // Layout is read first because it constrains the board: Azel's wall needs two clear files a
   // side, so a 3×3 request for it becomes the smallest board that can actually hold it.
+  const topology = raw.topology === 'hex' ? 'hex' : 'square';
   const layout = one(raw.layout, LAYOUTS, 'rows');
-  const size = clamp(raw.size, layout === 'azel' ? 4 : 3, 13, 9);
+  const size = topology === 'hex'
+    ? clamp(raw.size, 2, 8, 2)
+    : clamp(raw.size, layout === 'azel' ? 4 : 3, 13, 9);
   // Territory is opt-in: an absent flag means Standard, which does not paint.
   const territory = !!raw.territory;
   const legacy = LEGACY_MOVES[raw.moveStyle] || LEGACY_MOVES.kings;
@@ -929,7 +948,9 @@ export function sanitizeCfg(raw) {
     size,
     // Azel's wall deals a fixed six pieces a side, so perType stops being a dial and reports
     // the six as 3 × 2 — a stored 1 there would describe a board the layout never builds.
-    perType: layout === 'azel' ? AZEL_PER_TYPE : clamp(raw.perType, 1, maxPerTypeForBoard(size, layout), 2),
+    perType: topology === 'hex'
+      ? clamp(raw.perType, 1, size === 2 ? 1 : 3, 1)
+      : (layout === 'azel' ? AZEL_PER_TYPE : clamp(raw.perType, 1, maxPerTypeForBoard(size, layout), 2)),
     rockMove,
     paperMove,
     scissorsMove,
@@ -948,5 +969,27 @@ export function sanitizeCfg(raw) {
     layout,
     actionsPerTurn: clamp(raw.actionsPerTurn, 1, 3, 1),
     first: raw.first === RED ? RED : BLUE,
+    topology,
   };
+}
+
+export function hexInitialBoard(radius = 2) {
+  if (radius === 2) {
+    return {
+      '0,-1': { type: 'rock', color: BLUE },
+      '1,-1': { type: 'paper', color: BLUE },
+      '-1,0': { type: 'scissors', color: BLUE },
+      '0,1': { type: 'rock', color: RED },
+      '-1,1': { type: 'paper', color: RED },
+      '1,0': { type: 'scissors', color: RED },
+    };
+  }
+  const pieces = {};
+  pieces[`0,-${radius - 1}`] = { type: 'rock', color: BLUE };
+  pieces[`1,-${radius - 1}`] = { type: 'paper', color: BLUE };
+  pieces[`-1,-${radius - 2}`] = { type: 'scissors', color: BLUE };
+  pieces[`0,${radius - 1}`] = { type: 'rock', color: RED };
+  pieces[`-1,${radius - 1}`] = { type: 'paper', color: RED };
+  pieces[`1,${radius - 2}`] = { type: 'scissors', color: RED };
+  return pieces;
 }

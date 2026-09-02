@@ -31,6 +31,7 @@ describe('shared rules engine', () => {
       layout: 'rows',
       actionsPerTurn: 3,
       first: E.BLUE,
+      topology: 'square',
     });
     // An absent obligation is off and an absent edition is current, so nothing a browser or a
     // network payload leaves out can quietly change what is legal.
@@ -39,6 +40,10 @@ describe('shared rules engine', () => {
     expect(E.sanitizeCfg({}).rulesVersion).toBe('1.1');
     expect(E.sanitizeCfg({ rulesVersion: '0.9' }).rulesVersion).toBe('1.1');
     expect(E.sanitizeCfg({ rulesVersion: '1.0' }).rulesVersion).toBe('1.0');
+    expect(E.sanitizeCfg({}).topology).toBe('square');
+    expect(E.sanitizeCfg({ topology: 'hex' }).topology).toBe('hex');
+    expect(E.sanitizeCfg({ topology: 'hex', size: 2 })).toMatchObject({ topology: 'hex', size: 2, perType: 1 });
+    expect(E.presetOf(E.sanitizeCfg(E.PRESETS.hex))).toBe('hex');
     // Azel's wall deals its own material and needs room for two files a side, so the layout
     // constrains the board rather than the other way round.
     expect(E.sanitizeCfg({ size: 3, perType: 4, layout: 'azel' })).toMatchObject({
@@ -624,6 +629,11 @@ describe('preset library', () => {
   it('every preset produces a playable opening position', () => {
     for (const [key, preset] of Object.entries(E.PRESETS)) {
       const cfg = E.sanitizeCfg(preset);
+      if (cfg.topology === 'hex') {
+        expect(cfg.size).toBe(2);
+        expect(cfg.perType).toBe(1);
+        continue;
+      }
       const game = E.newGame(cfg);
       expect(game.gameOver, `${key} starts already finished`).toBe(false);
       const counts = E.pieceCounts(game.board);

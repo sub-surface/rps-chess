@@ -29,4 +29,19 @@ describe('Hexagonal 7-cell Tablebase Artifacts', () => {
     expect(blues.map((p) => p.type).sort()).toEqual(['paper', 'rock', 'scissors']);
     expect(reds.map((p) => p.type).sort()).toEqual(['paper', 'rock', 'scissors']);
   });
+
+  it('correctly indexes hex placements and computes starting standoff', async () => {
+    const { hexInitialBoard } = await import('../public/engine.js');
+    const TB = await import('../public/tablebase.js');
+
+    const start = hexInitialBoard(2);
+    expect(Object.keys(start)).toHaveLength(6);
+
+    const placement = TB.hexPlacementOf(start);
+    expect(placement).toBe(23830);
+
+    const { keys } = TB.enumerateHexPlacements();
+    expect(keys.length).toBe(37633);
+  });
 });
+

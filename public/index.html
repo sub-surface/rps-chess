@@ -158,6 +158,12 @@
           </summary>
           <div class="config-body">
             <div class="config-grid">
+              <label class="frow" title="Square chess grid or Hexagonal lattice."><span>Geometry</span>
+                <select id="s-topo">
+                  <option value="square">Square grid (N×N)</option>
+                  <option value="hex">Hexagonal lattice (Radius R)</option>
+                </select>
+              </label>
               <label class="frow" title="Board size, 3×3 to 13×13. Bigger boards reward slow, patient expansion."><span>Board</span><span class="rangewrap"><input type="range" id="s-size" min="3" max="13" value="9"><b id="s-size-v">9×9</b></span></label>
               <label class="frow" title="How many rocks, papers and scissors each side gets — 1 to 4 of each."><span>Pieces / type</span><span class="rangewrap"><input type="range" id="s-per" min="1" max="4" value="2"><b id="s-per-v">2</b></span></label>
               <label class="frow" title="Moves per turn. More actions means ground changes hands far faster."><span>Actions / turn</span><span class="rangewrap"><input type="range" id="s-acts" min="1" max="3" value="1"><b id="s-acts-v">1</b></span></label>

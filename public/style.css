@@ -640,3 +640,12 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; b
   .dyk { display: none; }
   .lobby-head { flex-wrap: wrap; }
 }
+
+/* ── hex board lattice styles ── */
+.board.hex-mode { display: flex; align-items: center; justify-content: center; background: var(--surface-2); }
+.hex-cell { cursor: pointer; transition: fill .14s ease, stroke .14s ease; }
+.hex-cell:hover { fill: var(--surface); }
+.hex-cell.sel { stroke: #ffffff; stroke-width: 2.5; fill: var(--accent); }
+.hex-cell.target { fill: color-mix(in srgb, var(--win) 40%, var(--surface)); stroke: var(--win); stroke-width: 2; }
+.hex-cell.target-cap { fill: color-mix(in srgb, var(--red) 35%, var(--surface)); stroke: var(--red); stroke-width: 2; }
+

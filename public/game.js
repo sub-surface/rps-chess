@@ -6,7 +6,11 @@ import { glyph, PIECE_STYLE_IDS, PIECE_STYLES, spriteSource } from '/pieces.js';
 import { mountFact } from '/facts.js';
 import * as TB from '/tablebase.js';
 import * as Bot from '/bot.js';
+import { HexTopology } from '/topology.js';
 const { BLUE, RED, other } = E;
+
+let hexSelected = null;
+let hexTargets = [];
 
 // ── config + identity (persisted) ───────────────────────────────────────────
 const DEFAULTS = {
@@ -215,6 +219,7 @@ const isLive = () => viewPly === liveIndex();
 const canNavigateHistory = () => !net || net.role === 'S';
 const snap = () => JSON.stringify({
   board: state.board,
+  hexPieces: state.hexPieces,
   startPos: state.startPos,
   startOwners: state.startOwners,
   startedAt: state.startedAt,
@@ -233,6 +238,7 @@ function loadLive(s) {
   const d = JSON.parse(s);
   Object.assign(state, {
     board: d.board,
+    hexPieces: d.hexPieces,
     startPos: d.startPos,
     startOwners: d.startOwners,
     startedAt: d.startedAt,
@@ -302,6 +308,16 @@ function maybeBot() {
   state.thinking = true; render();
   const g = gen;
   const beat = mode === 'botbot' ? 460 : 320;
+  if (cfg.topology === 'hex') {
+    setTimeout(async () => {
+      if (g !== gen || !botToMove()) return;
+      await playHexBotMove();
+      state.thinking = false;
+      render();
+      maybeBot();
+    }, beat);
+    return;
+  }
   setTimeout(() => {
     if (g !== gen) return;
     const started = Date.now();
@@ -313,6 +329,295 @@ function maybeBot() {
       if (m) doMove(m); else render();
     }, Math.max(0, beat - (Date.now() - started)));
   }, 16);          // one frame, so "thinking…" is on screen before the search blocks it
+}
+
+async function playHexBotMove() {
+  if (state.gameOver) return;
+  const topo = new HexTopology(cfg.size);
+  const pieces = state.hexPieces || {};
+  const myColor = state.turn;
+  const oppColor = other(myColor);
+
+  const legalMoves = [];
+  for (const [key, piece] of Object.entries(pieces)) {
+    if (piece.color !== myColor) continue;
+    const [q, r] = key.split(',').map(Number);
+    const movement = E.movementFor(cfg, piece.type);
+    const hexRole = movement === 'longking' ? 'king' : (movement === 'gold' ? 'cross' : movement);
+    let rays = [];
+    try { rays = topo.rays([q, r], hexRole); } catch { rays = topo.rays([q, r], 'king'); }
+
+    for (const ray of rays) {
+      for (const dest of ray) {
+        const destKey = topo.coordKey(dest);
+        const targetPiece = pieces[destKey];
+        if (!targetPiece) {
+          legalMoves.push({ from: [q, r], to: dest, piece: piece.type, captured: null });
+        } else if (targetPiece.color === oppColor) {
+          if (cfg.capture === 'chess' || E.BEATS[piece.type] === targetPiece.type) {
+            legalMoves.push({ from: [q, r], to: dest, piece: piece.type, captured: targetPiece.type });
+          }
+          break;
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  if (legalMoves.length === 0) {
+    state.gameOver = true;
+    state.winner = oppColor;
+    state.endReason = 'no_moves';
+    soundEnd();
+    return;
+  }
+
+  let chosenMove = null;
+
+  if (cfg.size === 2 && cfg.perType === 1 && cfg.capture === 'rps') {
+    try {
+      const hexOracle = await TB.loadHexOracle();
+      if (hexOracle) {
+        let bestScore = -Infinity;
+        for (const m of legalMoves) {
+          const sim = { ...pieces };
+          delete sim[topo.coordKey(m.from)];
+          sim[topo.coordKey(m.to)] = { type: m.piece, color: myColor };
+
+          const verdict = TB.probeHex(hexOracle, sim, oppColor);
+          if (verdict) {
+            let score = -verdict.value * 1000;
+            if (verdict.value === -1) score -= verdict.dtm;
+            else if (verdict.value === 1) score += verdict.dtm;
+            if (m.captured) score += 10;
+            if (score > bestScore) {
+              bestScore = score;
+              chosenMove = m;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (!chosenMove) {
+    legalMoves.sort((a, b) => {
+      const scoreA = (a.captured ? 50 : 0) - topo.distance(a.to, [0, 0]);
+      const scoreB = (b.captured ? 50 : 0) - topo.distance(b.to, [0, 0]);
+      return scoreB - scoreA;
+    });
+    chosenMove = legalMoves[0];
+  }
+
+  const fromKey = topo.coordKey(chosenMove.from);
+  const toKey = topo.coordKey(chosenMove.to);
+  const movingPiece = state.hexPieces[fromKey];
+  const captured = state.hexPieces[toKey] || null;
+  delete state.hexPieces[fromKey];
+  state.hexPieces[toKey] = movingPiece;
+
+  state.lastMove = {
+    fr: chosenMove.from[0], fc: chosenMove.from[1],
+    tr: chosenMove.to[0], tc: chosenMove.to[1],
+    piece: movingPiece.type,
+    captured: !!captured,
+  };
+  state.moves.push(state.lastMove);
+  positions.push(snap());
+  viewPly = liveIndex();
+
+  if (captured) soundCap(movingPiece.type, captured.type);
+  else soundMove(movingPiece.type);
+
+  let bLeft = 0, rLeft = 0;
+  for (const p of Object.values(state.hexPieces)) {
+    if (p.color === BLUE) bLeft++;
+    else if (p.color === RED) rLeft++;
+  }
+  if (bLeft === 0) {
+    state.gameOver = true;
+    state.winner = RED;
+    state.endReason = 'elimination';
+    soundEnd();
+  } else if (rLeft === 0) {
+    state.gameOver = true;
+    state.winner = BLUE;
+    state.endReason = 'elimination';
+    soundEnd();
+  } else {
+    state.turn = other(state.turn);
+  }
+}
+
+function buildHexStage(radius) {
+  boardEl.innerHTML = '';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('id', 'game-hex-svg');
+  svg.setAttribute('viewBox', '-240 -240 480 480');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  boardEl.appendChild(svg);
+}
+
+function renderHexGame() {
+  const svg = $('game-hex-svg');
+  if (!svg) return;
+  svg.innerHTML = '';
+
+  const topo = new HexTopology(cfg.size);
+  const S = 195 / ((cfg.size - 0.4) * Math.sqrt(3));
+  const cells = topo.cells();
+  const pieces = state.hexPieces || {};
+  const targetSet = new Set((hexTargets || []).map((c) => topo.coordKey(c)));
+
+  for (const [q, r] of cells) {
+    const key = topo.coordKey([q, r]);
+    const piece = pieces[key];
+    const cx = S * Math.sqrt(3) * (q + r / 2);
+    const cy = S * 1.5 * r;
+
+    const isSelected = hexSelected && hexSelected[0] === q && hexSelected[1] === r;
+    const isTarget = targetSet.has(key);
+    const isCap = isTarget && piece && piece.color !== state.turn;
+
+    let fill = 'var(--sq-dark)';
+    let stroke = 'var(--line)';
+    let strokeWidth = '1';
+
+    if (isSelected) {
+      fill = 'var(--accent)';
+      stroke = '#ffffff';
+      strokeWidth = '2.5';
+    } else if (isCap) {
+      fill = 'color-mix(in srgb, var(--red) 35%, var(--sq-dark))';
+      stroke = 'var(--red)';
+      strokeWidth = '2';
+    } else if (isTarget) {
+      fill = 'color-mix(in srgb, var(--win) 40%, var(--sq-dark))';
+      stroke = 'var(--win)';
+      strokeWidth = '2';
+    }
+
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 180) * (30 + 60 * i);
+      points.push(`${(cx + S * 0.94 * Math.cos(angle)).toFixed(1)},${(cy + S * 0.94 * Math.sin(angle)).toFixed(1)}`);
+    }
+
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', points.join(' '));
+    poly.setAttribute('fill', fill);
+    poly.setAttribute('stroke', stroke);
+    poly.setAttribute('stroke-width', strokeWidth);
+    poly.setAttribute('class', 'hex-cell');
+    poly.setAttribute('tabindex', '0');
+    poly.setAttribute('role', 'gridcell');
+    const label = piece ? `${piece.color === BLUE ? 'Blue' : 'Red'} ${piece.type} on ${topo.coordinateLabel([q, r])}` : `Empty ${topo.coordinateLabel([q, r])}`;
+    poly.setAttribute('aria-label', label);
+
+    poly.addEventListener('click', () => onHexCellClick(q, r));
+    svg.appendChild(poly);
+
+    if (piece) {
+      const glyphEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      glyphEl.style.pointerEvents = 'none';
+      const iconSize = Math.max(16, S * 1.05);
+      glyphEl.innerHTML = previewGlyph(piece.type, piece.color, cx - iconSize / 2, cy - iconSize / 2, iconSize);
+      svg.appendChild(glyphEl);
+    }
+  }
+
+  renderHUD();
+}
+
+function onHexCellClick(q, r) {
+  if (state.gameOver || !humanControls(state.turn)) return;
+  const topo = new HexTopology(cfg.size);
+  const key = topo.coordKey([q, r]);
+  const piece = (state.hexPieces || {})[key];
+
+  if (hexSelected) {
+    const isTarget = (hexTargets || []).some(([tq, tr]) => tq === q && tr === r);
+    if (isTarget) {
+      const fromKey = topo.coordKey(hexSelected);
+      const movingPiece = state.hexPieces[fromKey];
+      const captured = state.hexPieces[key] || null;
+      delete state.hexPieces[fromKey];
+      state.hexPieces[key] = movingPiece;
+
+      state.lastMove = {
+        fr: hexSelected[0], fc: hexSelected[1],
+        tr: q, tc: r,
+        piece: movingPiece.type,
+        captured: !!captured,
+      };
+      state.moves.push(state.lastMove);
+      positions.push(snap());
+      viewPly = liveIndex();
+
+      if (captured) soundCap(movingPiece.type, captured.type);
+      else soundMove(movingPiece.type);
+
+      hexSelected = null;
+      hexTargets = [];
+
+      let bLeft = 0, rLeft = 0;
+      for (const p of Object.values(state.hexPieces)) {
+        if (p.color === BLUE) bLeft++;
+        else if (p.color === RED) rLeft++;
+      }
+      if (bLeft === 0) {
+        state.gameOver = true;
+        state.winner = RED;
+        state.endReason = 'elimination';
+        soundEnd();
+      } else if (rLeft === 0) {
+        state.gameOver = true;
+        state.winner = BLUE;
+        state.endReason = 'elimination';
+        soundEnd();
+      } else {
+        state.turn = other(state.turn);
+      }
+
+      render();
+      maybeBot();
+      return;
+    }
+  }
+
+  if (piece && piece.color === state.turn) {
+    hexSelected = [q, r];
+    const movement = E.movementFor(cfg, piece.type);
+    const hexRole = movement === 'longking' ? 'king' : (movement === 'gold' ? 'cross' : movement);
+    let rays = [];
+    try { rays = topo.rays([q, r], hexRole); } catch { rays = topo.rays([q, r], 'king'); }
+
+    hexTargets = [];
+    for (const ray of rays) {
+      for (const dest of ray) {
+        const destKey = topo.coordKey(dest);
+        const targetPiece = (state.hexPieces || {})[destKey];
+        if (!targetPiece) {
+          hexTargets.push(dest);
+        } else if (targetPiece.color !== piece.color) {
+          if (cfg.capture === 'chess' || E.BEATS[piece.type] === targetPiece.type) {
+            hexTargets.push(dest);
+          }
+          break;
+        } else {
+          break;
+        }
+      }
+    }
+    render();
+  } else {
+    hexSelected = null;
+    hexTargets = [];
+    render();
+  }
 }
 
 function doMove(m) {
@@ -331,6 +636,16 @@ const boardEl = $('board');
 let slots = [], curSize = 0, paletteBuilt = false, lastLogKey = '';
 function build(size) {
   boardEl.innerHTML = ''; slots = [];
+  if (cfg.topology === 'hex') {
+    boardEl.classList.add('hex-mode');
+    boardEl.style.gridTemplateColumns = '';
+    boardEl.style.gridTemplateRows = '';
+    buildHexStage(size);
+    curSize = size;
+    annos.clear(); drawAnnos();
+    return;
+  }
+  boardEl.classList.remove('hex-mode');
   boardEl.style.gridTemplateColumns = `repeat(${size},1fr)`;
   boardEl.style.gridTemplateRows = `repeat(${size},1fr)`;
   for (let dr = 0; dr < size; dr++) {
@@ -362,6 +677,12 @@ function renderLegend() {
 
 function render() {
   syncOracle();
+  if (cfg.topology === 'hex') {
+    renderHexGame();
+    refreshFavicon();
+    if (editing) renderTbVerdict();
+    return;
+  }
   const size = curSize;
   let board, lastMove, boardMode;
   if (editing) { board = editBoard; lastMove = null; boardMode = 'edit'; }
@@ -416,6 +737,19 @@ const edFirst = () => ($('ed-first').value === RED ? RED : BLUE);
 function renderTbVerdict() {
   const box = $('ed-tb');
   const safe = E.sanitizeCfg(cfg);
+  if (safe.topology === 'hex') {
+    if (!oracle) { box.hidden = true; box.textContent = ''; return; }
+    const verdict = TB.probeHex(oracle, state.hexPieces || E.hexInitialBoard(cfg.size), edFirst());
+    if (!verdict) { box.hidden = true; box.textContent = ''; return; }
+    const mover = edFirst() === BLUE ? 'Blue' : 'Red';
+    const word = TB_WORDS[String(verdict.value)];
+    const detail = verdict.value === 0 ? 'no forced result for either side' : `${verdict.dtm} plies under best play`;
+    box.hidden = false;
+    box.innerHTML = `<div class="tbv-head"><b class="tbv-${word.toLowerCase()}">${word} for ${mover}</b>`
+      + `<span>${detail}</span></div>`
+      + `<p class="tbv-src">Solved ${oracle.label} tablebase · exact, positional</p>`;
+    return;
+  }
   const verdict = oracle && TB.probe(oracle.table, editBoard, edFirst());
   if (!verdict) {
     box.hidden = true;
@@ -454,6 +788,30 @@ function refreshFavicon() {
 }
 
 function renderHUD(board) {
+  if (cfg.topology === 'hex') {
+    const pieces = state.hexPieces || {};
+    let bCount = 0, rCount = 0;
+    for (const p of Object.values(pieces)) {
+      if (p.color === BLUE) bCount++;
+      else if (p.color === RED) rCount++;
+    }
+    const tot = (bCount + rCount) || 1;
+    $('seg-b').style.width = (bCount / tot * 100) + '%';
+    $('seg-r').style.width = (rCount / tot * 100) + '%';
+    $('seg-n').style.width = '0%';
+    $('ct-b').textContent = bCount;
+    $('ct-r').textContent = rCount;
+    $('ct-n').textContent = '—';
+    $('lbl-b').textContent = 'blue pcs';
+    $('lbl-r').textContent = 'red pcs';
+    $('lbl-n').textContent = '';
+
+    $('turn').classList.toggle('red', state.turn === RED);
+    $('turn-label').textContent = state.gameOver ? `Game over (${state.endReason})`
+      : state.thinking ? (state.turn === BLUE ? 'Blue' : 'Red') + ' thinking…'
+        : (state.turn === BLUE ? 'Blue' : 'Red') + ' to move';
+    return;
+  }
   const terr = cfg.territory;
   const res = E.result({ board, cfg });
   const tot = terr ? board.length * board.length : (res.B + res.R) || 1;
@@ -768,6 +1126,29 @@ $('board-grip').addEventListener('dblclick', () => {
 
 // ── game lifecycle ──────────────────────────────────────────────────────────
 function freshLocal(board) {
+  if (cfg.topology === 'hex') {
+    state.hexPieces = E.hexInitialBoard(cfg.size);
+    state.startedAt = Date.now();
+    state.turn = cfg.first;
+    state.acts = 0;
+    state.moves = [];
+    state.passStreak = 0;
+    state.gameOver = false;
+    state.lastMove = null;
+    state.dry = 0;
+    state.repetitions = {};
+    state.selected = null;
+    state.targets = [];
+    state.justMovedTo = null;
+    state.thinking = false;
+    state.rated = false;
+    state.winner = null;
+    state.endReason = null;
+    state.deltas = null;
+    hexSelected = null;
+    hexTargets = [];
+    return;
+  }
   const gm = E.newGame(cfg, board);
   gm.startedAt = Date.now();
   Object.assign(state, {
@@ -806,7 +1187,7 @@ function newGame() {
     });
     return;
   }
-  if (curSize !== cfg.size) build(cfg.size);
+  if (curSize !== cfg.size || (cfg.topology === 'hex' !== boardEl.classList.contains('hex-mode'))) build(cfg.size);
   freshLocal();
   positions = [snap()]; viewPly = 0;
   renderLegend(); render(); maybeBot();
@@ -1348,6 +1729,74 @@ function renderVariantPreview(rules = cfg, presetKey = null) {
   const shown = presetKey || (customising ? 'custom' : E.presetOf(safe));
   $('preset-name').textContent = E.presetLabel(shown);
   $('preset-tagline').textContent = E.PRESET_INFO[shown]?.tagline || '';
+
+  if (safe.topology === 'hex') {
+    const topo = new HexTopology(safe.size);
+    const S = 100 / ((safe.size - 0.4) * Math.sqrt(3));
+    const cells = topo.cells();
+    const origin = [0, 0];
+    const movement = E.movementFor(safe, previewPiece);
+    const hexRole = movement === 'longking' ? 'king' : (movement === 'gold' ? 'cross' : movement);
+    let rays = [];
+    try { rays = topo.rays(origin, hexRole); } catch { rays = topo.rays(origin, 'king'); }
+    const targets = rays.flatMap((r) => r);
+    const targetSet = new Set(targets.map((c) => topo.coordKey(c)));
+
+    const polys = [];
+    for (const [q, r] of cells) {
+      const cx = 120 + S * Math.sqrt(3) * (q + r / 2);
+      const cy = 120 + S * 1.5 * r;
+      const isTarget = targetSet.has(`${q},${r}`);
+      const isOrigin = q === 0 && r === 0;
+      const fill = isOrigin ? 'var(--accent)' : isTarget ? 'color-mix(in srgb, var(--win) 45%, var(--sq-dark))' : 'var(--sq-dark)';
+      const stroke = isOrigin ? '#fff' : isTarget ? 'var(--win)' : 'var(--line)';
+
+      const points = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 180) * (30 + 60 * i);
+        points.push(`${(cx + S * 0.94 * Math.cos(angle)).toFixed(1)},${(cy + S * 0.94 * Math.sin(angle)).toFixed(1)}`);
+      }
+      polys.push(`<polygon points="${points.join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${isOrigin ? 2 : 1}"/>`);
+    }
+
+    const ox = 120, oy = 120;
+    const arrows = [];
+    for (const ray of rays) {
+      if (!ray.length) continue;
+      const [tq, tr] = ray[ray.length - 1];
+      const tx = 120 + S * Math.sqrt(3) * (tq + tr / 2);
+      const ty = 120 + S * 1.5 * tr;
+      const dx = tx - ox, dy = ty - oy, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      arrows.push(`<line class="pv-arrow" x1="${ox + ux * S * 0.4}" y1="${oy + uy * S * 0.4}" x2="${tx - ux * S * 0.3}" y2="${ty - uy * S * 0.3}" marker-end="url(#preview-arrow)"/>`);
+    }
+
+    const iconSize = Math.max(14, S * 1.1);
+    $('preview-board').innerHTML = `
+      <defs>
+        <marker id="preview-arrow" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto"><path class="pv-arrowhead" d="M0 0 L8 4 L0 8 Z"/></marker>
+      </defs>
+      <rect width="240" height="240" fill="var(--surface-2)"/>
+      ${polys.join('')}
+      ${arrows.join('')}
+      ${previewGlyph(previewPiece, BLUE, ox - iconSize / 2, oy - iconSize / 2, iconSize)}
+    `;
+
+    for (const tab of $('preview-tabs').children) {
+      tab.setAttribute('aria-pressed', String(tab.dataset.previewPiece === previewPiece));
+    }
+    $('preview-description').textContent = `${PIECE_NAMES[previewPiece]} moves on hex lattice as a ${E.MOVEMENT_LABELS[movement].toLowerCase()}: ${targets.length} legal destination${targets.length === 1 ? '' : 's'} from the centre.`;
+    $('preview-map').innerHTML = ['rock', 'paper', 'scissors'].map((type) => {
+      const move = E.movementFor(safe, type);
+      const title = `${PIECE_NAMES[type]} ${E.MOVEMENT_SENTENCES[move]}`;
+      return `<button type="button" class="linklike" data-preview-piece="${type}" title="${title}"><span class="preview-map-glyph">${legendGlyph(type)}</span><span class="preview-map-name">${PIECE_NAMES[type]}</span><span class="preview-map-role">${E.MOVEMENT_LABELS[move].toLowerCase()}</span></button>`;
+    }).join('');
+    for (const button of $('preview-map').querySelectorAll('[data-preview-piece]')) {
+      button.onclick = () => { previewPiece = button.dataset.previewPiece; renderVariantPreview(rules, presetKey); };
+    }
+    return;
+  }
+
   const size = safe.size;
   const board = E.emptyBoard(size);
   const origin = Math.floor(size / 2);
@@ -1702,16 +2151,21 @@ function setMovementInputs(moves) {
 }
 
 function syncBoardInputs() {
-  const perMax = E.maxPerTypeForBoard(cfg.size, cfg.layout);
+  const isHex = cfg.topology === 'hex';
+  if ($('s-topo')) $('s-topo').value = isHex ? 'hex' : 'square';
+  const perMax = isHex ? (cfg.size === 2 ? 1 : 3) : E.maxPerTypeForBoard(cfg.size, cfg.layout);
   const material = E.startingMaterial(cfg);
-  const fixed = cfg.layout === 'azel';
-  $('s-size').min = fixed ? 4 : 3;
+  const fixed = cfg.layout === 'azel' && !isHex;
+  $('s-size').min = isHex ? 2 : (fixed ? 4 : 3);
+  $('s-size').max = isHex ? 8 : 13;
   $('s-size').value = cfg.size;
-  $('s-size-v').textContent = `${cfg.size}×${cfg.size}`;
+  $('s-size-v').textContent = isHex
+    ? `Radius ${cfg.size} (${1 + 3 * cfg.size * (cfg.size - 1)} cells)`
+    : `${cfg.size}×${cfg.size}`;
   $('s-per').max = perMax;
   $('s-per').value = cfg.perType;
   // A named formation deals its own material, so the dial reports rather than sets.
-  $('s-per').disabled = fixed;
+  $('s-per').disabled = fixed || (isHex && cfg.size === 2);
   $('s-per-v').textContent = fixed
     ? `${material.rock}/${material.paper}/${material.scissors}`
     : String(cfg.perType);
@@ -1719,6 +2173,7 @@ function syncBoardInputs() {
 }
 
 function fillHome() {
+  if ($('s-topo')) $('s-topo').value = cfg.topology === 'hex' ? 'hex' : 'square';
   syncBoardInputs();
   $('s-acts').value = cfg.actionsPerTurn; $('s-acts-v').textContent = cfg.actionsPerTurn;
   $('s-move-rock').value = E.movementFor(cfg, 'rock');
@@ -1742,6 +2197,7 @@ function fillHome() {
   if (customising || E.presetOf(E.sanitizeCfg(cfg)) === 'custom') $('config-details').open = true;
 }
 function readHome() {
+  if ($('s-topo')) cfg.topology = $('s-topo').value === 'hex' ? 'hex' : 'square';
   cfg.size = +$('s-size').value; cfg.perType = +$('s-per').value; cfg.actionsPerTurn = +$('s-acts').value;
   cfg.rockMove = $('s-move-rock').value;
   cfg.paperMove = $('s-move-paper').value;
@@ -1773,7 +2229,22 @@ function markPreset() {
   for (const ch of document.querySelectorAll('#presets .chip')) ch.classList.toggle('on', ch.dataset.preset === cur);
 }
 
-$('s-size').oninput = () => { $('s-size-v').textContent = `${$('s-size').value}×${$('s-size').value}`; readHome(); };
+if ($('s-topo')) $('s-topo').onchange = () => {
+  cfg.topology = $('s-topo').value;
+  if (cfg.topology === 'hex') {
+    cfg.size = Math.max(2, Math.min(8, cfg.size));
+    if (cfg.size > 8) cfg.size = 2;
+  } else {
+    cfg.size = Math.max(3, Math.min(13, cfg.size));
+  }
+  readHome();
+};
+$('s-size').oninput = () => {
+  $('s-size-v').textContent = cfg.topology === 'hex'
+    ? `Radius ${$('s-size').value} (${1 + 3 * +$('s-size').value * (+$('s-size').value - 1)} cells)`
+    : `${$('s-size').value}×${$('s-size').value}`;
+  readHome();
+};
 $('s-per').oninput = () => { $('s-per-v').textContent = $('s-per').value; readHome(); };
 $('s-acts').oninput = () => { $('s-acts-v').textContent = $('s-acts').value; readHome(); };
 for (const id of ['s-first', 's-threefold', 's-retread', 's-trail', 's-enclosure', 's-layout', 's-forced']) $(id).onchange = readHome;
