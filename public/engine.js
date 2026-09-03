@@ -28,7 +28,8 @@ export const other = (c) => (c === BLUE ? RED : BLUE);
 // rejects anything larger, so a custom position can always express a legal start.
 export const MAX_PER_TYPE = 4;
 export const MAX_PIECES_PER_SIDE = MAX_PER_TYPE * 3;
-const BEATS = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
+export const BEATS = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
+export const beats = (attacker, defender) => BEATS[attacker] === defender;
 const LETTER = { rock: 'R', paper: 'P', scissors: 'S' };
 
 const ORTHO = [[-1, 0], [1, 0], [0, -1], [0, 1]];

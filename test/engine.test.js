@@ -44,6 +44,11 @@ describe('shared rules engine', () => {
     expect(E.sanitizeCfg({ topology: 'hex' }).topology).toBe('hex');
     expect(E.sanitizeCfg({ topology: 'hex', size: 2 })).toMatchObject({ topology: 'hex', size: 2, perType: 1 });
     expect(E.presetOf(E.sanitizeCfg(E.PRESETS.hex))).toBe('hex');
+    expect(E.BEATS.rock).toBe('scissors');
+    expect(E.BEATS.scissors).toBe('paper');
+    expect(E.BEATS.paper).toBe('rock');
+    expect(E.beats('rock', 'scissors')).toBe(true);
+    expect(E.beats('scissors', 'rock')).toBe(false);
     // Azel's wall deals its own material and needs room for two files a side, so the layout
     // constrains the board rather than the other way round.
     expect(E.sanitizeCfg({ size: 3, perType: 4, layout: 'azel' })).toMatchObject({

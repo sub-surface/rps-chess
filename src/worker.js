@@ -1019,6 +1019,13 @@ export default {
       if (url.pathname === '/atlas/tablebase-3x3') {
         return env.ASSETS.fetch(new Request(new URL('/atlas.html', request.url), request));
       }
+      if (url.pathname === '/version.json') {
+        try {
+          const res = await env.ASSETS.fetch(request);
+          if (res.status < 400) return res;
+        } catch { }
+        return json({ full: '0b66dd3', short: '0b66dd3', url: 'https://github.com/sub-surface/rps-chess/commit/0b66dd3' });
+      }
       return env.ASSETS.fetch(request);
     } catch (error) {
       logError('request_failed', error, { method: request.method, path: url.pathname });

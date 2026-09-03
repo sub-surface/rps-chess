@@ -8,6 +8,7 @@ import * as TB from '/tablebase.js';
 import * as Bot from '/bot.js';
 import { HexTopology } from '/topology.js';
 const { BLUE, RED, other } = E;
+const BEATS = E.BEATS || { rock: 'scissors', scissors: 'paper', paper: 'rock' };
 
 let hexSelected = null;
 let hexTargets = [];
@@ -354,7 +355,7 @@ async function playHexBotMove() {
         if (!targetPiece) {
           legalMoves.push({ from: [q, r], to: dest, piece: piece.type, captured: null });
         } else if (targetPiece.color === oppColor) {
-          if (cfg.capture === 'chess' || E.BEATS[piece.type] === targetPiece.type) {
+          if (cfg.capture === 'chess' || BEATS[piece.type] === targetPiece.type) {
             legalMoves.push({ from: [q, r], to: dest, piece: piece.type, captured: targetPiece.type });
           }
           break;
@@ -603,7 +604,7 @@ function onHexCellClick(q, r) {
         if (!targetPiece) {
           hexTargets.push(dest);
         } else if (targetPiece.color !== piece.color) {
-          if (cfg.capture === 'chess' || E.BEATS[piece.type] === targetPiece.type) {
+          if (cfg.capture === 'chess' || BEATS[piece.type] === targetPiece.type) {
             hexTargets.push(dest);
           }
           break;
@@ -2650,7 +2651,7 @@ function paintFavicon() {
 }
 
 // footer commit
-fetch('/version.json').then(r => r.json()).then(v => { if (v && v.short) { const a = $('commit-link'); a.href = v.url; a.textContent = v.short; } }).catch(() => { });
+fetch('/version.json').then(r => r.ok ? r.json() : null).then(v => { if (v && v.short && $('commit-link')) { const a = $('commit-link'); a.href = v.url; a.textContent = v.short; } }).catch(() => { });
 
 // The hero shows the beats-cycle in the player's chosen piece style.
 function renderHero() {
